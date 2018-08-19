@@ -1,0 +1,6 @@
+bin
+dump
+.tmp
+*.txt
+*.hl
+*.exe

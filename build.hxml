@@ -1,0 +1,11 @@
+-dce full
+-cp src
+-D analyzer-optimize
+-D old-error-format
+-main test.LexTest
+--each
+-D nodejs
+-js bin/test.js
+
+--next
+-hl bin/test.hl
