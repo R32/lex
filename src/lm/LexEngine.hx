@@ -4,6 +4,9 @@ import lm.Utils;
 
 class LexEngine {
 
+	public static inline var BEGIN = 0;  // Don't change this value.
+	public static inline var INVALID = -1 & Char.MAX;
+
 	var uid: Int;
 	var finals: Array<Node>;
 
@@ -14,14 +17,13 @@ class LexEngine {
 	var lparts: List<Array<Charset>>;
 	var states: List<State>;
 
-	var dfa: Array<State>;
-	var trans: Array<Array<IChar>>;
+	public var table: haxe.io.Bytes;
 
-	public var table: Table;
 	public function new(pa: Array<Pattern>) {
 		var len = pa.length;
 		if (len > 254)
 			throw "More than 254 are not supported"; // -1 == 255
+
 		// Pattern -> NFA(nodes + finals)
 		var nodes = []; nodes.resize(len);
 		this.finals = []; finals.resize(len);
@@ -32,6 +34,7 @@ class LexEngine {
 			nodes[i] = n;
 			finals[i] = f;
 		}
+
 		// NFA -> DFA
 		h = new Map();
 		parts = new Map();
@@ -40,23 +43,30 @@ class LexEngine {
 		lparts = new List();
 		states = new List();
 		loop(addNodes([], nodes));
-
-		dfa = Lambda.array(states);
-		dfa.sort(State.onSort);
-
-		trans = []; trans.resize(this.lparts.length);
+		finals = null;
 		var i = 0;
+		var dfa = []; dfa.resize(states.length);
+		for (s in states)
+			dfa[i++] = s;
+		dfa.sort(State.onSort);
+		states = null;
+		h = null;
+		var trans = []; trans.resize(this.lparts.length);
+		i = 0;
 		for (part in this.lparts) {
 			var seg: Array<IChar> = [];
-			for (i in 0...part.length) {
-				var chars: Charset = part[i];
+			for (j in 0...part.length) {
+				var chars: Charset = part[j];
 				for (c in chars) {
-					seg.push(new IChar(c.min, c.max, i));
+					seg.push(new IChar(c.min, c.max, j));
 				}
 			}
 			seg.sort( (a, b)-> a.min - b.min );
 			trans[i++] = seg;
 		}
+		lparts = null;
+		parts = null;
+
 		// DFA -> Tables
 		this.table = makeTables(dfa, trans);
 	}
@@ -114,7 +124,6 @@ class LexEngine {
 		h.set(sid, id);
 		var ta: Array<TransitionA> = transitions(nodes);
 		var len = ta.length;
-
 		var part: Array<Charset> = []; part.resize(len);
 		for (i in 0...len)
 			part[i] = ta[i].chars;
@@ -125,48 +134,46 @@ class LexEngine {
 			targets[i] = loop(ta[i].ns);
 		}
 
-		var finals = []; finals.resize(this.finals.length);
-		for (i in 0...this.finals.length) {
-			finals[i] = nodes.indexOf(this.finals[i]) > -1;
+		var f = []; f.resize(finals.length);
+		for (i in 0...finals.length) {
+			f[i] = nodes.indexOf(finals[i]) > -1;
 		}
 
-		states.push(new State(id, pid, targets, finals));
+		states.push(new State(id, pid, targets, f));
 		return id;
 	}
 
 	static function makeTrans(tbls: haxe.io.Bytes, seg: Int, trans: Array<IChar>, tbl: Array<Int>) {
 		var start = seg * 256;
 		for (c in trans) {
-			var i = c.min;
-			var max = c.max;
+			var i = c.min + start;
+			var max = c.max + start;
+			var s = tbl[c.i];
 			while (i <= max) {
-				tbls.set(start + i, tbl[c.i]);
+				tbls.set(i, s);
 				++ i;
 			}
 		}
 	}
-
 	static function first(p: Int, a: Array<Bool>) {
-		return if (p == a.length) {
-			-1;
-		} else if (a[p]) {
-			p;
-		} else {
-			first(p + 1, a);
+		var len = a.length;
+		while (p < len) {
+			if (a[p]) return p;
+			++ p;
 		}
+		return INVALID;
 	}
-
 	static function makeTables(dfa: Array<State>, trans: Array<Array<IChar>>) {
 		var len = dfa.length;
 		var bytes = (len + 1) * 256;
 		var tbls = haxe.io.Bytes.alloc(bytes);
-		tbls.fill(0, bytes, -1); // 255 == -1
+		tbls.fill(0, bytes, INVALID);
 		for (i in 0...len) {
 			var s = dfa[i];
-			tbls.set(bytes - i - 1, first(0, s.finals)); // bytes - i => Reverse order
+			tbls.set(bytes - i - 1, first(0, s.finals));
 			makeTrans(tbls, i, trans[s.part], s.targets);
 		}
-		return new Table(tbls);
+		return tbls;
 	}
 
 	static function addNode(nodes: Array<Node>, n: Node) {
@@ -183,12 +190,15 @@ class LexEngine {
 		return nodes;
 	}
 
-	 function transitions(nodes: Array<Node>) {
+	static function transitions(nodes: Array<Node>) {
 		// Merge transition with the same target
 		var tl: Array<Transition> = [];
+		var states: Array<TransitionA> = [];
 		for (n in nodes)
 			for (t in n.trans)
 				tl.push(t);
+		if (tl.length == 0)
+			return states;
 		tl.sort( Transition.onSort );
 		var a = tl[0];
 		for (i in 1...tl.length) {
@@ -202,7 +212,6 @@ class LexEngine {
 		}
 		while ( tl.remove(null) ) {
 		}
-
 		// Split char sets so as to make them disjoint
 		var all_chars = C_EMPTY;
 		var all_state = new List<TransitionA>();
@@ -219,14 +228,14 @@ class LexEngine {
 			all_state = ls;
 		}
 		// Epsilon closure of targets
-		var states: Array<TransitionA> = []; states.resize(all_state.length);
+		states.resize(all_state.length);
 		var i = 0;
 		for (s in all_state) {
 			states[i++] = new TransitionA(s.chars, addNodes([], s.ns));
 		}
 		// Canonical ordering
 		states.sort(TransitionA.onSort);
-		//trace("---"); for (s in states) trace(LexEngineTest.rs_charset(s.chars) + "=> [" +s.ns.map( n-> n.id ).join(","));
+		// trace("---"); for (s in states) trace(Test.rs_charset(s.chars) + "=> [" +s.ns.map( n-> n.id ).join(","));
 		return states;
 	}
 
@@ -584,10 +593,7 @@ private class Transition {
 		this.chars = cs;
 		this.n = n;
 	}
-
-	public static function onSort(a: Transition, b: Transition) {
-		return a.n.id - b.n.id;
-	}
+	public static function onSort(a: Transition, b: Transition) return a.n.id - b.n.id;
 }
 
 private class TransitionA {
@@ -600,17 +606,16 @@ private class TransitionA {
 	public static function onSort(s1: TransitionA, s2: TransitionA) {
 		var a = s1.chars.length;
 		var b = s2.chars.length;
-		for( i in 0...(a < b?a:b) ) {
+		var len = Utils.imin(a, b);
+		for( i in 0...len) {
 			var a = s1.chars[i];
 			var b = s2.chars[i];
 			if (a.min != b.min)
-				return b.min - a.min;
+				return a.min - b.min;
 			if (a.max != b.max)
-				return b.max - a.max;
+				return a.max - b.max;
 		}
-		if (a < b)
-			return b - a;
-		return 0;
+		return a - b;
 	}
 }
 
@@ -636,13 +641,12 @@ private class State {
 		targets = t;
 		finals = f;
 	}
-
 	public static function onSort(a: State, b: State) return a.id - b.id;
 }
 
 // ----- test -----
 @:access(lm)
-@:dce class LexEngineTest {
+@:dce class Test {
 	static public function run(): Void {
 		inline function c(a, b) return new Char(a, b);
 		eq (LexEngine.cunion(
@@ -676,34 +680,42 @@ private class State {
 		var x = [c(48, 59), c(65, 70), c(97, 102)];
 		eq( LexEngine.cdiff(LexEngine.C_ALL, x), LexEngine.ccomplement(x));
 
-		var r = ["ab*c", "ae+f", "ah?g",
-			"class", "import", "enum", "function", "var", "cast", "macro", "new",
-			"return", "switch", "if", "else", "case", "static", "public", "private",
-			"while", "for", "in", "abstract", "return",
-		];
-
+		var r = ["ab*c", "abc", "ah?g"];
 		var lex = new LexEngine(r.map( s -> LexEngine.parse(lm.ByteData.ofString(s))));
-		var sa = ["ac", "ag", "abc", "function", "cas"];
-		for (s in sa) {
-			var state = 0; // BEGIN;
+		var table = new lm.Table(lex.table);
+		var sa = ["ac", "ag", "abc", "abbbbbc", "ahg"];
+		for (si in 0...sa.length) {
+			var s = sa[si];
+			var state = LexEngine.BEGIN; // BEGIN;
 			for (i in 0...s.length) {
 				var c = StringTools.fastCodeAt(s, i);
-				state = lex.table.tbl(state, c);
-				if (state == 255) {
-					trace("Unmatched: \"" + s + "\", i: " + i);
+				state = table.tbl(state, c);
+				if (state == LexEngine.INVALID) {
+					throw "tbl Unmatched: " + s;
 					break;
 				}
 			}
-			if (state != 255) {
-				var p = lex.table.exits(state);
-				if (p == 255) {
-					trace("Unmatched: \"" + s + "\"");
+			if (state != LexEngine.INVALID) {
+				var p = table.exits(state);
+				if (p == LexEngine.INVALID) {
+					throw "exits Unmatched: " + s;
 				} else {
+					if (!(switch (si) {
+					case 0: p == 0; // match r[p]
+					case 1: p == 2;
+					case 2: p == 0;
+					case 3: p == 0;
+					case 4: p == 2;
+					default: true;
+					})) {
+						throw "Wrong Matching: \"" + s + "\" with /" + r[p] + "/";
+					}
+					#if debug
 					trace("Matched: \"" + s + "\" with /" + r[p] + "/");
+					#end
 				}
 			}
 		}
-		trace("LexEngine Done!");
 	}
 	static function eq(c1: Charset, c2: Charset, ?pos: haxe.PosInfos) {
 		var b = c1.length == c2.length;
