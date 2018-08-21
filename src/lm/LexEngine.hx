@@ -5,54 +5,59 @@ import lm.Utils;
 class LexEngine {
 
 	public static inline var BEGIN = 0;  // Don't change this value.
-	public static inline var INVALID = -1 & Char.MAX;
+	public static inline var INVALID = -1 & Char.MAX;  // used for check(state) == INVALID
 
-	var uid: Int;
+	var uid(default, null): Int;
 	var finals: Array<Node>;
-
+	var finals_tmp: Array<Bool>;
 	var h: Map<String, Int>;
 	var parts: Map<String, Int>;
-	var state_counter: Int;
+	var final_counter: Int;
 	var part_counter: Int;
 	var lparts: List<Array<Charset>>;
 	var states: List<State>;
 
-	public var table: haxe.io.Bytes;
+	/**
+	 format: [trans->..............|.<-check()]
+	 See the Test below
+	*/
+	public var table(default, null): haxe.io.Bytes;
+
+	/**
+	 used for valid the state, if (state >= max) then check(state) else next().
+	*/
+	public var max(default, null): Int;
 
 	public function new(pa: Array<Pattern>) {
 		var len = pa.length;
-		if (len > 254)
-			throw "More than 254 are not supported"; // -1 == 255
-
 		// Pattern -> NFA(nodes + finals)
-		var nodes = []; nodes.resize(len);
-		this.finals = []; finals.resize(len);
-		this.uid = 0;
+		var nodes = [];       nodes.resize(len);
+		this.finals = [];     finals.resize(len);
+		this.finals_tmp = []; finals_tmp.resize(len);
+		this.uid = len;
 		for (i in 0...len) {
-			var f = node();
+			var f = new Node(i);
 			var n = initNode(pa[i], f);
 			nodes[i] = n;
 			finals[i] = f;
+			finals_tmp[i] = false;
 		}
-
 		// NFA -> DFA
-		h = new Map();
-		parts = new Map();
-		state_counter = 0;
-		part_counter = 0;
-		lparts = new List();
-		states = new List();
+		this.h = new Map();
+		this.parts = new Map();
+		this.max = 0;
+		this.part_counter = 0;
+		this.final_counter = Char.MAX;
+		this.lparts = new List();
+		this.states = new List();
 		loop(addNodes([], nodes));
-		finals = null;
-		var i = 0;
-		var dfa = []; dfa.resize(states.length);
-		for (s in states)
-			dfa[i++] = s;
-		dfa.sort(State.onSort);
-		states = null;
+		if (final_counter < max)
+			throw "Too many states";
 		h = null;
+		finals = null;
+		finals_tmp = null;
+		var i = 0;
 		var trans = []; trans.resize(this.lparts.length);
-		i = 0;
 		for (part in this.lparts) {
 			var seg: Array<IChar> = [];
 			for (j in 0...part.length) {
@@ -61,14 +66,13 @@ class LexEngine {
 					seg.push(new IChar(c.min, c.max, j));
 				}
 			}
-			seg.sort( (a, b)-> a.min - b.min );
 			trans[i++] = seg;
 		}
-		lparts = null;
 		parts = null;
-
+		lparts = null;
 		// DFA -> Tables
-		this.table = makeTables(dfa, trans);
+		this.table = makeTables(states, trans, this.max);
+		states = null;
 	}
 
 	inline function node() return new Node(uid++);
@@ -105,7 +109,7 @@ class LexEngine {
 	}
 
 	function getPart(p: Array<Charset>): Int {
-		var sid = p.map(chars -> chars.join("-")).join(",");
+		var sid = p.map(chars -> chars.join("+")).join(",");
 		var id = parts.get(sid);
 		if (id == null) {
 			id = part_counter++;
@@ -120,7 +124,12 @@ class LexEngine {
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		id = state_counter++;
+		if (nodes.length == 1 && nodes[0].id < this.finals.length) {
+			id = final_counter--; // targets will be empty.
+		} else {
+			id = max++;
+		}
+
 		h.set(sid, id);
 		var ta: Array<TransitionA> = transitions(nodes);
 		var len = ta.length;
@@ -130,18 +139,37 @@ class LexEngine {
 		var pid = this.getPart(part);
 
 		var targets = []; targets.resize(len);
-		for (i in 0...len) {
+		for (i in 0...len)
 			targets[i] = loop(ta[i].ns);
-		}
 
-		var f = []; f.resize(finals.length);
-		for (i in 0...finals.length) {
-			f[i] = nodes.indexOf(finals[i]) > -1;
-		}
+		var f = finals_tmp.copy();
+		for (n in nodes)
+			if (n.id < f.length) f[n.id] = true;
 
 		states.push(new State(id, pid, targets, f));
 		return id;
 	}
+
+	#if sys
+	public function write(out: haxe.io.Output, tab = "\t") {
+		var size = this.table.length;
+		var seg = size >> 4; // size / 16
+		tab = "\\\n" + tab;
+		out.writeByte('"'.code);
+		if (size >= 16)      // first line without tab
+			for (j in 0...16)
+				out.writeString( "\\x" + StringTools.hex(table.get(j), 2) );
+		for (i in 1...seg) {
+			var p = i * 16;
+			out.writeString(tab);
+			for (j in p...(p + 16))
+				out.writeString( "\\x" + StringTools.hex(table.get(j), 2) );
+		}
+		out.writeByte('"'.code);
+		out.writeByte("\n".code);
+		out.flush();
+	}
+	#end
 
 	static function makeTrans(tbls: haxe.io.Bytes, seg: Int, trans: Array<IChar>, tbl: Array<Int>) {
 		var start = seg * 256;
@@ -163,15 +191,15 @@ class LexEngine {
 		}
 		return INVALID;
 	}
-	static function makeTables(dfa: Array<State>, trans: Array<Array<IChar>>) {
+	static function makeTables(dfa: List<State>, trans: Array<Array<IChar>>, max: Int) {
 		var len = dfa.length;
-		var bytes = (len + 1) * 256;
+		var bytes = (max + 1) * 256;
 		var tbls = haxe.io.Bytes.alloc(bytes);
 		tbls.fill(0, bytes, INVALID);
-		for (i in 0...len) {
-			var s = dfa[i];
-			tbls.set(bytes - i - 1, first(0, s.finals));
-			makeTrans(tbls, i, trans[s.part], s.targets);
+		for (s in dfa) {
+			tbls.set(bytes - s.id - 1, first(0, s.finals)); // Reverse write checking table
+			if (s.id < max)
+				makeTrans(tbls, s.id, trans[s.part], s.targets);
 		}
 		return tbls;
 	}
@@ -235,7 +263,6 @@ class LexEngine {
 		}
 		// Canonical ordering
 		states.sort(TransitionA.onSort);
-		// trace("---"); for (s in states) trace(Test.rs_charset(s.chars) + "=> [" +s.ns.map( n-> n.id ).join(","));
 		return states;
 	}
 
@@ -648,6 +675,7 @@ private class State {
 @:access(lm)
 @:dce class Test {
 	static public function run(): Void {
+		// charset testing
 		inline function c(a, b) return new Char(a, b);
 		eq (LexEngine.cunion(
 			[c(32, 32), c(51, 59), c(65, 65), c(97, 102)],
@@ -680,41 +708,40 @@ private class State {
 		var x = [c(48, 59), c(65, 70), c(97, 102)];
 		eq( LexEngine.cdiff(LexEngine.C_ALL, x), LexEngine.ccomplement(x));
 
-		var r = ["ab*c", "abc", "ah?g"];
+		// regexp testing
+		var r = ["ab*c", "abc", "ah?g", "\\+", "\\-", "\\*", "/", "[ \t]", "(", ")", "0", "-?[1-9][0-9]*"];
 		var lex = new LexEngine(r.map( s -> LexEngine.parse(lm.ByteData.ofString(s))));
-		var table = new lm.Table(lex.table);
-		var sa = ["ac", "ag", "abc", "abbbbbc", "ahg"];
+		#if debug
+		trace("table size: " + (lex.table.length / 1024) + "Kb");
+		#end
+		var table = new Table(lex.table);
+		var sa = ["abc", "ag", "abc", "abbbbbc", "ahg"];
 		for (si in 0...sa.length) {
 			var s = sa[si];
 			var state = LexEngine.BEGIN; // BEGIN;
 			for (i in 0...s.length) {
 				var c = StringTools.fastCodeAt(s, i);
 				state = table.tbl(state, c);
-				if (state == LexEngine.INVALID) {
-					throw "tbl Unmatched: " + s;
+				if (state >= lex.max) {  // Trans Table
 					break;
 				}
 			}
-			if (state != LexEngine.INVALID) {
-				var p = table.exits(state);
-				if (p == LexEngine.INVALID) {
-					throw "exits Unmatched: " + s;
-				} else {
-					if (!(switch (si) {
-					case 0: p == 0; // match r[p]
-					case 1: p == 2;
-					case 2: p == 0;
-					case 3: p == 0;
-					case 4: p == 2;
-					default: true;
-					})) {
-						throw "Wrong Matching: \"" + s + "\" with /" + r[p] + "/";
-					}
-					#if debug
-					trace("Matched: \"" + s + "\" with /" + r[p] + "/");
-					#end
-				}
+			var p = table.exits(state);  // Check Table
+			if (p == LexEngine.INVALID)
+				throw "exits Unmatched: " + s;
+			if (!(switch (si) {
+			case 0: p == 0; // match r[p]
+			case 1: p == 2;
+			case 2: p == 0;
+			case 3: p == 0;
+			case 4: p == 2;
+			default: true;
+			})) {
+				throw "Wrong Matching: \"" + s + "\" with /" + r[p] + "/";
 			}
+			#if debug
+			trace("Matched: \"" + s + "\" with /" + r[p] + "/");
+			#end
 		}
 	}
 	static function eq(c1: Charset, c2: Charset, ?pos: haxe.PosInfos) {
@@ -781,4 +808,17 @@ private class State {
 			s_partern(a) + s_partern(b);
 		}
 	}
+}
+
+/**
+table => [tbl->........|.<-exits],
+
+This class is for testing only, and normally it should be built automatically by macros
+*/
+private extern abstract Table(haxe.io.Bytes) {
+	inline function new(b: haxe.io.Bytes) this = b;
+
+	inline function tbl(p: Int, i: Int):Int return this.get((p * 256) + i);
+
+	inline function exits(i: Int):Int return this.get(this.length - i - 1);
 }
