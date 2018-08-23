@@ -3,10 +3,5 @@ package lm;
 class Utils {
 	static public inline function imin(a: Int, b: Int) return a < b ? a: b;
 	static public inline function imax(a: Int, b: Int) return a > b ? a: b;
-
-	macro static public function swapi(a, b) return macro @:mergeBlock {
-		$b += $a;
-		$a = $b - $a;
-		$b -= $a;
-	}
+	static public inline function error(s: String) return #if js new js.Error(s); #else return s; #end
 }

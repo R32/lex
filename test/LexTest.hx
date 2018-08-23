@@ -2,33 +2,15 @@ package test;
 
 import lm.Charset;
 import lm.LexEngine;
-import lm.Lexer;
-import lm.Position;
-import lm.Stream;
-
-/**
-LexEngine table format: [trans-seg0|trans-seg1|......|trans-segN|check-seg]
-*/
-extern abstract Table(haxe.io.Bytes) {
-	inline function new(b: haxe.io.Bytes) this = b;
-
-	inline function tbl(p: Int, i: Int):Int return this.get((p * (MAX + 1)) + i);
-
-	inline function exits(i: Int):Int return this.get(this.length - i - 1);
-
-	static inline var MAX = 255;
-}
 
 class LexTest {
 	static function run() {
 		cset_test();
 		lex_test();
 	}
-
 	static function main()  {
 		haxe.Timer.measure(run);
 	}
-
 	static function cset_test() {
 		// charset testing
 		inline function c(a, b) return new Char(a, b);
@@ -63,42 +45,16 @@ class LexTest {
 			[c(32, 32), c(34, 36), c(38, 40), c(68,70)]
 		);
 	}
+
 	static public function lex_test(): Void {
-		var r = ["ab*c", "abc", "ah?g", "\\+", "\\-", "\\*", "/", "[ \t]", "(", ")", "0", "-?[1-9][0-9]*"];
-		var pa = r.map( s -> LexEngine.parse( lm.ByteData.ofString(s), [new Char(0, Table.MAX)] ));
-		var lex = new LexEngine(pa, Table.MAX);
-		#if debug
-		trace("table size: " + (lex.table.length / 1024) + "Kb");
-		#end
-		var table = new Table(lex.table);
-		var sa = ["abc", "ag", "abc", "abbbbbc", "ahg"];
-		for (si in 0...sa.length) {
-			var s = sa[si];
-			var state = LexEngine.BEGIN; // BEGIN;
-			for (i in 0...s.length) {
-				var c = StringTools.fastCodeAt(s, i);
-				state = table.tbl(state, c);
-				if (state >= lex.seg) {  // Trans Table
-					break;
-				}
-			}
-			var p = table.exits(state);  // Check Table
-			if (p == LexEngine.INVALID)
-				throw "exits Unmatched: " + s;
-			if (!(switch (si) {
-			case 0: p == 0; // match r[p]
-			case 1: p == 2;
-			case 2: p == 0;
-			case 3: p == 0;
-			case 4: p == 2;
-			default: true;
-			})) {
-				throw "Wrong Matching: \"" + s + "\" with /" + r[p] + "/";
-			}
-			#if debug
-			trace("Matched: \"" + s + "\" with /" + r[p] + "/");
-			#end
+		var lex = new Lexer(lm.ByteData.ofString("123 + 456 * 23"));
+		var t = lex.token();
+		var a = [];
+		while (t != Eof) {
+			a.push(Lexer.s_token(t));
+			t = lex.token();
 		}
+		if (a.join("") != "123+456*23") throw lm.Utils.error("TODO");
 	}
 	static public function s_partern(p: Pattern): String {
 		return switch (p) {
@@ -139,4 +95,52 @@ class LexTest {
 			s;
 		}
 	}
+}
+
+class Lexer implements lm.Lexer<127, Token> {
+	public static var _tok = @:rule [
+		"[ \t]+" => lexbuf.token(), // skip
+		"\\+"   => Op(Plus),
+		"-"     => Op(Minus),
+		"\\*"   => Op(Times),
+		"/" => Op(Div),
+		"(" => LParen,
+		")" => RParen,
+		"0" => Int(0),
+		"-?[1-9][0-9]*" => Int(Std.parseInt(lexbuf.current)),
+	];
+
+	static function s_op(o) {
+		return switch (o) {
+		case Plus: "+";
+		case Minus: "-";
+		case Times: "*";
+		case Div: "/";
+		}
+	}
+
+	static public function s_token(t) {
+		return switch (t) {
+		case Eof: "<end of file>";
+		case Int(i): "" + i;
+		case Op(op): s_op(op);
+		case LParen: "(";
+		case RParen: ")";
+		}
+	}
+}
+
+enum Op {
+	Plus;
+	Minus;
+	Times;
+	Div;
+}
+
+enum Token {
+	Eof;
+	Int(i: Int);
+	Op(op: Op);
+	LParen;
+	RParen;
 }

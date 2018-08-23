@@ -99,9 +99,18 @@ class CSet {
 				var t = c1;
 				c1 = c2;
 				c2 = t;
-				Utils.swapi(i, j);
-				Utils.swapi(a_min, b_min);
-				Utils.swapi(a_max, b_max);
+
+				var ti = i;
+				i = j;
+				j = ti;
+
+				ti = a_min;
+				a_min = b_min;
+				b_min = ti;
+
+				ti = a_max;
+				a_max = b_max;
+				b_max = ti;
 			}
 		}
 		return ret;
@@ -143,9 +152,18 @@ class CSet {
 				var t = c1;
 				c1 = c2;
 				c2 = t;
-				Utils.swapi(i, j);
-				Utils.swapi(a_min, b_min);
-				Utils.swapi(a_max, b_max);
+
+				var ti = i;
+				i = j;
+				j = ti;
+
+				ti = a_min;
+				a_min = b_min;
+				b_min = ti;
+
+				ti = a_max;
+				a_max = b_max;
+				b_max = ti;
 			}
 		}
 		return ret;

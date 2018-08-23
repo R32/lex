@@ -5,7 +5,7 @@ import lm.Charset;
 class LexEngine {
 
 	public static inline var BEGIN = 0;  // Don't change this value.
-	public static inline var INVALID = -1 & Char.MAX;  // used for check(state) == INVALID
+	static inline var INVALID = -1 & Char.MAX;
 
 	var uid(default, null): Int;
 	var finals: Array<Node>;
@@ -20,19 +20,26 @@ class LexEngine {
 	/**
 	 segment size. default is 256(Char.MAX + 1)
 	*/
-	var per: Int;
+	public var per(default, null): Int;
+
 	/**
-	 format: [trans-seg0|trans-seg1|......|trans-segN|check-seg]
+	 format: [trans-seg0|trans-seg1|......|trans-segN|check-segs]
 	*/
 	public var table(default, null): haxe.io.Bytes;
 
 	/**
-	 how many segments. used for valid the state, if (state >= seg) then check(state) else next().
+	 how many segments. used for valid the transition state.
 	*/
-	public var seg(default, null): Int;
+	public var segs(default, null): Int;
 
 	/**
-	*
+	 states.length
+	*/
+	public var size(get, never): Int;
+	inline function get_size() return this.per - final_counter - 1 + segs;
+
+	/**
+	* see LexBuilder.hx# to how to use it.
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
@@ -54,13 +61,13 @@ class LexEngine {
 		this.h = new Map();
 		this.parts = new Map();
 		this.per = cmax + 1;
-		this.seg = 0;  // state_counter
+		this.segs = 0;  // state_counter
 		this.part_counter = 0;
 		this.final_counter = cmax;
 		this.lparts = new List();
 		this.states = new List();
-		loop(addNodes([], nodes));
-		if (final_counter < seg)
+		compile(addNodes([], nodes));
+		if (final_counter < segs)
 			throw "Too many states";
 		h = null;
 		finals = null;
@@ -80,7 +87,7 @@ class LexEngine {
 		parts = null;
 		lparts = null;
 		// DFA -> Tables
-		this.table = makeTables(states, trans, seg, per);
+		this.table = makeTables(states, trans, segs, per);
 		states = null;
 	}
 
@@ -128,7 +135,7 @@ class LexEngine {
 		return id;
 	}
 
-	function loop(nodes: Array<Node>): Int {
+	function compile(nodes: Array<Node>): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
 		var id = h.get(sid);
 		if (id != null)
@@ -136,11 +143,16 @@ class LexEngine {
 		if (nodes.length == 1 && nodes[0].id < this.finals.length) {
 			id = final_counter--; // targets will be empty.
 		} else {
-			id = seg++;
+			id = segs++;
 		}
-		h.set(sid, id);
 		var ta: Array<TransitionA> = transitions(nodes);
 		var len = ta.length;
+		if (len == 0 && id < segs) {
+			id = final_counter--;
+			segs--;  // rollback
+		}
+		h.set(sid, id);
+
 		var part: Array<Charset> = []; part.resize(len);
 		for (i in 0...len)
 			part[i] = ta[i].chars;
@@ -148,7 +160,7 @@ class LexEngine {
 
 		var targets = []; targets.resize(len);
 		for (i in 0...len)
-			targets[i] = loop(ta[i].ns);
+			targets[i] = compile(ta[i].ns);
 
 		var f = finals_tmp.copy();
 		for (n in nodes)
@@ -161,7 +173,7 @@ class LexEngine {
 	#if sys
 	public function write(out: haxe.io.Output, tab = "\t") {
 		var size = this.table.length;
-		var seg = size >> 4; // size / 16
+		var seg = size >> 4; // size / 16, Make sure the size is a multiple of 16
 		tab = "\\\n" + tab;
 		out.writeByte('"'.code);
 		if (size >= 16)      // first line without tab
@@ -178,6 +190,25 @@ class LexEngine {
 		out.flush();
 	}
 	#end
+	// **Unsafe**
+	function resize(bper: Int) {
+		var size = this.size;
+		if (bper <= size) return;
+		var tab = haxe.io.Bytes.alloc(bper * (this.segs + 1));
+		tab.fill(0, tab.length, INVALID);
+
+		var prev = this.per;
+		var min = Utils.imin(bper, prev);
+		for (i in 0...segs + 1) {
+			tab.blit(bper * i, this.table, prev * i, min);
+		}
+		for (i in 0...segs) {
+			tab.set(tab.length - i - 1, this.table.get(this.table.length - i - 1));
+		}
+		this.final_counter = bper - size - 1 + segs;
+		this.per = bper;
+		this.table = tab;
+	}
 
 	static function makeTrans(tbls: haxe.io.Bytes, start: Int, trans: Array<Char>, tbl: Array<Int>) {
 		for (c in trans) {
@@ -198,14 +229,14 @@ class LexEngine {
 		}
 		return INVALID;
 	}
-	static function makeTables(dfa: List<State>, trans: Array<Array<Char>>, seg: Int, per: Int) {
+	static function makeTables(dfa: List<State>, trans: Array<Array<Char>>, segs: Int, per: Int) {
 		var len = dfa.length;
-		var bytes = (seg + 1) * per;
+		var bytes = (segs + 1) * per;
 		var tbls = haxe.io.Bytes.alloc(bytes);
 		tbls.fill(0, bytes, INVALID);
 		for (s in dfa) {
 			tbls.set(bytes - s.id - 1, first(0, s.finals)); // Reverse write checking table
-			if (s.id < seg)
+			if (s.id < segs)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
 		return tbls;
