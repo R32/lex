@@ -4,7 +4,6 @@ package lm;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
-using Lambda;
 using haxe.macro.Tools;
 
 class LexBuilder {
@@ -22,16 +21,15 @@ class LexBuilder {
 			}
 		var ret = [];
 		var fields = Context.getBuildFields();
-		var ct_tok: ComplexType = null;
 		var rules = [];
 		var cases = [];
+		var all_fields = new haxe.ds.StringMap<Bool>();
 		for (f in fields) {
 			if (f.access.indexOf(AStatic) > -1) {
 				switch (f.kind) {
 				case FVar(t, e) if (e != null):
 					switch(e.expr){
 					case EMeta({name: ":rule"}, e):
-						ct_tok = t;
 						transform(rules, cases, e);
 						continue;
 					default:
@@ -39,21 +37,25 @@ class LexBuilder {
 				default:
 				}
 			}
+			all_fields.set(f.name, true);
 			ret.push(f);
 		}
 		if (rules.length > 0) {
 			var cset = [new lm.Charset.Char(0, cmax)];
 			var rules = rules.map( s -> LexEngine.parse(ByteData.ofString(s), cset) );
 			var lex = new LexEngine(rules, cmax);
-
-			var name = "_" + haxe.crypto.Crc32.make(lex.table);
+			var name = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 			var getTrans= macro $i{name}.get(($v{lex.per} * s) + c);
 			var getExits = macro $i{name}.get(($v{lex.table.length - 1} - s));
 			var bytes = macro haxe.Resource.getBytes($v{name});
 			if (!Context.defined("js") || Context.defined("force_bytes")) {
 				Context.addResource(name, lex.table);
 			} else {
-				bytes = macro $v{lex.table.getString(0, lex.table.length)}; // use string
+				var out = haxe.macro.Compiler.getOutput() + ".lex-table";
+				var f = sys.io.File.write(out);
+				lex.write(f, "");
+				f.close();
+				bytes = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 				getTrans = macro $i{name}.charCodeAt(($v{lex.per} * s) + c);
 				getExits = macro $i{name}.charCodeAt($v{lex.table.length - 1} - s);
 			}
@@ -81,18 +83,18 @@ class LexBuilder {
 					pmax = 0;
 				}
 				public function curpos() return new lm.Position(pmin, pmax);
-				public function token(): $ct_tok {
+				public function token() {
 					var i = pmax, len = input.length;
-					if (i == len) return Eof;
+					if (i >= len) return Eof;
 					pmin = i;
 					var state = 0;
 					var prev = 0;
 					while (i < len) {
 						var c = input.readByte(i++);
-						prev = state;
 						state = trans(state, c);
 						if (state >= SEGS)
 							break;
+						prev = state;
 					}
 					state = exits(state);
 					return if (state < SIZES) {
@@ -112,7 +114,8 @@ class LexBuilder {
 				}
 			} // class end
 			for (f in def.fields)
-				ret.push(f);
+				if (!all_fields.exists(f.name)) // Customizable
+					ret.push(f);
 		}
 		return ret;
 	}

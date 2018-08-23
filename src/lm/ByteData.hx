@@ -13,13 +13,12 @@ extern abstract ByteData(haxe.io.Bytes) {
 
 	static inline function ofBytes(b:haxe.io.Bytes):ByteData return cast b;
 }
-
 #else
 extern abstract ByteData(String) {
 	public var length(get,never):Int;
 	private inline function get_length():Int return this.length;
 
-	inline function readByte(i:Int):Int return this.charCodeAt(i);
+	inline function readByte(i:Int):Int return StringTools.fastCodeAt(this, i);
 
 	inline function readString(pos:Int, len:Int):String return this.substr(pos, len);
 

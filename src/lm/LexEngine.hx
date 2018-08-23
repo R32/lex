@@ -38,7 +38,7 @@ class LexEngine {
 	inline function get_size() return this.per - final_counter - 2 + segs;
 
 	/**
-	* see LexBuilder.hx# to how to use it.
+	* see LexBuilder.hx#L86-113 to how to use it.
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
@@ -173,19 +173,18 @@ class LexEngine {
 	public function write(out: haxe.io.Output, tab = "\t") {
 		var size = this.table.length;
 		var seg = size >> 4; // size / 16, Make sure the size is a multiple of 16
-		tab = "\\\n" + tab;
+		tab = tab.length > 0 ? "\\\n" + tab : "";
 		out.writeByte('"'.code);
 		if (size >= 16)      // first line without tab
 			for (j in 0...16)
-				out.writeString( "\\x" + StringTools.hex(table.get(j), 2) );
+				out.writeString( "\\x" + StringTools.hex(table.get(j), 2).toLowerCase() );
 		for (i in 1...seg) {
 			var p = i * 16;
 			out.writeString(tab);
 			for (j in p...(p + 16))
-				out.writeString( "\\x" + StringTools.hex(table.get(j), 2) );
+				out.writeString( "\\x" + StringTools.hex(table.get(j), 2).toLowerCase() );
 		}
 		out.writeByte('"'.code);
-		out.writeByte("\n".code);
 		out.flush();
 	}
 	#end
