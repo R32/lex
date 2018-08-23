@@ -86,26 +86,28 @@ class LexBuilder {
 					if (i == len) return Eof;
 					pmin = i;
 					var state = 0;
+					var prev = 0;
 					while (i < len) {
-						var c = input.readByte(i);
-						var prev = state;
+						var c = input.readByte(i++);
+						prev = state;
 						state = trans(state, c);
-						if (state >= SEGS) {
-							if (i == pmax)
-								++ i; // Important. for single char.
-							else
-								state = prev;
+						if (state >= SEGS)
 							break;
-						}
-						++ i;
 					}
-					pmax = i;
 					state = exits(state);
 					return if (state < SIZES) {
+						pmax = i;
 						current = input.readString(pmin, pmax - pmin);
 						_goto[state](this);
 					} else {
-						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
+						state = exits(prev);
+						if (state < SIZES) {
+							pmax = i - 1;
+							current = input.readString(pmin, pmax - pmin);
+							_goto[state](this);
+						} else {
+							throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
+						}
 					}
 				}
 			} // class end

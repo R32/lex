@@ -5,7 +5,6 @@ import lm.Charset;
 class LexEngine {
 
 	public static inline var BEGIN = 0;  // Don't change this value.
-	static inline var INVALID = -1 & Char.MAX;
 
 	var uid(default, null): Int;
 	var finals: Array<Node>;
@@ -36,7 +35,7 @@ class LexEngine {
 	 states.length
 	*/
 	public var size(get, never): Int;
-	inline function get_size() return this.per - final_counter - 1 + segs;
+	inline function get_size() return this.per - final_counter - 2 + segs;
 
 	/**
 	* see LexBuilder.hx# to how to use it.
@@ -63,7 +62,7 @@ class LexEngine {
 		this.per = cmax + 1;
 		this.segs = 0;  // state_counter
 		this.part_counter = 0;
-		this.final_counter = cmax;
+		this.final_counter = cmax - 1;
 		this.lparts = new List();
 		this.states = new List();
 		compile(addNodes([], nodes));
@@ -195,7 +194,7 @@ class LexEngine {
 		var size = this.size;
 		if (bper <= size) return;
 		var tab = haxe.io.Bytes.alloc(bper * (this.segs + 1));
-		tab.fill(0, tab.length, INVALID);
+		tab.fill(0, tab.length, this.per - 1);
 
 		var prev = this.per;
 		var min = Utils.imin(bper, prev);
@@ -205,7 +204,7 @@ class LexEngine {
 		for (i in 0...segs) {
 			tab.set(tab.length - i - 1, this.table.get(this.table.length - i - 1));
 		}
-		this.final_counter = bper - size - 1 + segs;
+		this.final_counter = bper - size - 2 + segs;
 		this.per = bper;
 		this.table = tab;
 	}
@@ -221,21 +220,21 @@ class LexEngine {
 			}
 		}
 	}
-	static function first(p: Int, a: Array<Bool>) {
+	static function first(p: Int, f: Int, a: Array<Bool>) {
 		var len = a.length;
 		while (p < len) {
 			if (a[p]) return p;
 			++ p;
 		}
-		return INVALID;
+		return f;
 	}
 	static function makeTables(dfa: List<State>, trans: Array<Array<Char>>, segs: Int, per: Int) {
 		var len = dfa.length;
 		var bytes = (segs + 1) * per;
 		var tbls = haxe.io.Bytes.alloc(bytes);
-		tbls.fill(0, bytes, INVALID);
+		tbls.fill(0, bytes, per - 1);
 		for (s in dfa) {
-			tbls.set(bytes - s.id - 1, first(0, s.finals)); // Reverse write checking table
+			tbls.set(bytes - s.id - 1, first(0, per - 1, s.finals)); // Reverse write checking table
 			if (s.id < segs)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
