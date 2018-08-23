@@ -42,7 +42,7 @@ class LexBuilder {
 		}
 		if (rules.length > 0) {
 			var cset = [new lm.Charset.Char(0, cmax)];
-			var rules = rules.map( s -> LexEngine.parse(ByteData.ofString(s), cset) );
+			var rules = rules.map( s -> LexEngine.parse(s, cset) );
 			var lex = new LexEngine(rules, cmax);
 			var name = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 			var getTrans= macro $i{name}.get(($v{lex.per} * s) + c);

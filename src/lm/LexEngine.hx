@@ -309,44 +309,24 @@ class LexEngine {
 	}
 
 	// ---- Regexp Parsing ---- //
-	static inline function s_invalid(b: lm.ByteData, i: Int): String {
-		return 'Invalid Regexp: "${b.readString(0, b.length)}" at ${i}(\'${String.fromCharCode(b.readByte(i))}\')';
-	}
-
-	static inline function invalid(b, i):Void throw s_invalid(b, i);
-
-
-	static function escaped(b: lm.ByteData, i: Int): Int {
-		var c = b.readByte(i);
-		return switch (c) {
-		case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code:
-			c;
-		default:
-			throw s_invalid(b, i);
+	static function plus(r: Pattern): Pattern {
+		return switch (r) {
+		case Next(r1, r2): Next(r1, plus(r2));
+		default: Plus(r);
 		}
 	}
 
-	static function plus(r: Pattern, b, i): Pattern {
+	static function star(r: Pattern): Pattern {
 		return switch (r) {
-		case Next(r1, r2): Next(r1, plus(r2, b, i));
-		case Match(_): Plus(r);
-		default: throw s_invalid(b, i);
+		case Next(r1, r2): Next(r1, star(r2));
+		default: Star(r);
 		}
 	}
 
-	static function star(r: Pattern, b, i): Pattern {
+	static function opt(r: Pattern): Pattern {
 		return switch (r) {
-		case Next(r1, r2): Next(r1, star(r2, b, i));
-		case Match(_): Star(r);
-		default: throw s_invalid(b, i);
-		}
-	}
-
-	static function opt(r: Pattern, b, i): Pattern {
-		return switch (r) {
-		case Next(r1, r2): Next(r1, opt(r2, b, i));
-		case Match(_): Choice(r);
-		default: throw s_invalid(b, i);
+		case Next(r1, r2): Next(r1, opt(r2));
+		default: Choice(r);
 		}
 	}
 
@@ -367,64 +347,78 @@ class LexEngine {
 		- `]`: end char range
 		- `\`: escape characters for '\', '+', '*', '?', '[', ']', '-'
 	*/
-	static public function parse(b: lm.ByteData, ?all: Charset): Pattern {
-		var i = 0, len = b.length;
+	static public function parse(s: String, ?c_all: Charset): Pattern {
+		if (c_all == null)
+			c_all = CSet.C_255;
+		var b = lm.ByteData.ofString(s);
+		return parseInner(b, 0, b.length, c_all);
+	}
+	static function parseInner(b: lm.ByteData, i: Int, len: Int, c_all: Charset): Pattern {
+		function readChar() {
+			var c = b.readByte(i++);
+			switch (c) {
+			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code:
+			case "x".code:
+				c = Std.parseInt("0x" + b.readString(i, 2));
+				i += 2;
+			default:
+				throw "\\";
+			}
+			return c;
+		}
 		var r = Empty;
-		if (all == null)
-			all = CSet.C_255;
 		while (i < len) {
 			var c = b.readByte(i++);
 			r = switch (c) {
-			case "+".code:
-				plus(r, b, i - 1);
-			case "*".code:
-				star(r, b, i - 1);
-			case "?".code:
-				opt(r, b, i - 1);
+			case "+".code if (r != Empty):
+				plus(r);
+			case "*".code if (r != Empty):
+				star(r);
+			case "?".code if (r != Empty):
+				opt(r);
 			case "[".code:
 				var err = i - 1;
 				var not = b.readByte(i) == "^".code;
 				if (not) ++i;
 				var range = 0;
-				var done = false;
 				var acc = [];
 				while (i < len) {
 					var c = b.readByte(i++);
 					if (c == "]".code) {
-						done = range == 0;
+						if (range != 0) acc.push(new Char(range, range));
 						break;
 					} else if (c == "-".code) {
-						if (range != 0) invalid(b, i - 1);
+						if (range != 0) throw "--";
 						if (acc.length == 0) {
 							acc.push(new Char(c, c)); // ('-', '-');
 						} else {
 							var last: Char = acc.pop();
-							if (last.min != last.max) invalid(b, i - 1);
+							if (last.min != last.max) throw "todo";
 							range = last.min;
 						}
 					} else {
-						if (c == "\\".code) {
-							c = escaped(b, i++);
-						}
+						if (c == "\\".code)
+							c = readChar();
 						if (range == 0) {
 							acc.push(new Char(c, c));
 						} else {
+							if (range > c) throw "Range out of order: -" + String.fromCharCode(c);
 							acc.push(new Char(range, c));
 							range = 0;
 						}
 					}
 				}
-				if (!done) invalid(b, err);
 				if (acc.length > 0) {
 					acc = CSet.sorting(acc);
 					if (not)
-						acc = CSet.complement(acc, all);
+						acc = CSet.complement(acc, c_all);
 					next(r, Match(acc));
 				} else {
 					r;
 				}
 			case "\\".code:
-				next(r, Match(CSet.single( escaped(b, i++) )));
+				c = readChar();
+				next(r, Match(CSet.single( c )));
 			default:
 				next(r, Match(CSet.single( c )));
 			}

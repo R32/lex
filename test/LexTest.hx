@@ -26,7 +26,7 @@ class LexTest {
 			}
 			if (!b) {
 				trace("\n c1: " + CSet.string(c1) + "\n c2: " + CSet.string(c2));
-				throw "LineNumber: " + pos.lineNumber;
+				throw lm.Utils.error("LineNumber: " + pos.lineNumber);
 			}
 		}
 		eq( CSet.union([c(32, 32), c(51, 59), c(65, 65), c(97, 102)], [c(10, 10), c(51, 59), c(65, 70)]),
@@ -47,7 +47,7 @@ class LexTest {
 	}
 
 	static public function lex_test(): Void {
-		var lex = new Lexer(lm.ByteData.ofString("123 + 456 * 23"));
+		var lex = new Lexer(lm.ByteData.ofString("123  	 +   	456   *  	 	23"));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
@@ -100,9 +100,9 @@ class LexTest {
 class Lexer implements lm.Lexer<127, Token> {
 	public static var _tok = @:rule [
 		"[ \t]+" => lexbuf.token(), // skip
-		"\\+"   => Op(Plus),
+		"+"   => Op(Plus),
 		"-"     => Op(Minus),
-		"\\*"   => Op(Times),
+		"*"   => Op(Times),
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
