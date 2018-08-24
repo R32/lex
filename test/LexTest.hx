@@ -46,15 +46,16 @@ class LexTest {
 		);
 	}
 
-	static public function lex_test(): Void {
-		var lex = new Lexer(lm.ByteData.ofString("123  	 +   	456   *  	 	23"));
+	static public function lex_test(): Void @:privateAccess {
+
+		var lex = new Lexer(lm.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
 			a.push(Lexer.s_token(t));
 			t = lex.token();
 		}
-		if (a.join("") != "123+456*23") throw lm.Utils.error("TODO");
+		if (a.join("") != "123+456*23+hello world+1") throw lm.Utils.error("TODO");
 	}
 	static public function s_partern(p: Pattern): String {
 		return switch (p) {
@@ -97,17 +98,25 @@ class LexTest {
 	}
 }
 
-class Lexer implements lm.Lexer<127, Token> {
-	public static var _tok = @:rule [
-		"[ \t]+" => lexbuf.token(), // skip
+class Lexer implements lm.Lexer<Token> {
+	public static var tok = @:rule(127) [  // token() is built automatically by the the first @:rule.
+		"[ \t]+" => lexbuf.token(),        // skip. and the "lexbuf" is an instance of this class.
 		"+"   => Op(Plus),
 		"-"     => Op(Minus),
 		"*"   => Op(Times),
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
-		"0" => Int(0),
-		"-?[1-9][0-9]*" => Int(Std.parseInt(lexbuf.current)),
+		"0" => CInt(0),
+		"-?[1-9][0-9]*" => CInt(Std.parseInt(lexbuf.current)),
+		'"' => {
+			var s = lexbuf.str();          // str() is created by macro. See the second @:rule set
+			lexbuf.pmax++;
+			s;
+		}
+	];
+	static var str = @:rule [
+		'[^"]*' => CStr(lexbuf.current),
 	];
 
 	static function s_op(o) {
@@ -118,14 +127,14 @@ class Lexer implements lm.Lexer<127, Token> {
 		case Div: "/";
 		}
 	}
-
 	static public function s_token(t) {
 		return switch (t) {
 		case Eof: "<end of file>";
-		case Int(i): "" + i;
+		case CInt(i): "" + i;
 		case Op(op): s_op(op);
 		case LParen: "(";
 		case RParen: ")";
+		case CStr(s): s;
 		}
 	}
 }
@@ -139,8 +148,9 @@ enum Op {
 
 enum Token {
 	Eof;
-	Int(i: Int);
+	CInt(i: Int);
 	Op(op: Op);
 	LParen;
 	RParen;
+	CStr(s: String);
 }
