@@ -52,7 +52,7 @@ class CSet {
 			++ i;
 		}
 		if (start <= cmax)
-			ret.push(new Char(start, Char.MAX));
+			ret.push(new Char(start, cmax));
 		return ret;
 	}
 
