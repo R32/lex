@@ -11,6 +11,7 @@ class LexTest {
 	static function main()  {
 		haxe.Timer.measure(run);
 	}
+
 	static function cset_test() {
 		// charset testing
 		inline function c(a, b) return new Char(a, b);
@@ -47,7 +48,6 @@ class LexTest {
 	}
 
 	static public function lex_test(): Void @:privateAccess {
-
 		var lex = new Lexer(lm.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
 		var t = lex.token();
 		var a = [];
@@ -99,26 +99,25 @@ class LexTest {
 }
 
 class Lexer implements lm.Lexer<Token> {
-	public static var tok = @:rule(127) [  // token() is built automatically by the the first @:rule.
-		"[ \t]+" => lexbuf.token(),        // skip. and the "lexbuf" is an instance of this class.
-		"+"   => Op(Plus),
+	static var tok = @:rule(127, Eof) [ // 127 => charset(0, 127). the Eof is a custom terminator, or null if none.
+		"[ \t]+" => lex.token(),        // .token() is automatically built by macro based on the first @:rule
+		"+"   => Op(Plus),              // and the "lex" is an instance of this class.
 		"-"     => Op(Minus),
 		"*"   => Op(Times),
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
 		"0" => CInt(0),
-		"-?[1-9][0-9]*" => CInt(Std.parseInt(lexbuf.current)),
+		"-?[1-9][0-9]*" => CInt(Std.parseInt(lex.current)),
 		'"' => {
-			var s = lexbuf.str();          // str() is created by macro. See the second @:rule set
-			lexbuf.pmax++;
+			var s = lex.str();         // str() is created by macro. See the second @:rule set
+			lex.pmax++;
 			s;
 		}
 	];
 	static var str = @:rule [
-		'[^"]*' => CStr(lexbuf.current),
+		'[^"]*' => CStr(lex.current),
 	];
-
 	static function s_op(o) {
 		return switch (o) {
 		case Plus: "+";

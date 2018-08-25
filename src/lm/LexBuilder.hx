@@ -13,9 +13,23 @@ typedef Group = {
 }
 
 class LexBuilder {
+	static function getMeta(metas: Array<Expr>) {
+		var ret = {cmax: -1, eof: null};
+		for (meta in metas) {
+			switch (meta.expr) {
+			case EConst(CInt(i)):
+				ret.cmax = Std.parseInt(i);
+			case EConst(CIdent(i)):
+				ret.eof = meta;
+			default:
+			}
+		}
+		return ret;
+	}
 	static public function build():Array<Field> {
 		var cls = Context.getLocalClass().get();
 		var cmax = -1;
+		var EEOF:Expr = macro null;
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var ret = [];
 		var fields = Context.getBuildFields();
@@ -26,16 +40,13 @@ class LexBuilder {
 				switch (f.kind) {
 				case FVar(t, e) if (e != null):
 					switch(e.expr){
-					case EMeta({name: ":rule", params: n}, e):
+					case EMeta({name: ":rule", params: metas}, e):
 						var g:Group = {name: f.name, rules: [], cases: []};
-						if (cmax == -1) {
-							cmax = if (n.length > 0)
-								switch (n[0].expr) {
-								case EConst(CInt(i)): Std.parseInt(i);
-								default: 255;
-								}
-							else
-								255;
+						if (cmax == -1) { // the first @:rule is valid.
+							var x = getMeta(metas);
+							cmax = x.cmax == -1 ? 255 : x.cmax;
+							if (x.eof != null)
+								EEOF = x.eof;
 						}
 						transform(g, e);
 						if (g.rules.length > 0)
@@ -95,7 +106,7 @@ class LexBuilder {
 			}
 			var gotos = [];
 			for (i in 0...rules.length) {
-				gotos.push(macro (lexbuf: $ct_lex) -> $e{g.cases[i]});
+				gotos.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
 			}
 			var s_goto = suff("_g");
 			var s_trans = suff("trans");
@@ -112,7 +123,7 @@ class LexBuilder {
 				static inline var $s_sizes = $v{rules.length};
 				public function $s_token() {
 					var i = pmax, len = input.length;
-					if (i >= len) return Eof;
+					if (i >= len) return $EEOF;
 					pmin = i;
 					var state = 0;
 					var prev = 0;
@@ -147,7 +158,6 @@ class LexBuilder {
 		return ret;
 	}
 	static function transform(g: Group, e: Expr) {
-		var ret = [];
 		switch(e.expr) {
 		case EArrayDecl(el):
 			for (e in el)
@@ -161,7 +171,6 @@ class LexBuilder {
 		default:
 			Context.error("Expected pattern => function map declaration", e.pos);
 		}
-		return ret;
 	}
 	static function eString(e: Expr): String {
 		return switch (e.expr) {
