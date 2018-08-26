@@ -63,7 +63,39 @@ class LexBuilder {
 		if (groups.length == 0) return null;
 		cmax = cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
-		var base = macro class {
+		// Table Build
+		var cset = [new lm.Charset.Char(0, cmax)];
+		var rules = [];
+		var cases = [];
+		for (g in groups) {
+			rules.push( g.rules.map( s -> LexEngine.parse(s, cset) ));
+			for (i in 0...g.rules.length) {
+				cases.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
+			}
+		}
+		var lex = new LexEngine(rules, cmax);
+		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
+		var raw = macro haxe.Resource.getBytes($v{resname});
+		if (force_bytes) {
+			Context.addResource(resname, lex.table);
+		} else {
+			var out = haxe.macro.Compiler.getOutput() + ".lex-table";
+			var f = sys.io.File.write(out);
+			lex.write(f);
+			f.close();
+			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
+		}
+		var get_trans = macro raw.get(($v{lex.per} * s) + c);
+		var get_exits = macro raw.get(($v{lex.table.length - 1} - s));
+		if (!force_bytes) {
+			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
+			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
+		}
+		var defs = macro class {
+			static var raw = $raw;
+			static var cases = [$a{cases}];
+			static inline function trans(s: Int, c: Int):Int return $e{get_trans};
+			static inline function exits(s: Int):Int return $e{get_exits};
 			var input: lm.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
@@ -75,86 +107,53 @@ class LexBuilder {
 				pmin = 0;
 				pmax = 0;
 			}
-		}
-		for (f in base.fields)
-			if (!all_fields.exists(f.name))
-				ret.push(f);
-		for (i in 0...groups.length) {
-			var g = groups[i];
-			var cset = [new lm.Charset.Char(0, cmax)];
-			var rules = g.rules.map( s -> LexEngine.parse(s, cset) );
-			var lex = new LexEngine(rules, cmax);
-			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
-			var bytes = macro haxe.Resource.getBytes($v{resname});
-			if (force_bytes) {
-				Context.addResource(resname, lex.table);
-			} else {
-				var out = haxe.macro.Compiler.getOutput() + ".lex-table" + i;
-				var f = sys.io.File.write(out);
-				lex.write(f);
-				f.close();
-				bytes = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
-			}
-			//////
-			inline function suff(s:String) return s + i;
-			var s_table = suff("_t");
-			var get_trans = macro $i{s_table}.get(($v{lex.per} * s) + c);
-			var get_exits = macro $i{s_table}.get(($v{lex.table.length - 1} - s));
-			if (!force_bytes) {
-				get_trans = macro StringTools.fastCodeAt($i{s_table}, ($v{lex.per} * s) + c);
-				get_exits = macro StringTools.fastCodeAt($i{s_table}, $v{lex.table.length - 1} - s);
-			}
-			var gotos = [];
-			for (i in 0...rules.length) {
-				gotos.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
-			}
-			var s_goto = suff("_g");
-			var s_trans = suff("trans");
-			var s_exits = suff("exits");
-			var s_segs = suff("segs");
-			var s_sizes = suff("sizes");
-			var s_token = i == 0 ? "token" : g.name;
-			var ext = macro class {
-				static var $s_goto = [$a{gotos}];
-				static var $s_table = $bytes;
-				static inline function $s_trans(s: Int, c: Int):Int return $e{get_trans};
-				static inline function $s_exits(s: Int):Int return $e{get_exits};
-				static inline var $s_segs = $v{lex.segs};
-				static inline var $s_sizes = $v{rules.length};
-				public function $s_token() {
-					var i = pmax, len = input.length;
-					if (i >= len) return $EEOF;
-					pmin = i;
-					var state = 0;
-					var prev = 0;
-					while (i < len) {
-						var c = input.readByte(i++);
-						state = $i{s_trans}(state, c);
-						if (state >= $i{s_segs})
-							break;
-						prev = state;
-					}
-					state = $i{s_exits}(state);
-					return if (state < $i{s_sizes}) {
-						pmax = i;
+			function _token(state: Int) {
+				var i = pmax, len = input.length;
+				if (i >= len) return $EEOF;
+				pmin = i;
+				var prev = $v{lex.per - 1}; // wrong state
+				var x = state;
+				while (i < len) {
+					var c = input.readByte(i++);
+					state = trans(state, c);
+					if (state >= $v{lex.segs})
+						break;
+					prev = state;
+				}
+				state = exits(state);
+				return if (state < $v{lex.rules}) {
+					pmax = i;
+					current = input.readString(pmin, pmax - pmin);
+					cases[state](this);
+				} else {
+					state = exits(prev);
+					if (state < $v{lex.rules}) {
+						pmax = i - 1; // one char one state
 						current = input.readString(pmin, pmax - pmin);
-						$i{s_goto}[state](this);
+						cases[state](this);
 					} else {
-						state = $i{s_exits}(prev);
-						if (state < $i{s_sizes}) {
-							pmax = i - 1;
-							current = input.readString(pmin, pmax - pmin);
-							$i{s_goto}[state](this);
-						} else {
-							throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
-						}
+						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
 					}
 				}
 			}
-			for (f in ext.fields)
+		}// class end
+		for (i in 0...groups.length) {
+			var g = groups[i];
+			var meta = lex.metas[i];
+			defs.fields.push({
+				name: i == 0 ? "token" : g.name,
+				access: [AInline, APublic],
+				kind: FFun({
+					args: [],
+					ret: null,
+					expr: macro return _token($v{meta.begin})
+				}),
+				pos: TPositionTools.here(),
+			});
+		}
+		for (f in defs.fields)
 				if (!all_fields.exists(f.name))
 					ret.push(f);
-		}
 		return ret;
 	}
 	static function transform(g: Group, e: Expr) {

@@ -16,7 +16,7 @@ extern abstract Char(Int) {
 
 	inline function duplicate():Char return cast this;
 	inline function toInt():Int return this;
-	inline function toString():String return '[$min, $max, $ext]';
+	inline function toString():String return '[$min, $max]';
 
 	static inline function ofInt(i: Int):Char return cast i;
 	static inline function c3(min: Int, max: Int, ext:Int):Char return cast min | ext << 8 | max << 16;

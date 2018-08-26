@@ -2,10 +2,9 @@ package lm;
 
 import lm.Charset;
 
+typedef PatternSet = Array<Pattern>;
+
 class LexEngine {
-
-	public static inline var BEGIN = 0;  // Don't change this value.
-
 	var uid(default, null): Int;
 	var finals: Array<Node>;
 	var finals_tmp: Array<Bool>;
@@ -27,9 +26,11 @@ class LexEngine {
 	public var table(default, null): haxe.io.Bytes;
 
 	/**
-	 how many segments. used for valid the transition state.
+	 state_counter
 	*/
 	public var segs(default, null): Int;
+
+	public var rules(default, null): Int;
 
 	/**
 	 states.length
@@ -38,24 +39,16 @@ class LexEngine {
 	inline function get_size() return this.per - final_counter - 2 + segs;
 
 	/**
+	 for one PatternSet.
+	*/
+	public var metas(default, null): Array<{begin: Int, segs: Int}>;
+
+	/**
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
-	public function new(pa: Array<Pattern>, cmax = Char.MAX) {
-		var len = pa.length;
-		// Pattern -> NFA(nodes + finals)
-		var nodes = [];       nodes.resize(len);
-		this.finals = [];     finals.resize(len);
-		this.finals_tmp = []; finals_tmp.resize(len);
-		this.uid = len;
-		for (i in 0...len) {
-			var f = new Node(i);
-			var n = initNode(pa[i], f);
-			nodes[i] = n;
-			finals[i] = f;
-			finals_tmp[i] = false;
-		}
-		// NFA -> DFA
+	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
+		this.metas = [];
 		this.h = new Map();
 		this.parts = new Map();
 		this.per = cmax + 1;
@@ -64,15 +57,40 @@ class LexEngine {
 		this.final_counter = cmax - 1;
 		this.lparts = new List();
 		this.states = new List();
-		compile(addNodes([], nodes));
-		if (final_counter < segs)
-			throw "Too many states";
-		h = null;
-		finals = null;
-		finals_tmp = null;
+		this.rules = 0;
+
+		var prev = 0;
+		var nodes = [];
+		this.finals = [];
+		this.finals_tmp = [];
+		for (pa in a) {
+			var len = pa.length;
+			this.uid = len;
+			nodes.resize(len);     // reset
+			finals.resize(len);
+			finals_tmp.resize(len);
+			// Pattern -> NFA(nodes + finals)
+			for (i in 0...len) {
+				var f = new Node(i);
+				var n = initNode(pa[i], f);
+				nodes[i] = n;
+				finals[i] = f;
+				finals_tmp[i] = false;
+			}
+			// NFA -> DFA
+			compile(addNodes([], nodes));
+			if (final_counter < segs)
+				throw "Too many states";
+			metas.push({begin: prev, segs: segs - prev});
+			prev = segs;
+			rules += len;
+		}
+		this.finals = null;
+		this.finals_tmp = null;
 		var i = 0;
-		var trans = []; trans.resize(this.lparts.length);
-		for (part in this.lparts) {
+		var trans = [];
+		trans.resize(lparts.length);
+		for (part in lparts) {
 			var seg: Array<Char> = [];
 			for (j in 0...part.length) {
 				var chars: Charset = part[j];
@@ -82,11 +100,12 @@ class LexEngine {
 			}
 			trans[i++] = seg;
 		}
-		parts = null;
-		lparts = null;
+		this.h = null;
+		this.parts = null;
+		this.lparts = null;
 		// DFA -> Tables
 		this.table = makeTables(states, trans, segs, per);
-		states = null;
+		this.states = null;
 	}
 
 	inline function node() return new Node(uid++);
@@ -138,16 +157,12 @@ class LexEngine {
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		if (nodes.length == 1 && nodes[0].id < this.finals.length) {
-			id = final_counter--; // targets will be empty.
-		} else {
-			id = segs++;
-		}
 		var ta: Array<TransitionA> = transitions(nodes);
 		var len = ta.length;
-		if (len == 0 && id < segs) {
-			id = final_counter--;
-			segs--;  // rollback
+		id = if (len == 0) {
+			final_counter--; // final state.
+		} else {
+			segs++;
 		}
 		h.set(sid, id);
 
@@ -164,15 +179,17 @@ class LexEngine {
 		for (n in nodes)
 			if (n.id < f.length) f[n.id] = true;
 
-		states.push(new State(id, pid, targets, f));
+		states.push(new State(id, pid, targets, f, rules));
 		return id;
 	}
-
 	#if sys
-	public function write(out: haxe.io.Output) {
+	public function write(out: haxe.io.Output, split = false) {
 		out.writeByte('"'.code);
-		for (i in 0...this.table.length)
+		for (i in 0...this.table.length) {
+			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
+			if (split && i > 0 && i % 128 == 0) out.writeString("\n");
 			out.writeString( "\\x" + StringTools.hex(table.get(i), 2).toLowerCase() );
+		}
 		out.writeByte('"'.code);
 		out.flush();
 	}
@@ -188,13 +205,13 @@ class LexEngine {
 			}
 		}
 	}
-	static function first(p: Int, f: Int, a: Array<Bool>) {
+	static function first(i: Int, fill: Int, start, a: Array<Bool>) {
 		var len = a.length;
-		while (p < len) {
-			if (a[p]) return p;
-			++ p;
+		while (i < len) {
+			if (a[i]) return start + i;
+			++ i;
 		}
-		return f;
+		return fill;
 	}
 	static function makeTables(dfa: List<State>, trans: Array<Array<Char>>, segs: Int, per: Int) {
 		var len = dfa.length;
@@ -202,7 +219,7 @@ class LexEngine {
 		var tbls = haxe.io.Bytes.alloc(bytes);
 		tbls.fill(0, bytes, per - 1);
 		for (s in dfa) {
-			tbls.set(bytes - s.id - 1, first(0, per - 1, s.finals)); // Reverse write checking table
+			tbls.set(bytes - s.id - 1, first(0, per - 1, s.prules, s.finals)); // Reverse write checking table
 			if (s.id < segs)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
@@ -451,11 +468,13 @@ private class State {
 	public var part: Int;
 	public var targets: Array<Int>;
 	public var finals: Array<Bool>;
-	public function new(i, p, t, f) {
+	public var prules: Int;  // How many rules are there in the previous PatternSet
+	public function new(i, p, t, f, u) {
 		id = i;
 		part = p;
 		targets = t;
 		finals = f;
+		prules = u;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
 }
