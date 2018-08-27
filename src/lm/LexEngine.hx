@@ -30,13 +30,10 @@ class LexEngine {
 	*/
 	public var segs(default, null): Int;
 
-	public var rules(default, null): Int;
+	public var nrules(default, null): Int;
 
-	/**
-	 states.length
-	*/
-	public var size(get, never): Int;
-	inline function get_size() return this.per - final_counter - 2 + segs;
+	public var nstates(get, never): Int;
+	inline function get_nstates() return this.per - final_counter - 2 + segs;
 
 	/**
 	 for one PatternSet.
@@ -57,7 +54,7 @@ class LexEngine {
 		this.final_counter = cmax - 1;
 		this.lparts = new List();
 		this.states = new List();
-		this.rules = 0;
+		this.nrules = 0;
 
 		var prev = 0;
 		var nodes = [];
@@ -83,7 +80,7 @@ class LexEngine {
 				throw "Too many states";
 			metas.push({begin: prev, segs: segs - prev});
 			prev = segs;
-			rules += len;
+			nrules += len;
 		}
 		this.finals = null;
 		this.finals_tmp = null;
@@ -157,7 +154,7 @@ class LexEngine {
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		var ta: Array<TransitionA> = transitions(nodes);
+		var ta: Array<TransitionA> = getTransitions(nodes);
 		var len = ta.length;
 		id = if (len == 0) {
 			final_counter--; // final state.
@@ -179,7 +176,7 @@ class LexEngine {
 		for (n in nodes)
 			if (n.id < f.length) f[n.id] = true;
 
-		states.push(new State(id, pid, targets, f, rules));
+		states.push(new State(id, pid, targets, f, nrules));
 		return id;
 	}
 	#if sys
@@ -187,7 +184,7 @@ class LexEngine {
 		out.writeByte('"'.code);
 		for (i in 0...this.table.length) {
 			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
-			if (split && i > 0 && i % 128 == 0) out.writeString("\n");
+			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
 			out.writeString( "\\x" + StringTools.hex(table.get(i), 2).toLowerCase() );
 		}
 		out.writeByte('"'.code);
@@ -219,7 +216,7 @@ class LexEngine {
 		var tbls = haxe.io.Bytes.alloc(bytes);
 		tbls.fill(0, bytes, per - 1);
 		for (s in dfa) {
-			tbls.set(bytes - s.id - 1, first(0, per - 1, s.prules, s.finals)); // Reverse write checking table
+			tbls.set(bytes - s.id - 1, first(0, per - 1, s.prev_nrules, s.finals)); // Reverse write checking table
 			if (s.id < segs)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
@@ -240,7 +237,7 @@ class LexEngine {
 		return nodes;
 	}
 
-	static function transitions(nodes: Array<Node>) {
+	static function getTransitions(nodes: Array<Node>) {
 		// Merge transition with the same target
 		var tl: Array<Transition> = [];
 		var states: Array<TransitionA> = [];
@@ -468,13 +465,13 @@ private class State {
 	public var part: Int;
 	public var targets: Array<Int>;
 	public var finals: Array<Bool>;
-	public var prules: Int;  // How many rules are there in the previous PatternSet
-	public function new(i, p, t, f, u) {
+	public var prev_nrules: Int;  // How many rules are there in the previous PatternSet
+	public function new(i, p, t, f, n) {
 		id = i;
 		part = p;
 		targets = t;
 		finals = f;
-		prules = u;
+		prev_nrules = n;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
 }

@@ -63,6 +63,7 @@ class LexBuilder {
 		if (groups.length == 0) return null;
 		cmax = cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
+		if (Context.defined("str_lex")) force_bytes = false; // force string as table format
 		// Table Build
 		var cset = [new lm.Charset.Char(0, cmax)];
 		var rules = [];
@@ -112,7 +113,6 @@ class LexBuilder {
 				if (i >= len) return $EEOF;
 				pmin = i;
 				var prev = $v{lex.per - 1}; // wrong state
-				var x = state;
 				while (i < len) {
 					var c = input.readByte(i++);
 					state = trans(state, c);
@@ -121,13 +121,13 @@ class LexBuilder {
 					prev = state;
 				}
 				state = exits(state);
-				return if (state < $v{lex.rules}) {
+				return if (state < $v{lex.nrules}) {
 					pmax = i;
 					current = input.readString(pmin, pmax - pmin);
 					cases[state](this);
 				} else {
 					state = exits(prev);
-					if (state < $v{lex.rules}) {
+					if (state < $v{lex.nrules}) {
 						pmax = i - 1; // one char one state
 						current = input.readString(pmin, pmax - pmin);
 						cases[state](this);
