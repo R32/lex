@@ -1,8 +1,9 @@
 -dce full
--cp src
+-cp ../src
 -D analyzer-optimize
 -D old-error-format
--main test.LexTest
+-main LexTest
+-lib hxparse
 --each
 -D nodejs
 -js bin/test.js

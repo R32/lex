@@ -44,11 +44,11 @@ class LexBuilder {
 						var g:Group = {name: f.name, rules: [], cases: []};
 						if (cmax == -1) { // the first @:rule is valid.
 							var x = getMeta(metas);
-							cmax = x.cmax == -1 ? 255 : x.cmax;
+							cmax = x.cmax;
 							if (x.eof != null)
 								EEOF = x.eof;
 						}
-						transform(g, e);
+						extract(g, e);
 						if (g.rules.length > 0)
 							groups.push(g);
 						continue;
@@ -63,7 +63,7 @@ class LexBuilder {
 		if (groups.length == 0) return null;
 		cmax = cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
-		if (Context.defined("str_lex")) force_bytes = false; // force string as table format
+		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
 		// Table Build
 		var cset = [new lm.Charset.Char(0, cmax)];
 		var rules = [];
@@ -81,6 +81,9 @@ class LexBuilder {
 			Context.addResource(resname, lex.table);
 		} else {
 			var out = haxe.macro.Compiler.getOutput() + ".lex-table";
+			var dir = haxe.io.Path.directory(out);
+			if (!sys.FileSystem.exists(dir))
+				sys.FileSystem.createDirectory(dir);
 			var f = sys.io.File.write(out);
 			lex.write(f);
 			f.close();
@@ -92,11 +95,13 @@ class LexBuilder {
 			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
 			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
 		}
+		var lex_switch = Context.defined("lex_switch");
+		var gotos = lex_switch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
-			static var cases = [$a{cases}];
-			static inline function trans(s: Int, c: Int):Int return $e{get_trans};
-			static inline function exits(s: Int):Int return $e{get_exits};
+			static inline function trans(s: Int, c: Int):Int return $get_trans;
+			static inline function exits(s: Int):Int return $get_exits;
+			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
 			var input: lm.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
@@ -124,19 +129,20 @@ class LexBuilder {
 				return if (state < $v{lex.nrules}) {
 					pmax = i;
 					current = input.readString(pmin, pmax - pmin);
-					cases[state](this);
+					gotos(state, this);
 				} else {
 					state = exits(prev);
 					if (state < $v{lex.nrules}) {
 						pmax = i - 1; // one char one state
 						current = input.readString(pmin, pmax - pmin);
-						cases[state](this);
+						gotos(state, this);
 					} else {
 						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
 					}
 				}
 			}
 		}// class end
+		var pos = TPositionTools.here();
 		for (i in 0...groups.length) {
 			var g = groups[i];
 			var meta = lex.metas[i];
@@ -148,15 +154,45 @@ class LexBuilder {
 					ret: null,
 					expr: macro return _token($v{meta.begin})
 				}),
-				pos: TPositionTools.here(),
+				pos: pos,
 			});
 		}
+		// switch or functions array jump table.
+		if (lex_switch) {
+			cases = []; // rewrite cases
+			for (g in groups)
+				for (c in g.cases)
+					cases.push(c);
+			var ca = [];
+			for (i in 0...cases.length - 1) {
+				ca.push({values: [macro $v{i}], expr: cases[i]});
+			}
+			var eSwitch = {expr: ESwitch(macro (s), ca, cases[cases.length - 1]), pos: pos};
+			defs.fields.push({
+				name: "cases",
+				access: [AStatic],
+				kind: FFun({
+					args: [{name: "s", type: macro: Int}, {name: "lex", type: ct_lex}],
+					ret: null,
+					expr: macro return $eSwitch,
+				}),
+				pos: pos,
+			});
+		} else {
+			defs.fields.push({
+				name: "cases",
+				access: [AStatic],
+				kind: FVar(null, macro [$a{cases}]),
+				pos: pos,
+			});
+		}
+
 		for (f in defs.fields)
 				if (!all_fields.exists(f.name))
 					ret.push(f);
 		return ret;
 	}
-	static function transform(g: Group, e: Expr) {
+	static function extract(g: Group, e: Expr) {
 		switch(e.expr) {
 		case EArrayDecl(el):
 			for (e in el)
