@@ -20,7 +20,7 @@ extern abstract ByteData(String) {
 
 	inline function readByte(i:Int):Int return StringTools.fastCodeAt(this, i);
 
-	inline function readString(pos:Int, len:Int):String return this.substr(pos, len);
+	inline function readString(pos:Int, len:Int):String return (this:Dynamic).substr(pos, len);
 
 	static inline function ofString(s:String):ByteData return cast s;
 
