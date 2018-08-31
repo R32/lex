@@ -1,0 +1,14 @@
+-cp ../src
+-D old-error-format
+-main Demo
+-lib hxparse
+#--each
+#-D analyzer-optimize
+#-dce full
+#-js demo.js
+
+#--next
+#-hl demo.hl
+
+#--next
+--interp
