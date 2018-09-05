@@ -67,8 +67,10 @@ class LexTest {
 			s_partern(a) + "*";
 		case Plus(a):
 			s_partern(a) + "+";
-		case Choice(a):
+		case Choice(a, Empty):
 			s_partern(a) + "?";
+		case Choice(a, b):
+			s_partern(a) + "|" + s_partern(b);
 		case Next(a, b):
 			s_partern(a) + s_partern(b);
 		}
@@ -107,8 +109,7 @@ class Lexer implements lm.Lexer<Token> {
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
-		"0" => CInt(0),
-		"-?[1-9][0-9]*" => CInt(Std.parseInt(lex.current)),
+		"0|-?[1-9][0-9]*" => CInt(Std.parseInt(lex.current)),
 		'"' => {
 			var s = lex.str();         // str() is created by macro. See the second @:rule set
 			lex.pmax++;

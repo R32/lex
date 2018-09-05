@@ -127,11 +127,10 @@ class LexEngine {
 			n.epsilon.push(an);
 			n.epsilon.push(f);
 			an;
-		case Choice(p):
+		case Choice(a, b):
 			var n = node();
-			var an = initNode(p, f);
-			n.epsilon.push(an);
-			n.epsilon.push(f);
+			n.epsilon.push(initNode(a, f));
+			n.epsilon.push(initNode(b, f));
 			n;
 		case Next(a, b):
 			initNode( a, initNode(b, f) );
@@ -309,7 +308,7 @@ class LexEngine {
 	static function opt(r: Pattern): Pattern {
 		return switch (r) {
 		case Next(r1, r2): Next(r1, opt(r2));
-		default: Choice(r);
+		default: Choice(r, Empty);
 		}
 	}
 
@@ -326,6 +325,7 @@ class LexEngine {
 		- `*`: zero or more
 		- `+`: one or more
 		- `?`: zero or one
+		- `|`: or
 		- `[`: begin char range
 		- `]`: end char range
 		- `\`: escape characters for '\', '+', '*', '?', '[', ']', '-'
@@ -340,7 +340,7 @@ class LexEngine {
 		function readChar() {
 			var c = b.readByte(i++);
 			switch (c) {
-			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code:
+			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
 			case "x".code:
 				c = Std.parseInt("0x" + b.readString(i, 2));
 				i += 2;
@@ -352,13 +352,15 @@ class LexEngine {
 		var r = Empty;
 		while (i < len) {
 			var c = b.readByte(i++);
-			r = switch (c) {
+			switch (c) {
 			case "+".code if (r != Empty):
-				plus(r);
+				r = plus(r);
 			case "*".code if (r != Empty):
-				star(r);
+				r = star(r);
 			case "?".code if (r != Empty):
-				opt(r);
+				r = opt(r);
+			case '|'.code if (r != Empty):
+				return Choice(r, parseInner(b, i, len, c_all));
 			case "[".code:
 				var err = i - 1;
 				var not = b.readByte(i) == "^".code;
@@ -395,15 +397,13 @@ class LexEngine {
 					acc = CSet.sorting(acc);
 					if (not)
 						acc = CSet.complement(acc, c_all);
-					next(r, Match(acc));
-				} else {
-					r;
+					r = next(r, Match(acc));
 				}
 			case "\\".code:
 				c = readChar();
-				next(r, Match(CSet.single( c )));
+				r = next(r, Match(CSet.single( c )));
 			default:
-				next(r, Match(CSet.single( c )));
+				r = next(r, Match(CSet.single( c )));
 			}
 		}
 		return r;
@@ -415,7 +415,7 @@ enum Pattern {
 	Match(c: Charset);
 	Star(p: Pattern);
 	Plus(p: Pattern);
-	Choice(p: Pattern);
+	Choice(p1: Pattern, p2: Pattern);
 	Next(p1: Pattern, p2: Pattern);
 }
 
