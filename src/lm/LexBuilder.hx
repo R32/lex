@@ -14,7 +14,7 @@ typedef Group = {
 
 class LexBuilder {
 	static function getMeta(metas: Array<Expr>) {
-		var ret = {cmax: -1, eof: null};
+		var ret = {cmax: 255, eof: null};
 		for (meta in metas) {
 			switch (meta.expr) {
 			case EConst(CInt(i)):
@@ -28,32 +28,42 @@ class LexBuilder {
 	}
 	static public function build():Array<Field> {
 		var cls = Context.getLocalClass().get();
+		var ct_lex = TPath({pack: cls.pack, name: cls.name});
+		// @:rule(cmax, Eof)
+		var cls_meta = cls.meta.extract(":rule");
 		var cmax = -1;
 		var EEOF:Expr = macro null;
-		var ct_lex = TPath({pack: cls.pack, name: cls.name});
+		if (cls_meta != null) {
+			var x = getMeta(cls_meta[0].params);
+			cmax = x.cmax;
+			if (x.eof != null)
+				EEOF = x.eof;
+		}
+		//
 		var ret = [];
-		var fields = Context.getBuildFields();
 		var groups = [];
+		var idmap = new Map<String,String>();
 		var all_fields = new haxe.ds.StringMap<Bool>();
-		for (f in fields) {
-			if (f.access.indexOf(AStatic) > -1) {
+		for (f in Context.getBuildFields()) {
+			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
+			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) {
 				switch (f.kind) {
-				case FVar(t, e) if (e != null):
-					switch(e.expr){
-					case EMeta({name: ":rule", params: metas}, e):
-						var g:Group = {name: f.name, rules: [], cases: []};
-						if (cmax == -1) { // the first @:rule is valid.
-							var x = getMeta(metas);
-							cmax = x.cmax;
-							if (x.eof != null)
-								EEOF = x.eof;
+				case FVar(_, {expr: EArrayDecl(el)}):
+					var g:Group = {name: f.name, rules: [], cases: []};
+					for (e in el)
+						switch (e.expr) {
+						case EBinop(OpArrow, rule, e):
+							g.rules.push(exprString(rule, idmap));
+							g.cases.push(e);
+						default:
+							Context.error("Expected pattern => function", e.pos);
 						}
-						extract(g, e);
-						if (g.rules.length > 0)
-							groups.push(g);
-						continue;
-					default:
-					}
+					if (g.rules.length > 0)
+						groups.push(g);
+					continue;
+				case FVar(_, {expr: EConst(CString(s))}):
+					idmap.set(f.name, s);
+					continue;
 				default:
 				}
 			}
@@ -95,7 +105,7 @@ class LexBuilder {
 			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
 			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
 		}
-		var lex_switch = Context.defined("lex_switch");
+		var lex_switch = lex.nrules < 6 || Context.defined("lex_switch");
 		var gotos = lex_switch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
@@ -117,7 +127,7 @@ class LexBuilder {
 				var i = pmax, len = input.length;
 				if (i >= len) return $EEOF;
 				pmin = i;
-				var prev = $v{lex.per - 1}; // wrong state
+				var prev = $v{lex.per - 1}; // state of error
 				while (i < len) {
 					var c = input.readByte(i++);
 					state = trans(state, c);
@@ -192,24 +202,18 @@ class LexBuilder {
 					ret.push(f);
 		return ret;
 	}
-	static function extract(g: Group, e: Expr) {
-		switch(e.expr) {
-		case EArrayDecl(el):
-			for (e in el)
-				switch (e.expr) {
-				case EBinop(OpArrow, rule, e):
-					g.rules.push(eString(rule));
-					g.cases.push(e);
-				default:
-					Context.error("Expected pattern => function", e.pos);
-				}
-		default:
-			Context.error("Expected pattern => function map declaration", e.pos);
-		}
-	}
-	static function eString(e: Expr): String {
+	static function exprString(e: Expr, map:Map<String,String>): String {
 		return switch (e.expr) {
 		case EConst(CString(s)): s;
+		case EConst(CIdent(i)):
+			var s = map.get(i);
+			if (s == null)
+				Context.error("Undefined identifier: " + i, e.pos);
+			s;
+		case EBinop(OpAdd, e1, e2):
+			exprString(e1, map) + exprString(e2, map);
+		case EParenthesis(e):
+			exprString(e, map);
 		default:
 			Context.error("Invalid rule", e.pos);
 		}

@@ -100,25 +100,34 @@ class LexTest {
 	}
 }
 
-class Lexer implements lm.Lexer<Token> {
-	static var tok = @:rule(127, Eof) [ // 127 => charset(0, 127). the Eof is a custom terminator, or null if none.
-		"[ \t]+" => lex.token(),        // .token() is automatically built by macro based on the first @:rule
-		"+"   => Op(Plus),              // and the "lex" is an instance of this class.
+/**
+ @:rule(127, Eof) that is 127 => charset(0, 127). the Eof is a custom terminator, or null if none.
+ and the "static var..." will be treated as rules if no `@:skip`
+*/
+@:rule(127, Eof) class Lexer implements lm.Lexer<Token> {
+
+	static var r_zero = "0";      // a pattern can be used in rule sets if there is no @:skip
+	static var r_int = "-?[1-9][0-9]*";
+
+	static var tok =  [           // a rule set definition
+		"[ \t]+" => lex.token(),  // .token() is automatically built by macro based on the first @:rule
+		"+"   => Op(Plus),        // and the "lex" is an instance of this class.
 		"-"     => Op(Minus),
 		"*"   => Op(Times),
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
-		"0|-?[1-9][0-9]*" => CInt(Std.parseInt(lex.current)),
-		'"' => {
-			var s = lex.str();         // str() is created by macro. See the second @:rule set
+		r_zero + "|" + r_int => CInt(Std.parseInt(lex.current)),
+		'"' => lex.str(),         // str() is created by macro. See the second rule set
+	];
+	static var str = [
+		'[^"]*' => {
 			lex.pmax++;
-			s;
+			CStr(lex.current);
 		}
 	];
-	static var str = @:rule [
-		'[^"]*' => CStr(lex.current),
-	];
+
+	// custom functions
 	static function s_op(o) {
 		return switch (o) {
 		case Plus: "+";
