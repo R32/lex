@@ -13,33 +13,24 @@ typedef Group = {
 }
 
 class LexBuilder {
-	static function getMeta(metas: Array<Expr>) {
+	static function getMeta(metas: Array<MetadataEntry>) {
 		var ret = {cmax: 255, eof: null};
-		for (meta in metas) {
-			switch (meta.expr) {
-			case EConst(CInt(i)):
-				ret.cmax = Std.parseInt(i);
-			case EConst(CIdent(i)):
-				ret.eof = meta;
-			default:
+		if (metas.length > 0)
+			for (meta in metas[0].params) {
+				switch (meta.expr) {
+				case EConst(CInt(i)):
+					ret.cmax = Std.parseInt(i);
+				case EConst(CIdent(i)):
+					ret.eof = meta;
+				default:
+				}
 			}
-		}
 		return ret;
 	}
 	static public function build():Array<Field> {
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
-		// @:rule(cmax, Eof)
-		var cls_meta = cls.meta.extract(":rule");
-		var cmax = -1;
-		var EEOF:Expr = macro null;
-		if (cls_meta != null) {
-			var x = getMeta(cls_meta[0].params);
-			cmax = x.cmax;
-			if (x.eof != null)
-				EEOF = x.eof;
-		}
-		//
+		var meta = getMeta(cls.meta.extract(":rule"));
 		var ret = [];
 		var groups = [];
 		var idmap = new Map<String,String>();
@@ -71,11 +62,11 @@ class LexBuilder {
 			ret.push(f);
 		}
 		if (groups.length == 0) return null;
-		cmax = cmax & 255 | 15;
+		meta.cmax = meta.cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
 		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
 		// Table Build
-		var cset = [new lm.Charset.Char(0, cmax)];
+		var cset = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = [];
 		var cases = [];
 		for (g in groups) {
@@ -84,7 +75,7 @@ class LexBuilder {
 				cases.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
 			}
 		}
-		var lex = new LexEngine(rules, cmax);
+		var lex = new LexEngine(rules, meta.cmax);
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
 		if (force_bytes) {
@@ -109,6 +100,8 @@ class LexBuilder {
 		var gotos = lex_switch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
+			static inline var NRULES = $v{lex.nrules};
+			static inline var NSEGS = $v{lex.segs};
 			static inline function trans(s: Int, c: Int):Int return $get_trans;
 			static inline function exits(s: Int):Int return $get_exits;
 			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
@@ -125,24 +118,24 @@ class LexBuilder {
 			}
 			function _token(state: Int) {
 				var i = pmax, len = input.length;
-				if (i >= len) return $EEOF;
+				if (i >= len) return $e{meta.eof};
 				pmin = i;
 				var prev = $v{lex.per - 1}; // state of error
 				while (i < len) {
 					var c = input.readByte(i++);
 					state = trans(state, c);
-					if (state >= $v{lex.segs})
+					if (state >= NSEGS)
 						break;
 					prev = state;
 				}
 				state = exits(state);
-				return if (state < $v{lex.nrules}) {
+				return if (state < NRULES) {
 					pmax = i;
 					current = input.readString(pmin, pmax - pmin);
 					gotos(state, this);
 				} else {
 					state = exits(prev);
-					if (state < $v{lex.nrules}) {
+					if (state < NRULES) {
 						pmax = i - 1; // one char one state
 						current = input.readString(pmin, pmax - pmin);
 						gotos(state, this);
@@ -155,14 +148,16 @@ class LexBuilder {
 		var pos = TPositionTools.here();
 		for (i in 0...groups.length) {
 			var g = groups[i];
-			var meta = lex.metas[i];
+			var seg = lex.metas[i];
+			var sname = i == 0 ? "BEGIN" : g.name.toUpperCase() + "_BEGIN";
+			defs.fields.push( addInlineFVar(sname, seg.begin, pos) );
 			defs.fields.push({
 				name: i == 0 ? "token" : g.name,
 				access: [AInline, APublic],
 				kind: FFun({
 					args: [],
 					ret: null,
-					expr: macro return _token($v{meta.begin})
+					expr: macro return _token($i{sname})
 				}),
 				pos: pos,
 			});
@@ -216,6 +211,14 @@ class LexBuilder {
 			exprString(e, map);
 		default:
 			Context.error("Invalid rule", e.pos);
+		}
+	}
+	static function addInlineFVar(name, value, pos):Field {
+		return {
+			name: name,
+			access: [AStatic, AInline],
+			kind: FVar(null, macro $v{value}),
+			pos: pos,
 		}
 	}
 }
