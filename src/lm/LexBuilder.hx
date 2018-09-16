@@ -32,9 +32,10 @@ class LexBuilder {
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
 		var ret = [];
-		var groups = [];
+		var groups: Array<Group> = [];
 		var idmap = new Map<String,String>();
 		var all_fields = new haxe.ds.StringMap<Bool>();
+		// transform
 		for (f in Context.getBuildFields()) {
 			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
 			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) {
@@ -49,8 +50,11 @@ class LexBuilder {
 						default:
 							Context.error("Expected pattern => function", e.pos);
 						}
-					if (g.rules.length > 0)
+					if (g.rules.length > 0) {
+						if (Lambda.exists(groups, x->x.name == g.name))
+							Context.error("Duplicate: " + g.name, f.pos);
 						groups.push(g);
+					}
 					continue;
 				case FVar(_, {expr: EConst(CString(s))}):
 					idmap.set(f.name, s);
@@ -65,17 +69,18 @@ class LexBuilder {
 		meta.cmax = meta.cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
 		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
-		// Table Build
-		var cset = [new lm.Charset.Char(0, meta.cmax)];
+		// lexEngine
+		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = [];
 		var cases = [];
 		for (g in groups) {
-			rules.push( g.rules.map( s -> LexEngine.parse(s, cset) ));
+			rules.push( g.rules.map( s -> LexEngine.parse(s, c_all) ));
 			for (i in 0...g.rules.length) {
 				cases.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
 			}
 		}
 		var lex = new LexEngine(rules, meta.cmax);
+		// generate
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
 		if (force_bytes) {
@@ -96,8 +101,8 @@ class LexBuilder {
 			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
 			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
 		}
-		var lex_switch = lex.nrules < 6 || Context.defined("lex_switch");
-		var gotos = lex_switch ? (macro cases(s, lex)) : (macro cases[s](lex));
+		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
+		var gotos = useSwitch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
@@ -120,7 +125,7 @@ class LexBuilder {
 				var i = pmax, len = input.length;
 				if (i >= len) return $e{meta.eof};
 				pmin = i;
-				var prev = $v{lex.per - 1}; // state of error
+				var prev = state;
 				while (i < len) {
 					var c = input.readByte(i++);
 					state = trans(state, c);
@@ -163,7 +168,7 @@ class LexBuilder {
 			});
 		}
 		// switch or functions array jump table.
-		if (lex_switch) {
+		if (useSwitch) {
 			cases = []; // rewrite cases
 			for (g in groups)
 				for (c in g.cases)

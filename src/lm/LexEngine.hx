@@ -41,12 +41,17 @@ class LexEngine {
 	public var metas(default, null): Array<{begin: Int, segs: Int}>;
 
 	/**
+	* saved closure infomations for LR0 building. and the "fid" only works when the "non-terminal" could be epsilon.
+	*/
+	public var clos(default, null): Array<{state: State, trans: Array<Char>, fid: Int}>;
+
+	/**
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
 	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
+		this.clos = [];
 		this.metas = [];
-		this.h = new Map();
 		this.parts = new Map();
 		this.per = cmax + 1;
 		this.segs = 0;  // state_counter
@@ -63,6 +68,7 @@ class LexEngine {
 		for (pa in a) {
 			var len = pa.length;
 			this.uid = len;
+			this.h = new Map();
 			nodes.resize(len);     // reset
 			finals.resize(len);
 			finals_tmp.resize(len);
@@ -79,9 +85,11 @@ class LexEngine {
 			if (final_counter < segs)
 				throw "Too many states";
 			metas.push({begin: prev, segs: segs - prev});
+			clos.push({state: states.first(), trans: null, fid: final_counter + 1});
 			prev = segs;
 			nrules += len;
 		}
+		this.h = null;
 		this.finals = null;
 		this.finals_tmp = null;
 		var i = 0;
@@ -97,12 +105,14 @@ class LexEngine {
 			}
 			trans[i++] = seg;
 		}
-		this.h = null;
 		this.parts = null;
 		this.lparts = null;
 		// DFA -> Tables
 		this.table = makeTables(states, trans, segs, per);
 		this.states = null;
+		// the infomations for LR0 building
+		for (c in clos)
+			c.trans = trans[c.state.part];
 	}
 
 	inline function node() return new Node(uid++);
@@ -259,6 +269,9 @@ class LexEngine {
 		while ( tl.remove(null) ) {
 		}
 		// Split char sets so as to make them disjoint
+		inline function addState(l: List<TransitionA>, chars: Charset, ns: Array<Node>) {
+			if (chars.length > 0) l.push(new TransitionA(chars, ns));
+		}
 		var all_chars = CSet.C_EMPTY;
 		var all_state = new List<TransitionA>();
 		for (t in tl) {
@@ -282,12 +295,6 @@ class LexEngine {
 		// Canonical ordering
 		states.sort(TransitionA.onSort);
 		return states;
-	}
-
-	static function addState(l: List<TransitionA>, chars: Charset, ns: Array<Node>) {
-		if (chars.length > 0) {
-			l.push(new TransitionA(chars, ns));
-		}
 	}
 
 	// ---- Regexp Parsing ---- //

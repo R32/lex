@@ -5,7 +5,7 @@ class STok {
 	public var str: String;
 	public var pos: lm.Position;
 	public function new(c, v, p) {
-		char = i;
+		char = c;
 		str = v;
 		pos = p;
 	}
@@ -29,10 +29,10 @@ class Stream {
 		return cached[i];
 	}
 	public function junk(x: Int) {
-		if (x <= 0) return;
 		if (len >= x) {
-			for (i in 0...len - x)
-				cached[i] = cached[x + i];
+			if (x > 0)
+				for (i in 0...len - x)
+					cached[i] = cached[x + i];
 		} else {
 			x -= len;
 			while (x-- > 0)
