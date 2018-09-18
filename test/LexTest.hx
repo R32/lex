@@ -48,7 +48,7 @@ class LexTest {
 	}
 
 	static public function lex_test(): Void @:privateAccess {
-		var lex = new Lexer(lm.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
+		var lex = new Lexer(lms.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
@@ -122,8 +122,9 @@ class LexTest {
 	];
 	static var str = [
 		'[^"]*' => {
+			var s = CStr(lex.current);
 			lex.pmax++;
-			CStr(lex.current);
+			s;
 		}
 	];
 

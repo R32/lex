@@ -343,16 +343,16 @@ class LexEngine {
 	static public function parse(s: String, ?c_all: Charset): Pattern {
 		if (c_all == null)
 			c_all = CSet.C_255;
-		var b = lm.ByteData.ofString(s);
+		var b = haxe.io.Bytes.ofString(s);
 		return parseInner(b, 0, b.length, c_all);
 	}
-	static function parseInner(b: lm.ByteData, i: Int, len: Int, c_all: Charset): Pattern {
+	static function parseInner(b: haxe.io.Bytes, i: Int, len: Int, c_all: Charset): Pattern {
 		function readChar() {
-			var c = b.readByte(i++);
+			var c = b.get(i++);
 			switch (c) {
 			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
 			case "x".code:
-				c = Std.parseInt("0x" + b.readString(i, 2));
+				c = Std.parseInt("0x" + b.getString(i, 2));
 				i += 2;
 			default:
 				throw "\\";
@@ -361,7 +361,7 @@ class LexEngine {
 		}
 		var r = Empty;
 		while (i < len) {
-			var c = b.readByte(i++);
+			var c = b.get(i++);
 			switch (c) {
 			case "+".code if (r != Empty):
 				r = plus(r);
@@ -373,12 +373,12 @@ class LexEngine {
 				return Choice(r, parseInner(b, i, len, c_all));
 			case "[".code:
 				var err = i - 1;
-				var not = b.readByte(i) == "^".code;
+				var not = b.get(i) == "^".code;
 				if (not) ++i;
 				var range = 0;
 				var acc = [];
 				while (i < len) {
-					var c = b.readByte(i++);
+					var c = b.get(i++);
 					if (c == "]".code) {
 						if (range != 0) acc.push(new Char(range, range));
 						break;

@@ -1,5 +1,8 @@
-package lm;
+package lms;
 
+/**
+* then you can use "--remap <lms:mypkg>" to override this class.
+*/
 #if (!js || force_bytes)
 extern abstract ByteData(haxe.io.Bytes) {
 	public var length(get,never):Int;
@@ -7,9 +10,9 @@ extern abstract ByteData(haxe.io.Bytes) {
 
 	inline function readByte(i:Int):Int return this.get(i);
 
-	inline function readString(pos:Int, len:Int):String return this.getString(pos, len);
+	inline function readString(pos:Int, len:Int):String return this.getString(pos, len, UTF8);
 
-	static inline function ofString(s:String):ByteData return cast haxe.io.Bytes.ofString(s);
+	static inline function ofString(s:String):ByteData return cast haxe.io.Bytes.ofString(s, UTF8);
 
 	static inline function ofBytes(b:haxe.io.Bytes):ByteData return cast b;
 }

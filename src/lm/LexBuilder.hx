@@ -6,7 +6,7 @@ import haxe.macro.Expr;
 import haxe.macro.Type;
 using haxe.macro.Tools;
 
-typedef Group = {
+private typedef Group = {
 	name: String,
 	rules: Array<String>,
 	cases: Array<Expr>,
@@ -120,14 +120,14 @@ class LexBuilder {
 			static inline function trans(s: Int, c: Int):Int return $get_trans;
 			static inline function exits(s: Int):Int return $get_exits;
 			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
-			var input: lm.ByteData;
+			var input: lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
-			public var current(default, null): String;
+			public var current(get, never): String;
+			private inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public function curpos() return new lm.Position(pmin, pmax);
-			public function new(s: lm.ByteData) {
+			public function new(s: lms.ByteData) {
 				this.input = s;
-				current = "";
 				pmin = 0;
 				pmax = 0;
 			}
@@ -146,13 +146,11 @@ class LexBuilder {
 				state = exits(state);
 				return if (state < NRULES) {
 					pmax = i;
-					current = input.readString(pmin, pmax - pmin);
 					gotos(state, this);
 				} else {
 					state = exits(prev);
 					if (state < NRULES) {
 						pmax = i - 1; // one char one state
-						current = input.readString(pmin, pmax - pmin);
 						gotos(state, this);
 					} else {
 						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
