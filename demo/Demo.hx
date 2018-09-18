@@ -3,7 +3,7 @@ package;
 class Demo {
 	static function main() {
 		var str = '1 + 1';
-		var lex = new Lexer(lm.ByteData.ofString(str));
+		var lex = new Lexer(lms.ByteData.ofString(str));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
@@ -50,9 +50,13 @@ class Parser implements lm.LR0<Lexer> {
 		case [e = expr, Eof]: e;
 	}
 	static var expr = switch(s) {
-		case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
-	//	case [LParen, e = expr, RParen]: e;
-		case [CInt(n)]: n;
-	//	default: 0;
+		case [e1 = expr, OpPlus, e2 = expr]:
+			e1 + e2;
+		//case [LParen, e = expr, RParen]:
+		//	e;
+		case [CInt(n)]:
+			n;
 	}
+
+	@:ofStr(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 }

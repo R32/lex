@@ -77,8 +77,8 @@ class LexBuilder {
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
 		if (meta.eof == null) meta.eof = macro null;
-		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
-		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
+		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = [];
@@ -117,6 +117,7 @@ class LexBuilder {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
+			static inline var CMAX = $v{lex.per - 1};
 			static inline function trans(s: Int, c: Int):Int return $get_trans;
 			static inline function exits(s: Int):Int return $get_exits;
 			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
@@ -138,6 +139,9 @@ class LexBuilder {
 				var prev = state;
 				while (i < len) {
 					var c = input.readByte(i++);
+				#if lex_charmax
+					if (c > CMAX) c = CMAX;
+				#end
 					state = trans(state, c);
 					if (state >= NSEGS)
 						break;
