@@ -1,9 +1,9 @@
 -cp ../src
 -D old-error-format
 -main Demo
--lib hxparse
 #--each
 #-D analyzer-optimize
+#-D nodejs
 #-dce full
 #-js demo.js
 

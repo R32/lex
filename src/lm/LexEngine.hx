@@ -41,16 +41,15 @@ class LexEngine {
 	public var metas(default, null): Array<{begin: Int, segs: Int}>;
 
 	/**
-	* saved closure infomations for LR0 building. and the "fid" only works when the "non-terminal" could be epsilon.
+	* saved closure infomations for LR0 building.
 	*/
-	public var clos(default, null): Array<{state: State, trans: Array<Char>, fid: Int}>;
+	public var clos(default, null): {states: Array<State>, trans: Array<Array<Char>>};
 
 	/**
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
-	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
-		this.clos = [];
+	public function new(a: Array<PatternSet>, cmax = Char.MAX, lr0 = false) {
 		this.metas = [];
 		this.parts = new Map();
 		this.per = cmax + 1;
@@ -85,7 +84,6 @@ class LexEngine {
 			if (final_counter < segs)
 				throw "Too many states";
 			metas.push({begin: prev, segs: segs - prev});
-			clos.push({state: states.first(), trans: null, fid: final_counter + 1});
 			prev = segs;
 			nrules += len;
 		}
@@ -109,10 +107,15 @@ class LexEngine {
 		this.lparts = null;
 		// DFA -> Tables
 		this.table = makeTables(states, trans, segs, per);
-		this.states = null;
+
 		// the infomations for LR0 building
-		for (c in clos)
-			c.trans = trans[c.state.part];
+		this.clos = {states: [], trans: []};
+		if (lr0) {
+			clos.states = Lambda.array(this.states);
+			clos.trans = trans;
+			clos.states.sort(State.onSort);
+		}
+		this.states = null;
 	}
 
 	inline function node() return new Node(uid++);
@@ -190,21 +193,21 @@ class LexEngine {
 	}
 	#if sys
 	public function write(out: haxe.io.Output, split = false) {
-		out.writeByte('"'.code);
+		if (!split) out.writeByte('"'.code);
 		for (i in 0...this.table.length) {
 			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
 			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
 			out.writeString( "\\x" + StringTools.hex(table.get(i), 2).toLowerCase() );
 		}
-		out.writeByte('"'.code);
+		if (!split) out.writeByte('"'.code);
 		out.flush();
 	}
 	#end
-	static function makeTrans(tbls: haxe.io.Bytes, start: Int, trans: Array<Char>, tbl: Array<Int>) {
+	static function makeTrans(tbls: haxe.io.Bytes, start: Int, trans: Array<Char>, targets: Array<Int>) {
 		for (c in trans) {
 			var i = c.min + start;
 			var max = c.max + start;
-			var s = tbl[c.ext];
+			var s = targets[c.ext];
 			while (i <= max) {
 				tbls.set(i, s);
 				++ i;

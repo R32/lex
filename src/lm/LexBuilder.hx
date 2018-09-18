@@ -31,6 +31,15 @@ class LexBuilder {
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
+		if (meta.eof == null) Context.error("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+		for (it in cls.interfaces) {
+			if (it.t.toString() == "lm.Lexer") {
+				var t = it.params[0];
+				if (Context.unify(it.params[0], Context.typeof(meta.eof)) == false)
+					Context.error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+				break;
+			}
+		}
 		var ret = [];
 		var groups: Array<Group> = [];
 		var idmap = new Map<String,String>();
@@ -67,6 +76,7 @@ class LexBuilder {
 		}
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
+		if (meta.eof == null) meta.eof = macro null;
 		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
 		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
 		// lexEngine
@@ -169,15 +179,10 @@ class LexBuilder {
 		}
 		// switch or functions array jump table.
 		if (useSwitch) {
-			cases = []; // rewrite cases
-			for (g in groups)
-				for (c in g.cases)
-					cases.push(c);
-			var ca = [];
-			for (i in 0...cases.length - 1) {
-				ca.push({values: [macro $v{i}], expr: cases[i]});
-			}
-			var eSwitch = {expr: ESwitch(macro (s), ca, cases[cases.length - 1]), pos: pos};
+			cases = Lambda.flatten( groups.map(g -> g.cases) );
+			var defCase = macro throw lm.Utils.error("OutOfRange"); // cases.pop();
+			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+			var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
 			defs.fields.push({
 				name: "cases",
 				access: [AStatic],
