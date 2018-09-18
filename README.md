@@ -15,9 +15,7 @@ Build State Transition Table in macro(compile phase)
 ### Defines
 
 * `-D lex_switch`: then the function jump table will be converted as `switch` expr
-* `-D lex_lr0table`: generate LR0 table to "lr0-table.txt"
-
-  example:
+* `-D lex_lr0table`: generate a LR0 table save as `lr0-table.txt`. Example:
 
   ```
   Production:

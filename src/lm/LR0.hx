@@ -336,9 +336,8 @@ class LR0Builder {
 				break;
 			}
 		}
-
-		if (tk == null && Context.unify(tk, Context.getType("Int")) == false)
-			Context.error("Only \"enum abstract (Int)\" type is supported", cls.pos);
+		if (tk == null || !Context.unify(tk, Context.getType("Int")))
+			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
 		var lrb = new LR0Builder(tk, eof.toString());
 		var allFields = new haxe.ds.StringMap<Bool>();
 		var switches = filter(Context.getBuildFields(), allFields, lrb.maxValue);
