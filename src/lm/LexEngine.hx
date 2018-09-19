@@ -13,7 +13,11 @@ class LexEngine {
 	var final_counter: Int;
 	var part_counter: Int;
 	var lparts: List<Array<Charset>>;
-	var states: List<State>;
+	var lstates: List<State>;
+
+	// Associated with "trans" for LR0Builder
+	public var states(default, null): Array<State>;
+	public var trans(default, null): Array<Array<Char>>;
 
 	/**
 	 segment size. default is 256(Char.MAX + 1)
@@ -35,29 +39,21 @@ class LexEngine {
 	public var nstates(get, never): Int;
 	inline function get_nstates() return this.per - final_counter - 2 + segs;
 
-	/**
-	 for one PatternSet.
-	*/
-	public var metas(default, null): Array<{begin: Int, segs: Int}>;
-
-	/**
-	* saved closure infomations for LR0 building.
-	*/
-	public var clos(default, null): {states: Array<State>, trans: Array<Array<Char>>};
+	public var entrys(default, null): Array<{begin:Int, segs:Int, nrules:Int}>;
 
 	/**
 	* @param pa
 	* @param cmax = Char.MA, The cmax value cannot exceed 255.
 	*/
 	public function new(a: Array<PatternSet>, cmax = Char.MAX, lr0 = false) {
-		this.metas = [];
+		this.entrys = [];
 		this.parts = new Map();
 		this.per = cmax + 1;
 		this.segs = 0;  // state_counter
 		this.part_counter = 0;
 		this.final_counter = cmax - 1;
 		this.lparts = new List();
-		this.states = new List();
+		this.lstates = new List();
 		this.nrules = 0;
 
 		var prev = 0;
@@ -83,7 +79,7 @@ class LexEngine {
 			compile(addNodes([], nodes));
 			if (final_counter < segs)
 				throw "Too many states";
-			metas.push({begin: prev, segs: segs - prev});
+			entrys.push({begin: prev, segs: segs - prev, nrules: len});
 			prev = segs;
 			nrules += len;
 		}
@@ -91,8 +87,8 @@ class LexEngine {
 		this.finals = null;
 		this.finals_tmp = null;
 		var i = 0;
-		var trans = [];
-		trans.resize(lparts.length);
+		this.trans = [];
+		this.trans.resize(lparts.length);
 		for (part in lparts) {
 			var seg: Array<Char> = [];
 			for (j in 0...part.length) {
@@ -101,21 +97,22 @@ class LexEngine {
 					seg.push(Char.c3(c.min, c.max, j));
 				}
 			}
-			trans[i++] = seg;
+			this.trans[i++] = seg;
 		}
 		this.parts = null;
 		this.lparts = null;
-		// DFA -> Tables
-		this.table = makeTables(states, trans, segs, per);
 
-		// the infomations for LR0 building
-		this.clos = {states: [], trans: []};
+		// DFA -> Tables
+		this.makeTables();
+		// Rollback detection
+		this.makeRollback();
+
+		// for LR0 building
 		if (lr0) {
-			clos.states = Lambda.array(this.states);
-			clos.trans = trans;
-			clos.states.sort(State.onSort);
+			this.states = Lambda.array(this.lstates);
+			this.states.sort(State.onSort);
 		}
-		this.states = null;
+		this.lstates = null;
 	}
 
 	inline function node() return new Node(uid++);
@@ -188,8 +185,46 @@ class LexEngine {
 		for (n in nodes)
 			if (n.id < f.length) f[n.id] = true;
 
-		states.push(new State(id, pid, targets, f, nrules));
+		lstates.push(new State(id, pid, targets, f, nrules));
 		return id;
+	}
+
+	function makeTables() {
+		var len = this.lstates.length;
+		var bytes = (segs + 3) * per; // segs + rollbak + rollbackLength + exists
+		var tbls = haxe.io.Bytes.alloc(bytes);
+		tbls.fill(0, bytes, per - 1);
+		for (s in this.lstates) {
+			tbls.set(bytes - s.id - 1, first(0, per - 1, s.prev_nrules, s.finals)); // Reverse write checking table
+			if (s.id < segs)
+				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
+		}
+		this.table = tbls;
+	}
+
+	function makeRollback() {
+		var INVALID = this.per - 1;
+		var rollpos = this.segs * this.per;
+		var rlenpos = rollpos + this.per;
+		inline function epsilon(seg) return this.table.get(this.table.length - 1 - seg);
+		function loop(exists, seg, length) {
+			var base = seg * this.per;
+			for (p in base...base + this.per) {
+				var follow = this.table.get(p);
+				if (follow == INVALID || follow == seg) continue;
+				this.table.set(rollpos + follow, exists);
+				this.table.set(rlenpos + follow, length); // junk(N) when rollback.
+				if (epsilon(follow) == INVALID && follow < this.segs)
+					loop(exists, follow, length + 1);
+			}
+		}
+		for (e in this.entrys) {
+			for (i in e.begin...e.begin + e.segs) {
+				var exists = epsilon(i);
+				if (exists == INVALID) continue;
+				loop(exists, i, 1); // if this seg can be epsilon then calc follow(state)
+			}
+		}
 	}
 	#if sys
 	public function write(out: haxe.io.Output, split = false) {
@@ -222,18 +257,7 @@ class LexEngine {
 		}
 		return fill;
 	}
-	static function makeTables(dfa: List<State>, trans: Array<Array<Char>>, segs: Int, per: Int) {
-		var len = dfa.length;
-		var bytes = (segs + 1) * per;
-		var tbls = haxe.io.Bytes.alloc(bytes);
-		tbls.fill(0, bytes, per - 1);
-		for (s in dfa) {
-			tbls.set(bytes - s.id - 1, first(0, per - 1, s.prev_nrules, s.finals)); // Reverse write checking table
-			if (s.id < segs)
-				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
-		}
-		return tbls;
-	}
+
 
 	static function addNode(nodes: Array<Node>, n: Node) {
 		for (n2 in nodes)

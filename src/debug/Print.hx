@@ -80,11 +80,11 @@ class Print {
 		inline function sp() buf.add("|");
 
 		// header
-		var lineWidth = 1 + (smax + 1) * (col.length + 2);
+		var lineWidth = 1 + (smax + 1) * (col.length + 3);
 		var lineSp = sRepeat(lineWidth, "-") + "\n";
 		buf.add(lineSp);
 		lineSp = "\n" + lineSp;
-		sp(); add("(S)"); sp(); add("(EP)"); sp();
+		sp(); add("(S)"); sp(); add("(RB)"); sp(); add("(EP)"); sp();
 		for (v in col) {
 			add(v.name); sp();
 		}
@@ -92,11 +92,20 @@ class Print {
 
 		var raw = lex.table;
 		var invalid = lex.per - 1;
+		var rollpos = lex.per * lex.segs;
+		var rlenpos = rollpos + lex.per;
+		function s_epsilon(i) {
+			var s = lex.table.get(lex.table.length - 1 - i);
+			add(s == invalid ? "NULL" : "R" + s);
+		}
+		function s_rollback(i) {
+			var s = lex.table.get(rollpos + i);
+			add(s == invalid ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
+		}
 		// body
 		for (i in 0...lex.segs) {
+			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
 			var base = i * lex.per;
-			var epsilon = raw.get(raw.length - 1 - i);
-			sp(); add(i + ""); sp(); add(epsilon == invalid ? "NULL" : "R" + epsilon); sp();
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != invalid) {
@@ -114,7 +123,7 @@ class Print {
 		}
 		// footer
 		//sp(); add("size: "); sp();
-		//buf.add(rpad(" (segs+1)*per=(" + lex.segs + "+1)*" + lex.per + "=" + raw.length + "b" ," ",(smax + 1) * (col.length+1) - 1)); sp();
+		//buf.add(rpad(" (segs+1)*per=(" + lex.segs + "+1)*" + lex.per + "=" + raw.length + "b" ," ",(smax + 1) * (col.length+2) - 1)); sp();
 		//buf.add(lineSp);
 		return buf.toString();
 	}

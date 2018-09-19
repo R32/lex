@@ -35,7 +35,7 @@ class LexBuilder {
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
-				if (Context.unify(it.params[0], Context.typeof(meta.eof)) == false)
+				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					Context.error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
 				break;
 			}
@@ -105,12 +105,7 @@ class LexBuilder {
 			f.close();
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var get_trans = macro raw.get(($v{lex.per} * s) + c);
-		var get_exits = macro raw.get(($v{lex.table.length - 1} - s));
-		if (!force_bytes) {
-			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
-			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
-		}
+		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
 		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
 		var gotos = useSwitch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
@@ -118,9 +113,12 @@ class LexBuilder {
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
 			static inline var CMAX = $v{lex.per - 1};
-			static inline function trans(s: Int, c: Int):Int return $get_trans;
-			static inline function exits(s: Int):Int return $get_exits;
-			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
+			static inline function getU8(i:Int):Int return $getU8;
+			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
+			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
+			static inline function rollR(s:Int):Int return getU8(s + $v{lex.per * lex.segs});
+			static inline function rollL(s:Int):Int return getU8(s + $v{lex.per * lex.segs + lex.per});
+			static inline function gotos(s:Int, lex: $ct_lex) return $gotos;
 			var input: lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
@@ -154,10 +152,16 @@ class LexBuilder {
 				} else {
 					state = exits(prev);
 					if (state < NRULES) {
-						pmax = i - 1; // one char one state
+						pmax = i - 1;
 						gotos(state, this);
 					} else {
-						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
+						state = rollR(prev);
+						if (state < NRULES) {
+							pmax = i - 1 - rollL(prev);
+							gotos(state, this);
+						} else {
+							throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
+						}
 					}
 				}
 			}
@@ -165,7 +169,7 @@ class LexBuilder {
 		var pos = TPositionTools.here();
 		for (i in 0...groups.length) {
 			var g = groups[i];
-			var seg = lex.metas[i];
+			var seg = lex.entrys[i];
 			var sname = i == 0 ? "BEGIN" : g.name.toUpperCase() + "_BEGIN";
 			defs.fields.push( addInlineFVar(sname, seg.begin, pos) );
 			defs.fields.push({
