@@ -3,6 +3,7 @@ package debug;
 import StringTools.rpad;
 import StringTools.lpad;
 import lm.LexEngine;
+import lm.LexEngine.INVALID;
 import lm.LR0;
 
 @:access(lm)
@@ -17,6 +18,7 @@ class Print {
 		"OpDiv"   => "/",
 		"LParen"  => "(",
 		"RParen"  => ")",
+		"Semicolon"    => ";",
 	];
 
 	static public function lr0Production(lrb: LR0Builder) {
@@ -26,9 +28,9 @@ class Print {
 		inline function LABEL() buf.add("  (R"+ (R++) +")");
 		inline function ARROW() buf.add(" -->");
 		inline function newLine() buf.add("\n");
-		var cmax = Lambda.fold(lrb.lhsA, ( (l, n)-> l.name.length > n ? l.name.length : n ), 0);
-		cmax += 2;
-		inline function LHS(n) buf.add(lpad(n, " ", cmax));
+		var smax = Lambda.fold(lrb.lhsA, ( (l, n)-> l.name.length > n ? l.name.length : n ), 0);
+		smax += 2;
+		inline function LHS(n) buf.add(lpad(n, " ", smax));
 
 		for (lhs in lrb.lhsA) {
 			LABEL(); LHS(lhs.name.toUpperCase()); ARROW();
@@ -55,7 +57,7 @@ class Print {
 					}
 				}
 			}
-			if (lhs.epsilon) buf.add("epsilon");
+			if (lhs.epsilon) buf.add(" epsilon");
 			newLine();
 		}
 		return buf.toString();
@@ -91,16 +93,15 @@ class Print {
 		buf.add(lineSp);
 
 		var raw = lex.table;
-		var invalid = lex.per - 1;
-		var rollpos = lex.per * lex.segs;
-		var rlenpos = rollpos + lex.per;
+		var rollpos = lex.posRB();
+		var rlenpos = lex.posRBL();
 		function s_epsilon(i) {
 			var s = lex.table.get(lex.table.length - 1 - i);
-			add(s == invalid ? "NULL" : "R" + s);
+			add(s == INVALID ? "NULL" : "R" + s);
 		}
 		function s_rollback(i) {
 			var s = lex.table.get(rollpos + i);
-			add(s == invalid ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
+			add(s == INVALID ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
 		}
 		// body
 		for (i in 0...lex.segs) {
@@ -108,11 +109,11 @@ class Print {
 			var base = i * lex.per;
 			for (v in col) {
 				var shift = raw.get(base + v.value);
-				if (shift != invalid) {
+				if (shift != INVALID) {
 					if (shift < lex.segs) {
 						add("" + shift);
 					} else {
-						add("R" + raw.get(raw.length - 1 - shift));
+						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
 					}
 				} else {
 					add("");
@@ -121,10 +122,10 @@ class Print {
 			}
 			buf.add(lineSp);
 		}
-		// footer
-		//sp(); add("size: "); sp();
-		//buf.add(rpad(" (segs+1)*per=(" + lex.segs + "+1)*" + lex.per + "=" + raw.length + "b" ," ",(smax + 1) * (col.length+2) - 1)); sp();
-		//buf.add(lineSp);
+		for (i in lex.segs...lex.nstates) {
+			sp(); add(i + ""); sp(); s_rollback(i); sp();
+			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
+		}
 		return buf.toString();
 	}
 

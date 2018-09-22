@@ -1,12 +1,13 @@
 package lm;
 
 #if macro
-import haxe.macro.Context;
 import haxe.macro.Expr;
-//import haxe.macro.Expr.Position;
 import haxe.macro.Type;
+import haxe.macro.Context;
+import haxe.macro.Expr.Position;
 import lm.Charset;
 import lm.LexEngine;
+import lm.LexEngine.INVALID;
 
 using haxe.macro.Tools;
 
@@ -41,12 +42,10 @@ typedef SymbolSet = {
 
 typedef Lhs = {    // one switch == one Lhs
 	name: String,  // associated var name(non-terminals name)
-	value: Int,
-	epsilon: Bool, //
+	value: Int,    // automatic increase from "maxValue"
+	ct: ComplexType,
+	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
-	pure: Bool,    // if all the productions(rhs) are terminators.
-	subs: Array<String>,         // used to verify if there is infinite recursion
-	leftsubs: Array<String>,     // for call group(), it's useless that should be removed..
 	pos: Position,
 }
 
@@ -60,16 +59,17 @@ class LR0Builder {
 	var maxValue: Int;           // if value >= maxValue then it must be a non-terminal
 	var lhsA: LhsArray;
 	var lhsMap: Map<String,Lhs>;
-	var reduces: Array<Char>;    // min=junk(N), max=lhs.value;
 	var sEof: String;            // by @:rule from Lexer
+	var funMap: Map<String, {name: String, ct: ComplexType}>; //  TokenName => FunctionName
+
 	public function new(tk, es) {
 		maxValue = 0;
 		termls = [];
 		termlsC_All = [];
 		lhsA = [];
-		reduces = [];
 		udtMap = new Map();
 		lhsMap = new Map();
+		funMap = new Map();
 		sEof = es;
 		parseToken(tk);
 	}
@@ -125,21 +125,33 @@ class LR0Builder {
 		return t == null || t.t ? null : t.cset;
 	}
 
+	function indexCase(i: Int): SymbolSet {
+		var index = 0;
+		for (lhs in lhsA) {
+			for (li in lhs.cases) {
+				if (index == i) return li;
+				++ index;
+			}
+		}
+		throw "NotFound";
+	}
+
 	function transform(swa: Array<SymSwitch>) {
+		for (sw in swa) { // init udtMap first..
+			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
+		}
+		//inline function typeof(e: Expr) return try{ Context.typeExpr(e); }catch(err:Dynamic){null;}
 		inline function setEpsilon(lhs, pos) {
 			if (lhs.epsilon) Context.error('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
-		function csetOrError(name, pos) {
+		function getCSet(name, pos) {
 			var cset = getTermlCSet(name);
 			if (cset == null) Context.error("Undefined: " + name, pos);
 			return cset;
 		}
-		for (sw in swa) { // init first..
-			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
-		}
 		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], epsilon: false, pure: false, subs: [], leftsubs:[], pos: sw.pos};
+			var lhs: Lhs = { name: sw.name, value: sw.value, ct: sw.ct, cases: [], epsilon: false, pos: sw.pos};
 			for (c in sw.cases) {
 				if (c.guard != null)
 					Context.error("Doesn't support guard", c.guard.pos);
@@ -147,50 +159,40 @@ class LR0Builder {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.error('This case is unused', c.values[0].pos);
-					var nonTerml = false;
 					var g: SymbolSet = {expr: c.expr, syms: []};
 					for (e in el) {
 						switch (e.expr) {
 						case EConst(CIdent(i)):
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
-							g.syms.push( {t: true, name: i, cset: csetOrError(i, e.pos), ex: null, pos: e.pos} );
+							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
 						case EParenthesis(macro $i{i}):
 							firstCharChecking(i, LOWER, e.pos);            // for all termls
-							g.syms.push( {t: true, name: null, cset: termlsC_All,           ex: i,    pos: e.pos} );
+							g.syms.push( {t: true, name: null, cset: termlsC_All,       ex: i,    pos: e.pos} );
 
 						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n)
 							firstCharChecking(i, UPPER, e.pos);
 							firstCharChecking(v, LOWER, e.pos);
-							g.syms.push( {t: true, name: i, cset: csetOrError(i, e.pos), ex: v,    pos: e.pos} );
+							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: v,    pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $i{nt}):  // e.g: e = expr
-							nonTerml = true;
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
 								Context.error("Undefined non-terminal: " + nt, e.pos);
-							if (nt == sw.name) {
-								if (el.length == 1)
-									Context.error("Infinite recursion", e.pos);
-							} else {
-								lhs.subs.push(nt);
-								if (e == el[0])
-									lhs.leftsubs.push(nt);
-							}
+							if (el.length == 1 && nt == sw.name)
+								Context.error("Infinite recursion", e.pos);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case _:
 							Context.error("Unsupported: " + e.toString(), e.pos);
 						}
 					}
-					if (!nonTerml) lhs.pure = true;
-					if (g.syms.length == 0) setEpsilon(lhs, pos);
+					if (g.syms.length == 0)
+						setEpsilon(lhs, pos);
 					lhs.cases.push(g);
-					this.reduces.push(new Char(g.syms.length, lhs.value));
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
 					lhs.cases.push({expr: c.expr, syms: []});
-					this.reduces.push(new Char(0, lhs.value));
 				case [e]:
 					Context.error("Expected [ patterns ]", e.pos);
 				case _:
@@ -199,9 +201,11 @@ class LR0Builder {
 			}
 			this.lhsA.push(lhs);
 		}
+
+		organize();
 	}
 
-	function checking() {
+	function organize() {
 		// add to lhsMap.
 		for (lhs in lhsA) {
 			if (lhsMap.exists(lhs.name))
@@ -214,7 +218,7 @@ class LR0Builder {
 		for (li in entry.cases) {
 			var last = li.syms[li.syms.length - 1];
 			if (last.name == null || last.name != this.sEof)
-				Context.error("Must place *"+ this.sEof +"* at the end", last.pos);
+				Context.error("for entry you must place *"+ this.sEof +"* at the end", last.pos);
 		}
 
 		// duplicate var checking.
@@ -232,30 +236,47 @@ class LR0Builder {
 				}
 			}
 		}
-		// dead rec checking
-		for (lhs in lhsA) {
-			if (lhs.pure) continue;
-			var done = false;
-			for (name in lhs.subs) {
-				var sub = lhsMap.get(name);
-				if (sub.pure) {
-					done = true;
+	}
+
+	function checking(lex: LexEngine) {
+		var table = lex.table;
+		// 1. Is it unreachable?
+		var exists = new haxe.ds.Vector<Int>(lex.nrules);
+		for (i in table.length-lex.perRB...table.length) {
+			var c = table.get(i);
+			if (c == INVALID) continue;
+			exists[c] = 1;
+		}
+		for (i in 0...lex.nrules)
+			if (exists[i] != 1)
+				Context.error("Unreachable switch case", indexCase(i).expr.pos);
+
+		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly.
+		for (index in 0...lex.entrys.length) {
+			var base = lex.entrys[index].begin * lex.per;
+			var find = false;
+			for (i in base ... base + this.maxValue) { // all terminals are lower then maxValue
+				var c = table.get(i);
+				if (c != INVALID) {
+					find = true;
 					break;
 				}
 			}
-			if (!done) Context.error("Need Terminal case: " + lhs.name, lhs.pos);
+			if (!find) Context.error("There must be at least one terminator.", lhsA[index].pos);
 		}
+
+		// 3. have more ?
 	}
 
 	function toPartern(): Array<PatternSet> {
-		inline function csetAdd(r, cur) return @:privateAccess LexEngine.next(r, Match(cur));
+		inline function add(r, cur) return @:privateAccess LexEngine.next(r, Match(cur));
 		var ret = [];
 		for (lhs in this.lhsA) {
 			var a = [];
 			for (c in lhs.cases) {
 				var p = Empty;
 				for (s in c.syms)
-					p = csetAdd(p, s.cset);
+					p = add(p, s.cset);
 				a.push(p);
 			}
 			ret.push(a);
@@ -263,13 +284,11 @@ class LR0Builder {
 		return ret;
 	}
 
-	function rawReWrite(lex: LexEngine, src: Int, dst: Int, lvalue: Int, lpos) {
-		// inline function getState(id) { return lex.clos.states[ id < lex.segs ? id : (id + lex.nstates - 1 - lex.clos.states[lex.nstates - 1].id) ];
-		var state = lex.clos.states[src];
+	function addition(lex: LexEngine, src: Int, dst: Int, lvalue: Int, lpos) {
+		var state = lex.states[src];
 		var targets = state.targets;
 		var dstStart = dst * lex.per;
-		var invalid = lex.per - 1;
-		for (c in lex.clos.trans[state.part]) {
+		for (c in lex.trans[state.part]) {
 			var i = c.min;
 			var max = c.max;
 			var s = targets[c.ext];
@@ -278,10 +297,10 @@ class LR0Builder {
 				if (i == lvalue) {
 					var next = lex.table.get(src * lex.per + lvalue);
 					if (follow < lex.segs && next < lex.segs) {
-						rawReWrite(lex, next, follow, -1, lpos); //
+						addition(lex, next, follow, -1, lpos);
 					}
 				} else {
-					if (follow != invalid)
+					if (follow != INVALID)
 						Context.error("rewrite conflict", lpos);
 					lex.table.set(dstStart + i, s);
 				}
@@ -293,20 +312,19 @@ class LR0Builder {
 	function modify(lex: LexEngine) {
 		var b = lex.table;
 		var per = lex.per;
-		var invalid = per - 1;
-		for (i in 0...lex.segs) {
-			var base = i * per;
+		for (seg in 0...lex.segs) {
+			var base = seg * per;
 			for (l in lhsA) {
-				if (b.get(base + l.value) == invalid)
+				if (b.get(base + l.value) == INVALID)
 					continue;
-				var assoc = lex.metas[l.value - this.maxValue];
-				if (assoc.begin == i) continue; // skip self.
-				rawReWrite(lex, assoc.begin, i, l.value, l.pos);
+				var entry = lex.entrys[l.value - this.maxValue]; // the entry Associated with lhs
+				if (entry.begin == seg) continue; // skip self.
+				addition(lex, entry.begin, seg, l.value, l.pos);
 				if (l.epsilon) {
-					var dst = b.length - 1 - i;
-					if (b.get(dst) != invalid)
+					var dst = b.length - 1 - seg;
+					if (b.get(dst) != INVALID)
 						Context.error("epsilon conflict with " + l.name, l.pos);
-					var src = b.length - 1 - assoc.begin;
+					var src = b.length - 1 - entry.begin;
 					b.set(dst, b.get(src));
 				}
 			}
@@ -338,42 +356,38 @@ class LR0Builder {
 		}
 		if (tk == null || !Context.unify(tk, Context.getType("Int")))
 			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
+		// begin
 		var lrb = new LR0Builder(tk, eof.toString());
 		var allFields = new haxe.ds.StringMap<Bool>();
-		var switches = filter(Context.getBuildFields(), allFields, lrb.maxValue);
+		var switches = filter(Context.getBuildFields(), allFields, lrb);
 		if (switches.length == 0)
 			return null;
 		lrb.transform(switches);
-		lrb.checking();
-
 		var pats = lrb.toPartern();
-		var lex = new LexEngine(pats);
-		// recalculation to reduce the table size.
-		var lex = new LexEngine(pats, (1 + lex.nstates) | 15, true);
+		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, true);
+		// modify lex.table as LR0
+		lrb.modify(lex);
 
 	#if lex_lr0table
 		var f = sys.io.File.write("lr0-table.txt");
-		f.writeString("Auto generated by \"-D lex_lr0table\"\n-----------------\n\nProduction:\n");
+		f.writeString("\nProduction:\n");
 		f.writeString(debug.Print.lr0Production(lrb));
-		f.writeString("\n\nstep 1: Init by lexEngine:\n");
 		f.writeString(debug.Print.lr0Table(lrb, lex));
-	#end
-		// modify lex.table as LR0
-		lrb.modify(lex);
-	#if lex_lr0table
-		f.writeString("\nstep 2: Modified to LR0:\n");
-		f.writeString(debug.Print.lr0Table(lrb, lex));
-		f.writeString("\n\nFinal RAW:\n");
+		f.writeString("\n\nRAW:\n");
 		lex.write(f, true);
 		f.close();
 	#end
+
+		lrb.checking(lex); // checking.
+
 		var ret = [];
 		//generate(ct_lr0, lrb, lex);
 		return ret;
 	}
 
 	static function generate(ct: ComplexType, lrb: LR0Builder, lex: lm.LexEngine) {
-		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
+		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
 		if (force_bytes) {
@@ -388,57 +402,46 @@ class LR0Builder {
 			f.close();
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var get_trans = macro raw.get(($v{lex.per} * s) + c);
-		var get_exits = macro raw.get(($v{lex.table.length - 1} - s));
-		if (!force_bytes) {
-			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
-			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
-		}
+		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
 		var useSwitch = false;
-		var gotos = useSwitch ? (macro cases(s, lr0)) : (macro cases[s](lr0));
+		var gotos = useSwitch ? (macro cases(fid, s, i, state)) : (macro cases[fid](s, i, state));
 		//var allCases: Array<Expr> = Lambda.flatten( lrb.lhsA.map(l -> l.cases) ).map( s -> s.expr );
-		var reduces: Array<ExprOf<Int>> = lrb.reduces.map(i -> macro $v{i});
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
-			static inline function trans(s: Int, c: Int):Int return $get_trans;
-			static inline function exits(s: Int):Int return $get_exits;
-			static inline function gotos(s: Int, lr0: $ct) return $gotos;
-			var stream: lm.Stream; var stack: Array<Int>; // state stack.
-			var stack: Array<Int>; // state stack.
-			var reduces: Array<Int> = [$a{reduces}];
+			static inline function getU8(i:Int):Int return $getU8;
+			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
+			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
+			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
+			static inline function gotos(fid:Int, s:lm.Stream, i:Int, state:Int) return $gotos;
+			var stream: lm.Stream; var stack: Array<Int>;
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream(lex);
+				right = 0;
 			}
-			function entry(state) {
-				var i = 0;
-				var t: lm.Stream.STok = null;
-				stack[i] = state;
+			function entry(state) @:privateAccess {
+				var i = stream.right;
+				var prev = state;
 				while (true) {
-					while (stack[i] < NSEGS) {
-						t = stream.peek(i++);     // start at 0.
-						stack[i] = trans(stack[i - 1], t.char);
-					}
-					while (i > 0) {
-						state = exits(stack[i]);
-						if (state < NRULES) {
-							var v = gotos(state, this);
-							if (state == 0) return v; // ACC, maybe should clean something???
-							// reduce(n) & push(s) =>
-
+					while (true) {
+						var t = stream.unsafeGet(i++);
+						state = trans(state, t.char);
+						if (state >= NSEGS)
 							break;
-						}
-						-- i;
+						prev = state;
 					}
-					if (t.char == 0) break; // chagne to Eof
+					// change state and go on.
+
 				}
 				return null;
 			}
 		}
 	}
 
-	static function filter(fields: Array<Field>, allFields, value) {
+	static function filter(fields: Array<Field>, allFields, lrb: LR0Builder) {
+		var lvalue = lrb.maxValue;
 		var ret = [];
 		for (f in fields) {
 			if (f.access.indexOf(AStatic) > -1) {
@@ -450,10 +453,21 @@ class LR0Builder {
 						if (edef != null)
 							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
 						firstCharChecking(f.name, LOWER, f.pos);
-						ret.push({name: f.name, value: value++, ct: ct, cases: cl, pos: f.pos});
+						ret.push({name: f.name, value: lvalue++, ct: ct, cases: cl, pos: f.pos});
 					case _:
 					}
 					continue;
+				case FFun(fun):
+					var ofstr = Lambda.find(f.meta, m->m.name == ":ofStr");
+					if (ofstr != null && ofstr.params.length > 0) {
+						var p0 = ofstr.params[0];
+						switch(p0.expr){
+						case EConst(CIdent(s)) | EConst(CString(s)):
+							lrb.funMap.set(s, {name: f.name, ct: fun.ret});
+						default:
+							Context.error("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
+						}
+					}
 				default:
 				}
 			}
@@ -475,70 +489,6 @@ class LR0Builder {
 		}
 	}
 
-	/**
-	 A => Ct | Dt
-	 B => At
-	 C => Et
-	 D => t
-	 E => t
-	 X => Yt
-	 Y => t
-	 result: [[A, B, C, D, E],  [X, Y]]
-
-	static function group(lhsA: LhsArray, lhsMap: Map<String, Lhs>) {
-		function inter(a:LhsArray, b:LhsArray) {
-			for (r in b)
-				if (a.indexOf(r) > 0)
-					return true;
-			return false;
-		}
-		function union(acc:LhsArray, b:LhsArray) {
-			for (r in b)
-				if (acc.indexOf(r) == -1)
-					acc.push(r);
-		}
-		function adding(top: String, acc: LhsArray, names: Array<String>) {
-			var subs = names.map(n -> lhsMap.get(n));
-			for (r in subs) {
-				if (r.name == top)
-					Context.error("Infinite recursion: ", r.pos);
-				acc.push(r);
-			}
-			for (r in subs)
-				adding(top, acc, r.leftsubs);
-		}
-		var col: Array<LhsArray> = [];
-		for (r in lhsA) {
-			var acc = [r];
-			adding(r.name, acc, r.leftsubs);
-			col.push(acc);
-		}
-		//
-		var i = 0, len = col.length;
-		while (i < len) {
-			var a = col[i];
-			if (a != null) {
-				var j = i;
-				while (j < len) {
-					var b = col[j];
-					if (b != null && a != b) {
-						if (inter(a, b)) {
-							union(a, b);
-							col[j] = null;
-						}
-					}
-					++ j;
-				}
-			}
-			++ i;
-		}
-		while (col.remove(null)) {
-		}
-		for (c in col)
-			c.sort( (a, b)->a.value - b.value);
-		return col;
-	}
-	*/
 }
 
 #else

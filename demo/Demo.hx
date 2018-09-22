@@ -1,21 +1,28 @@
 package;
 
+import lm.Stream;
+
 class Demo {
 	static function main() {
-		var str = '1 + 1';
+		var str = '1 + 1123 + -1 -; ';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
-			switch (t) {
-			case Eof:
-			//case CInt: Std.parseInt(lex.current);
-			case _:
-				a.push(lex.current);
-			}
+			a.push( switch (t) {
+				case Eof: "$";
+				case CInt: lex.current;
+				case OpPlus: "+";
+				case OpMinus: "-";
+				case OpTimes: "*";
+				case OpDiv:   "/";
+				case LParen:  "(";
+				case RParen:  ")";
+				case Semicolon: ";";
+			});
 			t = lex.token();
 		}
-		trace(a.join(""));
+		trace(a.join(",") == "1,+,1123,+,-1,-,;");
 	}
 }
 
@@ -28,6 +35,7 @@ enum abstract Token(Int) to Int {
 	var OpDiv;
 	var LParen;
 	var RParen;
+	var Semicolon;
 }
 
 @:rule(127, Eof) class Lexer implements lm.Lexer<Token> {
@@ -42,20 +50,19 @@ enum abstract Token(Int) to Int {
 		"/" => OpDiv,
 		"(" => LParen,
 		")" => RParen,
+		";" => Semicolon,
 	];
 }
 
 class Parser implements lm.LR0<Lexer> {
+
 	static var main = switch(s) {
 		case [e = expr, Eof]: e;
 	}
+
 	static var expr = switch(s) {
-		case [e1 = expr, OpPlus, e2 = expr]:
-			e1 + e2;
-		//case [LParen, e = expr, RParen]:
-		//	e;
-		case [CInt(n)]:
-			n;
+		case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
+		case [CInt]: n;
 	}
 
 	@:ofStr(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
