@@ -1,6 +1,7 @@
 package lm;
 
 #if macro
+import lm.LexEngine.INVALID;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
@@ -31,7 +32,8 @@ class LexBuilder {
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
-		if (meta.eof == null) Context.error("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+		if (meta.eof == null)
+			Context.error("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
@@ -47,7 +49,7 @@ class LexBuilder {
 		// transform
 		for (f in Context.getBuildFields()) {
 			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
-			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) {
+			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}):
 					var g:Group = {name: f.name, rules: [], cases: []};
@@ -76,7 +78,6 @@ class LexBuilder {
 		}
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
-		if (meta.eof == null) meta.eof = macro null;
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
 		// lexEngine
@@ -90,6 +91,11 @@ class LexBuilder {
 			}
 		}
 		var lex = new LexEngine(rules, meta.cmax);
+		#if lex_table
+		var f = sys.io.File.write("lex-table.txt");
+		lex.write(f, true);
+		f.close();
+		#end
 		// generate
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
@@ -112,19 +118,20 @@ class LexBuilder {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
-			static inline var CMAX = $v{lex.per - 1};
 			static inline function getU8(i:Int):Int return $getU8;
 			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
-			static inline function rollR(s:Int):Int return getU8(s + $v{lex.per * lex.segs});
-			static inline function rollL(s:Int):Int return getU8(s + $v{lex.per * lex.segs + lex.per});
+			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
+			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
 			static inline function gotos(s:Int, lex: $ct_lex) return $gotos;
 			var input: lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
 			public var current(get, never): String;
-			private inline function get_current():String return input.readString(pmin, pmax - pmin);
-			public function curpos() return new lm.Position(pmin, pmax);
+			inline function get_current():String return input.readString(pmin, pmax - pmin);
+			public inline function getString(p, len):String return input.readString(p, len);
+			public inline function setPosition(p):Void pmax = p;
+			public inline function curpos() return new lm.Position(pmin, pmax);
 			public function new(s: lms.ByteData) {
 				this.input = s;
 				pmin = 0;
@@ -138,32 +145,31 @@ class LexBuilder {
 				while (i < len) {
 					var c = input.readByte(i++);
 				#if lex_charmax
-					if (c > CMAX) c = CMAX;
+					if (c > $v{meta.cmax}) c = $v{meta.cmax};
 				#end
 					state = trans(state, c);
 					if (state >= NSEGS)
 						break;
 					prev = state;
 				}
-				state = exits(state);
-				return if (state < NRULES) {
-					pmax = i;
-					gotos(state, this);
+				if (state == $v{INVALID}) {
+					state = prev;
+					prev = 1;
 				} else {
-					state = exits(prev);
-					if (state < NRULES) {
-						pmax = i - 1;
-						gotos(state, this);
+					prev = 0;
+				}
+				var q = exits(state);
+				if (q < NRULES) {
+					pmax = i - prev;
+				} else {
+					q = rollB(state);
+					if (q < NRULES) {
+						pmax = i - prev - rollL(state);
 					} else {
-						state = rollR(prev);
-						if (state < NRULES) {
-							pmax = i - 1 - rollL(prev);
-							gotos(state, this);
-						} else {
-							throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
-						}
+						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
 					}
 				}
+				return gotos(q, this);
 			}
 		}// class end
 		var pos = TPositionTools.here();

@@ -7,4 +7,6 @@ package lm;
 	var current(get, never): String;
 	function curpos(): lm.Position;
 	function token(): T;
+	function getString(p:Int, len:Int):String;
+	function setPosition(p: Int): Void;
 }
