@@ -1,16 +1,99 @@
 package lm;
 
 class Tok {
+	public var state: Int;
 	public var char: Int;
-	public var pos: lm.Position;
-	public var val: Dynamic; // TODO
-	public function new(c, p) {
+	public var pmin: Int;
+	public var pmax: Int;
+	public var val: Dynamic;
+	public function new(c, min, max) {
 		char = c;
-		pos = p;
+		pmin = min;
+		pmax = max;
+		// state = lm.LexEngine.INVALID;
 	}
-	public inline function puinon(p2: lm.Position):Void this.pos = Stream.punion(this.pos, p2);
+	public inline function setState(s) state = s;
 }
 
+class Stream {
+
+	static inline var FULL = 128;
+
+	var cached: haxe.ds.Vector<Tok>;
+	var lex: lm.Lexer<Int>;
+
+	var base: Int;
+	public var right(default, null): Int;
+	public var length(get, never): Int;
+	inline function get_length():Int return right - base;
+
+	public function new(l: lm.Lexer<Int>, s: Int) {
+		lex = l;
+		cached = new haxe.ds.Vector<Tok>(FULL);
+		right = 1;
+		base = 1;
+		cached[0] = new Tok(0, 0, 0);
+		cached[0].state = s;
+	}
+
+	public function destroy() {
+		lex = null;
+		cached = null;
+	}
+
+	public function peek(i: Int):Tok {
+		while (length <= i) {
+			var t = lex.token();
+			cached[right++] = new Tok(t, lex.pmin, lex.pmax);
+		}
+		return cached[right - 1];
+	}
+
+	public function junk(n: Int) {
+		if (n <= 0) {
+			right = base;
+		} else if (right >= n) {
+			for (i in 0...length - n)
+				cached[i] = cached[n + 1];
+			right -= n;
+		} else {
+			n -= length;
+			while (n-- > 0)
+				lex.token();
+			right = base;
+		}
+	}
+
+	function get(r) {
+		if (right == r) {
+			var t = lex.token();
+			cached[right++] = new Tok(t, lex.pmin, lex.pmax);
+		}
+		return cached[r];
+	}
+
+	inline function str(t: Tok):String return lex.getString(t.pmin, t.pmax - t.pmin);
+	inline function limit() base = right;                  // before the user calls s.peek(N)
+	inline function unlimited() {right = base;  base = 1;} // restore.
+	inline function last() return cached[right - 1];
+
+	function rollback(left) {
+		right = left;
+		@:privateAccess lex.pmax = cached[left].pmin;
+		return cached[left - 1].state;
+	}
+
+	function reduce(r, char, value) {
+		var t = cached[r];
+		t.char = char;
+		t.val = value;
+		t.pmax = cached[r - 1].pmax; // punion
+		right = r + 1;
+		return t;
+	}
+}
+
+/*
 class Stream {
 
 	static inline var FULL = 256;
@@ -54,7 +137,6 @@ class Stream {
 
 	public function peek(i: Int):Tok {
 		var len = this.length();
-		if (len == i) return pull();
 		while (len <= i) {
 			pull();
 			++ len;
@@ -90,36 +172,51 @@ class Stream {
 		}
 	}
 
+	function rollback(left: Int) {
+		if (left < 0) {
+			left += FULL;
+			lvl = 0;
+		}
+		right = left;
+		lex.setPosition(cached[left].pos.pmin);
+	}
+
 	function unsafeGet(r: Int) {
 		if (r == right)
 			return pull();
 		return cached[r];
 	}
 
-	function rollback(r: Int, n: Int) {
+	function reduce(r: Int, n: Int, char: Int, value: Dynamic): Tok {
+		var last = r - 1;
+		if (last < 0) last += FULL;
 		r -= n;
 		if (r < 0) {
 			r += FULL;
 			lvl = 0;
 		}
-		right = r;
-		lex.setPosition(cached[r].pos.pmin);
+		cached[r].char = char;
+		cached[r].val = value;
+		cached[r].pos = new lm.Position(cached[r].pos.pmin, cached[last].pos.pmax);
+		right = r + 1;
+		return cached[r];
 	}
 
-	function reduce(r: Int, n: Int, value: Dynamic): Tok {
-
-
-		throw "TODO";
-	}
-
-	inline function strpos(dx) {
-		var pos = cached[right + dx].pos;
+	function str(r) {
+		if (r < 0) r += FULL;
+		var pos = cached[r].pos;
 		return lex.getString(pos.pmin, pos.plen);
 	}
 
-	public static function punion(p1:lm.Position, p2:lm.Position):lm.Position {
-		var pmin = lm.Utils.imin(p1.pmin, p2.pmin);
-		var pmax = lm.Utils.imax(p1.pmax, p2.pmax);
-		return new lm.Position(pmin, pmax);
+	function pos(r) {
+		if (r < 0) r += FULL;
+		return cached[r].pos;
 	}
+
+	//public static function punion(p1:lm.Position, p2:lm.Position):lm.Position {
+	//	var pmin = lm.Utils.imin(p1.pmin, p2.pmin);
+	//	var pmax = lm.Utils.imax(p1.pmax, p2.pmax);
+	//	return new lm.Position(pmin, pmax);
+	//}
 }
+*/

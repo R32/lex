@@ -166,9 +166,10 @@ class LR0Builder {
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
-						case EParenthesis(macro $i{i}):
-							firstCharChecking(i, LOWER, e.pos);            // for all termls
-							g.syms.push( {t: true, name: null, cset: termlsC_All,       ex: i,    pos: e.pos} );
+						// TODO: later.
+						//case EParenthesis(macro $i{i}):
+						//	firstCharChecking(i, LOWER, e.pos);            // for all termls
+						//	g.syms.push( {t: true, name: null, cset: termlsC_All,       ex: i,    pos: e.pos} );
 
 						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n)
 							firstCharChecking(i, UPPER, e.pos);
@@ -201,7 +202,6 @@ class LR0Builder {
 			}
 			this.lhsA.push(lhs);
 		}
-
 		organize();
 	}
 
@@ -240,7 +240,7 @@ class LR0Builder {
 
 	function checking(lex: LexEngine) {
 		var table = lex.table;
-		// 1. Is it unreachable?
+		// 1. Is switch case unreachable?
 		var exists = new haxe.ds.Vector<Int>(lex.nrules);
 		for (i in table.length-lex.perRB...table.length) {
 			var c = table.get(i);
@@ -255,7 +255,7 @@ class LR0Builder {
 		for (index in 0...lex.entrys.length) {
 			var base = lex.entrys[index].begin * lex.per;
 			var find = false;
-			for (i in base ... base + this.maxValue) { // all terminals are lower then maxValue
+			for (i in base ... base + this.maxValue) {
 				var c = table.get(i);
 				if (c != INVALID) {
 					find = true;
@@ -264,8 +264,7 @@ class LR0Builder {
 			}
 			if (!find) Context.error("There must be at least one terminator.", lhsA[index].pos);
 		}
-
-		// 3. have more ?
+		// 3. more?
 	}
 
 	function toPartern(): Array<PatternSet> {
@@ -408,8 +407,9 @@ class LR0Builder {
 		//var allCases: Array<Expr> = Lambda.flatten( lrb.lhsA.map(l -> l.cases) ).map( s -> s.expr );
 		var defs = macro class {
 			static var raw = $raw;
-			static inline var NRULES = $v{lex.nrules};
-			static inline var NSEGS = $v{lex.segs};
+			static inline var NRULES  = $v{lex.nrules};
+			static inline var NSEGS   = $v{lex.segs};
+			static inline var INVALID = $v{INVALID};
 			static inline function getU8(i:Int):Int return $getU8;
 			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
@@ -421,21 +421,50 @@ class LR0Builder {
 				this.stream = new lm.Stream(lex);
 				right = 0;
 			}
-			function entry(state) @:privateAccess {
-				var i = stream.right;
+			function entry(state, expect) @:privateAccess {
+				var r = stream.right;
 				var prev = state;
 				while (true) {
 					while (true) {
-						var t = stream.unsafeGet(i++);
-						state = trans(state, t.char);
+						var t = stream.get(r++);
+						state = trans(prev, t.char);
+						t.setState(state);
 						if (state >= NSEGS)
 							break;
 						prev = state;
 					}
-					// change state and go on.
+					var dx = 0;
+					if (state == INVALID) {
+						state = prev;
+						dx = 1;
+					}
+					var q = exits(state);
+					if (q < NRULES) {
+						r -= dx;
+					} else {
+						q = rollB(state);
+						if (q < NRULES) {
+							r = r - dx - rollL(state);
+							state = stream.rollback(r);
+						} else {
+							break; // error.
+						}
+					}
+					stream.limit();
+					var reduce: Int = gotos(q, this.stream, r, state);
 
+					// the gotos may change the r and state..
+
+					//if (reduce & 0xFF == expect)
+					//	return value;
+					// 假如在这里归约, 则需要一个 归约宽度 与 归约值
+					// 假如在 gotos 里归约, 则要给每一个函数增加
+					// 假设 gotos 只返回 value, 需要获得
+					stream.unlimited();
+					prev = stream.last().state;
 				}
-				return null;
+				var last = stream.peek(r - 1);
+				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pos.pmin + "-" + last.pos.pmax);
 			}
 		}
 	}

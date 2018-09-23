@@ -62,7 +62,7 @@ class Parser implements lm.LR0<Lexer> {
 
 	static var expr = switch(s) {
 		case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
-		case [CInt]: n;
+		case [CInt(n)]: n;
 	}
 
 	@:ofStr(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);

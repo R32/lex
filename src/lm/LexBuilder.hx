@@ -130,7 +130,6 @@ class LexBuilder {
 			public var current(get, never): String;
 			inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public inline function getString(p, len):String return input.readString(p, len);
-			public inline function setPosition(p):Void pmax = p;
 			public inline function curpos() return new lm.Position(pmin, pmax);
 			public function new(s: lms.ByteData) {
 				this.input = s;
