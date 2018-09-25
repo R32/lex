@@ -1,0 +1,14 @@
+-cp ../src
+-D old-error-format
+-main Demo
+#--each
+#-D analyzer-optimize
+#-D nodejs
+#-dce full
+#-js demo.js
+
+#--next
+#-hl demo.hl
+
+#--next
+--interp

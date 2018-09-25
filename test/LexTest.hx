@@ -48,7 +48,7 @@ class LexTest {
 	}
 
 	static public function lex_test(): Void @:privateAccess {
-		var lex = new Lexer(lm.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
+		var lex = new Lexer(lms.ByteData.ofString(' 123 	+ 	456 	 * 23 +  "hello world" 	 + 	 1'));
 		var t = lex.token();
 		var a = [];
 		while (t != Eof) {
@@ -101,7 +101,7 @@ class LexTest {
 }
 
 /**
- @:rule(127, Eof) that is 127 => charset(0, 127). the Eof is a custom terminator, or null if none.
+ @:rule(127, Eof) that is 127 => charset(0, 127). the Eof is a custom terminator.
  and the "static var..." will be treated as rules if no `@:skip`
 */
 @:rule(127, Eof) class Lexer implements lm.Lexer<Token> {
@@ -122,8 +122,9 @@ class LexTest {
 	];
 	static var str = [
 		'[^"]*' => {
+			var s = CStr(lex.current);
 			lex.pmax++;
-			CStr(lex.current);
+			s;
 		}
 	];
 

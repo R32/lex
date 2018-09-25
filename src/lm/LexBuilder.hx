@@ -1,12 +1,13 @@
 package lm;
 
 #if macro
+import lm.LexEngine.INVALID;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
 using haxe.macro.Tools;
 
-typedef Group = {
+private typedef Group = {
 	name: String,
 	rules: Array<String>,
 	cases: Array<Expr>,
@@ -31,13 +32,24 @@ class LexBuilder {
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
+		if (meta.eof == null)
+			Context.error("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+		for (it in cls.interfaces) {
+			if (it.t.toString() == "lm.Lexer") {
+				var t = it.params[0];
+				if (Context.unify(t, Context.typeof(meta.eof)) == false)
+					Context.error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+				break;
+			}
+		}
 		var ret = [];
-		var groups = [];
+		var groups: Array<Group> = [];
 		var idmap = new Map<String,String>();
 		var all_fields = new haxe.ds.StringMap<Bool>();
+		// transform
 		for (f in Context.getBuildFields()) {
 			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
-			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) {
+			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}):
 					var g:Group = {name: f.name, rules: [], cases: []};
@@ -49,8 +61,11 @@ class LexBuilder {
 						default:
 							Context.error("Expected pattern => function", e.pos);
 						}
-					if (g.rules.length > 0)
+					if (g.rules.length > 0) {
+						if (Lambda.exists(groups, x->x.name == g.name))
+							Context.error("Duplicate: " + g.name, f.pos);
 						groups.push(g);
+					}
 					continue;
 				case FVar(_, {expr: EConst(CString(s))}):
 					idmap.set(f.name, s);
@@ -63,19 +78,25 @@ class LexBuilder {
 		}
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
-		var force_bytes = !Context.defined("js") || Context.defined("force_bytes");
-		if (Context.defined("lex_str")) force_bytes = false; // force string as table format
-		// Table Build
-		var cset = [new lm.Charset.Char(0, meta.cmax)];
+		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
+		// lexEngine
+		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = [];
 		var cases = [];
 		for (g in groups) {
-			rules.push( g.rules.map( s -> LexEngine.parse(s, cset) ));
+			rules.push( g.rules.map( s -> LexEngine.parse(s, c_all) ));
 			for (i in 0...g.rules.length) {
 				cases.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
 			}
 		}
 		var lex = new LexEngine(rules, meta.cmax);
+		#if lex_table
+		var f = sys.io.File.write("lex-table.txt");
+		lex.write(f, true);
+		f.close();
+		#end
+		// generate
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
 		if (force_bytes) {
@@ -90,29 +111,28 @@ class LexBuilder {
 			f.close();
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var get_trans = macro raw.get(($v{lex.per} * s) + c);
-		var get_exits = macro raw.get(($v{lex.table.length - 1} - s));
-		if (!force_bytes) {
-			get_trans = macro StringTools.fastCodeAt(raw, ($v{lex.per} * s) + c);
-			get_exits = macro StringTools.fastCodeAt(raw, $v{lex.table.length - 1} - s);
-		}
-		var lex_switch = lex.nrules < 6 || Context.defined("lex_switch");
-		var gotos = lex_switch ? (macro cases(s, lex)) : (macro cases[s](lex));
+		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
+		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
+		var gotos = useSwitch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
-			static inline function trans(s: Int, c: Int):Int return $get_trans;
-			static inline function exits(s: Int):Int return $get_exits;
-			static inline function gotos(s: Int, lex: $ct_lex) return $gotos;
-			var input: lm.ByteData;
+			static inline function getU8(i:Int):Int return $getU8;
+			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
+			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
+			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
+			static inline function gotos(s:Int, lex: $ct_lex) return $gotos;
+			var input: lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
-			public var current(default, null): String;
-			public function curpos() return new lm.Position(pmin, pmax);
-			public function new(s: lm.ByteData) {
+			public var current(get, never): String;
+			inline function get_current():String return input.readString(pmin, pmax - pmin);
+			public inline function getString(p, len):String return input.readString(p, len);
+			public inline function curpos() return new lm.Position(pmin, pmax);
+			public function new(s: lms.ByteData) {
 				this.input = s;
-				current = "";
 				pmin = 0;
 				pmax = 0;
 			}
@@ -120,35 +140,41 @@ class LexBuilder {
 				var i = pmax, len = input.length;
 				if (i >= len) return $e{meta.eof};
 				pmin = i;
-				var prev = $v{lex.per - 1}; // state of error
+				var prev = state;
 				while (i < len) {
 					var c = input.readByte(i++);
+				#if lex_charmax
+					if (c > $v{meta.cmax}) c = $v{meta.cmax};
+				#end
 					state = trans(state, c);
 					if (state >= NSEGS)
 						break;
 					prev = state;
 				}
-				state = exits(state);
-				return if (state < NRULES) {
-					pmax = i;
-					current = input.readString(pmin, pmax - pmin);
-					gotos(state, this);
+				if (state == $v{INVALID}) {
+					state = prev;
+					prev = 1; // use prev as dx.
 				} else {
-					state = exits(prev);
-					if (state < NRULES) {
-						pmax = i - 1; // one char one state
-						current = input.readString(pmin, pmax - pmin);
-						gotos(state, this);
+					prev = 0;
+				}
+				var q = exits(state);
+				if (q < NRULES) {
+					pmax = i - prev;
+				} else {
+					q = rollB(state);
+					if (q < NRULES) {
+						pmax = i - prev - rollL(state);
 					} else {
 						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
 					}
 				}
+				return gotos(q, this);
 			}
 		}// class end
 		var pos = TPositionTools.here();
 		for (i in 0...groups.length) {
 			var g = groups[i];
-			var seg = lex.metas[i];
+			var seg = lex.entrys[i];
 			var sname = i == 0 ? "BEGIN" : g.name.toUpperCase() + "_BEGIN";
 			defs.fields.push( addInlineFVar(sname, seg.begin, pos) );
 			defs.fields.push({
@@ -163,16 +189,11 @@ class LexBuilder {
 			});
 		}
 		// switch or functions array jump table.
-		if (lex_switch) {
-			cases = []; // rewrite cases
-			for (g in groups)
-				for (c in g.cases)
-					cases.push(c);
-			var ca = [];
-			for (i in 0...cases.length - 1) {
-				ca.push({values: [macro $v{i}], expr: cases[i]});
-			}
-			var eSwitch = {expr: ESwitch(macro (s), ca, cases[cases.length - 1]), pos: pos};
+		if (useSwitch) {
+			cases = Lambda.flatten( groups.map(g -> g.cases) );
+			var defCase = cases.pop();
+			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+			var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
 			defs.fields.push({
 				name: "cases",
 				access: [AStatic],

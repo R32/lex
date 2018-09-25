@@ -1,6 +1,9 @@
-package lm;
+package lms;
 
-#if (!js || force_bytes)
+/**
+* You can use "--remap <lms:mypkg>" to override this class.
+*/
+#if lex_rawinput
 extern abstract ByteData(haxe.io.Bytes) {
 	public var length(get,never):Int;
 	private inline function get_length():Int return this.length;
