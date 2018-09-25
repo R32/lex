@@ -228,7 +228,7 @@ class LexEngine {
 				var follow = this.table.get(p);
 				if (follow == INVALID || follow == seg) continue;
 				this.table.set(rollpos + follow, exit);
-				this.table.set(rlenpos + follow, length); // junk(N) when rollback.
+				this.table.set(rlenpos + follow, length); // junk(length) when rollback.
 				if (epsilon(follow) == INVALID && follow < this.segs)
 					loop(exit, follow, length + 1);
 			}

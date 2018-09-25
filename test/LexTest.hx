@@ -101,7 +101,7 @@ class LexTest {
 }
 
 /**
- @:rule(127, Eof) that is 127 => charset(0, 127). the Eof is a custom terminator, or null if none.
+ @:rule(127, Eof) that is 127 => charset(0, 127). the Eof is a custom terminator.
  and the "static var..." will be treated as rules if no `@:skip`
 */
 @:rule(127, Eof) class Lexer implements lm.Lexer<Token> {

@@ -153,7 +153,7 @@ class LexBuilder {
 				}
 				if (state == $v{INVALID}) {
 					state = prev;
-					prev = 1;
+					prev = 1; // use prev as dx.
 				} else {
 					prev = 0;
 				}
@@ -191,7 +191,7 @@ class LexBuilder {
 		// switch or functions array jump table.
 		if (useSwitch) {
 			cases = Lambda.flatten( groups.map(g -> g.cases) );
-			var defCase = macro throw lm.Utils.error("OutOfRange"); // cases.pop();
+			var defCase = cases.pop();
 			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
 			var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
 			defs.fields.push({

@@ -37,7 +37,9 @@ typedef SymSwitch = {
 
 typedef SymbolSet = {
 	expr: Expr,
+	guard: Null<Expr>,
 	syms: Array<Symbol>,
+	pos: Position, // case pos
 }
 
 typedef Lhs = {    // one switch == one Lhs
@@ -61,6 +63,7 @@ class LR0Builder {
 	var lhsMap: Map<String,Lhs>;
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType}>; //  TokenName => FunctionName
+	var ct_tk: ComplexType;
 
 	public function new(tk, es) {
 		maxValue = 0;
@@ -71,6 +74,7 @@ class LR0Builder {
 		lhsMap = new Map();
 		funMap = new Map();
 		sEof = es;
+		ct_tk = Context.toComplexType(tk);
 		parseToken(tk);
 	}
 
@@ -83,8 +87,8 @@ class LR0Builder {
 					switch(meta.params[0].expr) {
 					case ECast({expr: EConst(CInt(i))}, _):
 						var n = Std.parseInt(i);
-						if (n < 0 || n > 126) // TODO:
-							Context.error("Value should be [0-126]", field.pos);
+						if (n < 0 || n > 99) // TODO:
+							Context.error("Value should be [0-99]", field.pos);
 						if (n > maxValue) maxValue = n;
 						firstCharChecking(field.name, UPPER, field.pos);
 						var t = {t: true, name: field.name, value: n, cset: CSet.single(n), pos: field.pos};
@@ -140,7 +144,6 @@ class LR0Builder {
 		for (sw in swa) { // init udtMap first..
 			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
 		}
-		//inline function typeof(e: Expr) return try{ Context.typeExpr(e); }catch(err:Dynamic){null;}
 		inline function setEpsilon(lhs, pos) {
 			if (lhs.epsilon) Context.error('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
@@ -159,14 +162,14 @@ class LR0Builder {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.error('This case is unused', c.values[0].pos);
-					var g: SymbolSet = {expr: c.expr, syms: []};
+					var g: SymbolSet = {expr: c.expr, guard: c.guard, syms: [], pos: pos};
 					for (e in el) {
 						switch (e.expr) {
 						case EConst(CIdent(i)):
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
-						// TODO: later.
+						// TODO: match all terminals
 						//case EParenthesis(macro $i{i}):
 						//	firstCharChecking(i, LOWER, e.pos);            // for all termls
 						//	g.syms.push( {t: true, name: null, cset: termlsC_All,       ex: i,    pos: e.pos} );
@@ -193,7 +196,7 @@ class LR0Builder {
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({expr: c.expr, syms: []});
+					lhs.cases.push({expr: c.expr, guard: null, syms: [], pos: pos});
 				case [e]:
 					Context.error("Expected [ patterns ]", e.pos);
 				case _:
@@ -221,11 +224,15 @@ class LR0Builder {
 				Context.error("for entry you must place *"+ this.sEof +"* at the end", last.pos);
 		}
 
-		// duplicate var checking.
+		// duplicate var checking. & transform expr
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
 				var row = new Map<String,Bool>();
-				for (s in li.syms) {
+				var a:Array<Expr> = [];
+				var len = li.syms.length;
+				for (i in 0...len) {
+					var s = li.syms[i];
+					// checking...
 					if (s.t == false && s.name == entry.name)
 						Context.error("the entry non-terminal(\"" + s.name +"\") is not allowed on the right", s.pos);
 					if (s.ex == null)
@@ -233,6 +240,37 @@ class LR0Builder {
 					if (row.exists(s.ex))
 						Context.error("duplicate var: " + s.ex, s.pos);
 					row.set(s.ex, true);
+
+					// TODO: position
+					// transform expr
+					var name = s.ex;  // variable name
+					var dx = -(len - i);
+					if (s.t) {
+						var ofstr = funMap.get(s.name); //
+						if (ofstr == null) {
+							var ct = ct_tk;
+							a.push(macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).term);
+						} else {
+							var ct = ofstr.ct;
+							a.push(macro var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+						}
+					} else {
+						var ct = lhs.ct;
+						a.push( macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).val );
+					}
+				}
+				li.expr = macro @:pos(li.expr.pos) {
+					@:mergeBlock $b{a};
+					@:privateAccess s.reduce($v{lhs.value}, $v{len});
+					@:mergeBlock $e{li.expr}
+				}
+				if (li.guard == null) continue;
+				li.expr = macro @:pos(li.expr.pos) if ($e{li.guard}) {
+					@:mergeBlock $e{li.expr}
+				} else {
+					var t = s.offset( -1);
+					@:privateAccess s.rollback( rollL(t.state) );
+					gotos( rollB(t.state), s );
 				}
 			}
 		}
@@ -240,16 +278,21 @@ class LR0Builder {
 
 	function checking(lex: LexEngine) {
 		var table = lex.table;
-		// 1. Is switch case unreachable?
-		var exists = new haxe.ds.Vector<Int>(lex.nrules);
+		// init exitN => final_state
+		var exits = new haxe.ds.Vector<Int>(lex.nrules);
+		for (n in 0...lex.nrules)
+			exits[n] = INVALID;
 		for (i in table.length-lex.perRB...table.length) {
-			var c = table.get(i);
-			if (c == INVALID) continue;
-			exists[c] = 1;
+			var n = table.get(i);
+			if (n == INVALID) continue;
+			// since: i = table.length - 1 - state;
+			// so   : state = table.length - 1 - i;
+			exits[n] = table.length - 1 - i;
 		}
-		for (i in 0...lex.nrules)
-			if (exists[i] != 1)
-				Context.error("Unreachable switch case", indexCase(i).expr.pos);
+		// 1. Is switch case unreachable?
+		for (n in 0...lex.nrules)
+			if (exits[n] == INVALID)
+				Context.error("Unreachable switch case", indexCase(n).pos);
 
 		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly.
 		for (index in 0...lex.entrys.length) {
@@ -264,7 +307,20 @@ class LR0Builder {
 			}
 			if (!find) Context.error("There must be at least one terminator.", lhsA[index].pos);
 		}
-		// 3. more?
+
+		// 3. switch guard
+		var n = 0;
+		for (lhs in this.lhsA) {
+			for (li in lhs.cases) {
+				if (li.guard != null) {
+					var final_state = exits[n];
+					if (lex.table.get(lex.posRB() + final_state) == INVALID)
+						Context.error("No switch case that can be rollback from here", li.guard.pos);
+				}
+				++ n;
+			}
+		}
+		// more?
 	}
 
 	function toPartern(): Array<PatternSet> {
@@ -299,8 +355,10 @@ class LR0Builder {
 						addition(lex, next, follow, -1, lpos);
 					}
 				} else {
-					if (follow != INVALID)
-						Context.error("rewrite conflict", lpos);
+					if (follow != INVALID) {
+						var id = Lambda.find(udtMap, u -> u.value == i).name;
+						Context.error("rewrite conflict: " + id, lpos);
+					}
 					lex.table.set(dstStart + i, s);
 				}
 				++ i;
@@ -357,7 +415,7 @@ class LR0Builder {
 			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
 		// begin
 		var lrb = new LR0Builder(tk, eof.toString());
-		var allFields = new haxe.ds.StringMap<Bool>();
+		var allFields = new haxe.ds.StringMap<Field>();
 		var switches = filter(Context.getBuildFields(), allFields, lrb);
 		if (switches.length == 0)
 			return null;
@@ -380,11 +438,15 @@ class LR0Builder {
 		lrb.checking(lex); // checking.
 
 		var ret = [];
-		//generate(ct_lr0, lrb, lex);
+		var defs = lrb.generate(lex);
+		for (f in defs)
+			if (!allFields.exists(f.name))
+				ret.push(f);
+		for (f in allFields) ret.push(f);
 		return ret;
 	}
 
-	static function generate(ct: ComplexType, lrb: LR0Builder, lex: lm.LexEngine) {
+	function generate(lex: lm.LexEngine) {
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
@@ -402,9 +464,8 @@ class LR0Builder {
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
 		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
-		var useSwitch = false;
-		var gotos = useSwitch ? (macro cases(fid, s, i, state)) : (macro cases[fid](s, i, state));
-		//var allCases: Array<Expr> = Lambda.flatten( lrb.lhsA.map(l -> l.cases) ).map( s -> s.expr );
+		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
+		var gotos = useSwitch ? (macro cases(fid, s)) : (macro cases[fid](s));
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES  = $v{lex.nrules};
@@ -415,59 +476,104 @@ class LR0Builder {
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
 			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
 			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
-			static inline function gotos(fid:Int, s:lm.Stream, i:Int, state:Int) return $gotos;
+			static inline function gotos(fid:Int, s:lm.Stream) return $gotos;
 			var stream: lm.Stream; var stack: Array<Int>;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = new lm.Stream(lex);
-				right = 0;
+				this.stream = new lm.Stream(lex, $v{lex.entrys[0].begin});
 			}
-			function entry(state, expect) @:privateAccess {
-				var r = stream.right;
+			function _entry(state, exp) @:privateAccess {
 				var prev = state;
+				var t: lm.Stream.Tok;
+				var dx = 0;
 				while (true) {
 					while (true) {
-						var t = stream.get(r++);
-						state = trans(prev, t.char);
-						t.setState(state);
+						t = stream.next();
+						state = trans(prev, t.term);
+						//trace(stream.pos, prev, state, t.term);
+						t.state = state;
 						if (state >= NSEGS)
 							break;
 						prev = state;
 					}
-					var dx = 0;
 					if (state == INVALID) {
 						state = prev;
 						dx = 1;
+					} else {
+						dx = 0;
 					}
 					var q = exits(state);
 					if (q < NRULES) {
-						r -= dx;
+						stream.pos -= dx;
 					} else {
 						q = rollB(state);
 						if (q < NRULES) {
-							r = r - dx - rollL(state);
-							state = stream.rollback(r);
+							stream.rollback( dx + rollL(state) );
 						} else {
-							break; // error.
+							break;          // throw error.
 						}
 					}
-					stream.limit();
-					var reduce: Int = gotos(q, this.stream, r, state);
-
-					// the gotos may change the r and state..
-
-					//if (reduce & 0xFF == expect)
-					//	return value;
-					// 假如在这里归约, 则需要一个 归约宽度 与 归约值
-					// 假如在 gotos 里归约, 则要给每一个函数增加
-					// 假设 gotos 只返回 value, 需要获得
-					stream.unlimited();
-					prev = stream.last().state;
+					var value = gotos(q, stream);
+					t = stream.offset( -1); // last token
+					if (t.term == exp) {
+						-- stream.pos;      // discard the last token
+						stream.junk(0);
+						return value;
+					}
+					t.val = value;
+					t.state = trans(stream.offset( -2).state, t.term);
+					prev = t.state;
 				}
-				var last = stream.peek(r - 1);
-				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pos.pmin + "-" + last.pos.pmax);
+				var last = stream.offset( -1);
+				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pmin + "-" + last.pmax);
 			}
 		}
+
+		// jump table or switch..
+		var cases:Array<Expr> = Lambda.flatten( lhsA.map(l -> l.cases)).map( s -> s.expr );
+		var here = TPositionTools.here();
+		if (useSwitch) {
+			var defCase = cases.pop();
+			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+			var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
+			defs.fields.push({
+				name: "cases",
+				access: [AStatic],
+				kind: FFun({
+					args: [{name: "f", type: macro: Int}, {name: "s", type: macro :lm.Stream}],
+					ret: null,
+					expr: macro return $eSwitch,
+				}),
+				pos: here,
+			});
+
+		} else {
+			var funs = cases.map(function(e){ return macro (s: lm.Stream) -> $e; });
+			defs.fields.push({
+				name: "cases",
+				access: [AStatic],
+				kind: FVar(null, macro [$a{ funs }]),
+				pos: here,
+			});
+		}
+		// entrys
+		for (i in 0...lex.entrys.length) {
+			var entry = lex.entrys[i];
+			var lhs = lhsA[i];
+			defs.fields.push({
+				name: lhs.name,
+				access: i == 0 ? [APublic, AInline] : [AInline],
+				kind: FFun({
+					args: [],
+					ret: lhs.ct,
+					expr: macro return _entry($v{entry.begin}, $v{lhs.value})
+				}),
+				pos: lhs.pos,
+			});
+		}
+		return defs.fields;
 	}
+
+	////////
 
 	static function filter(fields: Array<Field>, allFields, lrb: LR0Builder) {
 		var lvalue = lrb.maxValue;
@@ -500,7 +606,7 @@ class LR0Builder {
 				default:
 				}
 			}
-			allFields.set(f.name, true);
+			allFields.set(f.name, f);
 		}
 		return ret;
 	}
