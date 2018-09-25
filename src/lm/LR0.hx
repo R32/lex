@@ -156,8 +156,6 @@ class LR0Builder {
 		for (sw in swa) {
 			var lhs: Lhs = { name: sw.name, value: sw.value, ct: sw.ct, cases: [], epsilon: false, pos: sw.pos};
 			for (c in sw.cases) {
-				if (c.guard != null)
-					Context.error("Doesn't support guard", c.guard.pos);
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
@@ -264,19 +262,25 @@ class LR0Builder {
 					}
 				}
 				//
-				li.expr = macro @:pos(li.expr.pos) {
-					@:mergeBlock $b{a};
-					@:privateAccess s.reduce($v{lhs.value}, $v{len});
-					@:mergeBlock $e{li.expr}
-				}
-				if (li.guard == null) continue;
-				li.expr = macro @:pos(li.expr.pos) if ($e{li.guard}) {
-					@:mergeBlock $e{li.expr}
+				li.expr = if (li.guard == null) {
+					macro @:pos(li.expr.pos) {
+						@:mergeBlock $b{a};
+						@:privateAccess s.reduce($v{lhs.value}, $v{len});
+						@:mergeBlock $e{li.expr}
+					}
 				} else {
-					var t = s.offset( -1);
-					@:privateAccess s.rollback( rollL(t.state) );
-					gotos( rollB(t.state), s );
-				}
+					macro @:pos(li.expr.pos) {
+						@:mergeBlock $b{a};
+						if ($e{li.guard}) {
+							@:privateAccess s.reduce($v{lhs.value}, $v{len});
+							@:mergeBlock $e{li.expr}
+						} else {
+							var x = @:privateAccess s.offset( -1).state;
+							@:privateAccess s.rollback( rollL(x) );
+							gotos(rollB(x), s);
+						}
+					}
+				} // end if else
 			}
 		}
 	}
