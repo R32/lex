@@ -7,7 +7,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 * [x] Parser: **Rollback-Able LR(0)** that use rollback `O(1) + S(2NStates)` to resolve conflicts.
-  - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon.
+  - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon. (*Actually it is very difficult to use*)
     ```hx
     switch(s) {
     case [A, B, C] if(expr): 0; // if false then rollback to case [A]:

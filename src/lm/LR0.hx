@@ -490,7 +490,8 @@ class LR0Builder {
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream(lex, $v{lex.entrys[0].begin});
 			}
-			function _entry(state, exp) @:privateAccess {
+			@:access(lm.Stream)
+			static function _entry(stream: lm.Stream, state:Int, exp:Int) {
 				var prev = state;
 				var t: lm.Stream.Tok;
 				var dx = 0;
@@ -563,17 +564,30 @@ class LR0Builder {
 				pos: here,
 			});
 		}
-		// entrys
-		for (i in 0...lex.entrys.length) {
+		// main entry => member inline
+		var entry = lex.entrys[0];
+		var lhs = lhsA[0];
+		defs.fields.push({
+			name: lhs.name,
+			access: [APublic, AInline],
+			kind: FFun({
+				args: [],
+				ret: lhs.ct,
+				expr: macro return _entry(stream, $v{entry.begin}, $v{lhs.value})
+			}),
+			pos: lhs.pos,
+		});
+		// other entrys => static inline
+		for (i in 1...lex.entrys.length) {
 			var entry = lex.entrys[i];
 			var lhs = lhsA[i];
 			defs.fields.push({
 				name: lhs.name,
-				access: i == 0 ? [APublic, AInline] : [AInline],
+				access: [AStatic, AInline],
 				kind: FFun({
-					args: [],
+					args: [{name: "s", type: macro :lm.Stream}],
 					ret: lhs.ct,
-					expr: macro return _entry($v{entry.begin}, $v{lhs.value})
+					expr: macro return _entry(s, $v{entry.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});
