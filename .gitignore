@@ -1,7 +1,9 @@
 bin
 dump
 .tmp
+*.js
 *.txt
 *.hl
 *.exe
 *.*-table
+*.zip
