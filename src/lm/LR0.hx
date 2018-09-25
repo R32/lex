@@ -232,6 +232,12 @@ class LR0Builder {
 				var len = li.syms.length;
 				for (i in 0...len) {
 					var s = li.syms[i];
+
+					// position var which will be auto removed by dce if you dont use it.
+					var dx = -(len - i);
+					var spos = "_p" + i;
+					a.push( macro var $spos = @:privateAccess s.offset($v{dx}).getPosition() );
+
 					// checking...
 					if (s.t == false && s.name == entry.name)
 						Context.error("the entry non-terminal(\"" + s.name +"\") is not allowed on the right", s.pos);
@@ -241,10 +247,8 @@ class LR0Builder {
 						Context.error("duplicate var: " + s.ex, s.pos);
 					row.set(s.ex, true);
 
-					// TODO: position
 					// transform expr
 					var name = s.ex;  // variable name
-					var dx = -(len - i);
 					if (s.t) {
 						var ofstr = funMap.get(s.name); //
 						if (ofstr == null) {
@@ -259,6 +263,7 @@ class LR0Builder {
 						a.push( macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
+				//
 				li.expr = macro @:pos(li.expr.pos) {
 					@:mergeBlock $b{a};
 					@:privateAccess s.reduce($v{lhs.value}, $v{len});
@@ -489,7 +494,6 @@ class LR0Builder {
 					while (true) {
 						t = stream.next();
 						state = trans(prev, t.term);
-						//trace(stream.pos, prev, state, t.term);
 						t.state = state;
 						if (state >= NSEGS)
 							break;
@@ -516,7 +520,7 @@ class LR0Builder {
 					t = stream.offset( -1); // last token
 					if (t.term == exp) {
 						-- stream.pos;      // discard the last token
-						stream.junk(0);
+						stream.right = stream.pos;
 						return value;
 					}
 					t.val = value;

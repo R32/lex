@@ -12,6 +12,9 @@ class Tok {
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
+	public function getPosition(): lm.Position {
+		return new lm.Position(pmin, pmax);
+	}
 }
 
 class Stream {
