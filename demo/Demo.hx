@@ -2,7 +2,7 @@ package;
 
 class Demo {
 	static function main() {
-		var str = '1 + 2 + 3 + -1';
+		var str = '1 + 2 + 3 + -1 + "abc\\""';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var par = new Parser(lex);
 		trace(par.main());
@@ -19,6 +19,7 @@ enum abstract Token(Int) to Int {
 	var OpDiv;
 	var LParen;
 	var RParen;
+	var CStr;
 }
 
 /**
@@ -40,6 +41,18 @@ enum abstract Token(Int) to Int {
 		"/" => OpDiv,
 		"(" => LParen,
 		")" => RParen,
+		'"' => {
+			var pmin = lex.pmin;
+			var t = lex.str(); // maybe Eof.
+			lex.pmin = pmin;   // punion
+			t;
+		}
+	];
+
+	static var str = [
+		'\\\\"' => lex.str(),
+		'[^\\\\"]+' => lex.str(),
+		'"' => CStr,          // do escape in Parser @:ofStr(CStr)
 	];
 }
 
@@ -57,8 +70,15 @@ class Parser implements lm.LR0<Lexer> {
 		case [LParen, e = expr, RParen]: e;
 		case [OpMinus, e = expr]: -e;
 		case [CInt(n)]: n;
+		case [CStr(str)]: str.length;
 	}
 
 	// for extract n from CInt(n)
 	@:ofStr(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
+
+	// if the @:ofStr function has 3 params then the macro will auto pass it the following parameters.
+	// Note: This function does not handle escape
+	@:ofStr(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
+		return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
+	}
 }

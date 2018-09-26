@@ -124,7 +124,7 @@ class LexBuilder {
 			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
 			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
 			static inline function gotos(s:Int, lex: $ct_lex) return $gotos;
-			var input: lms.ByteData;
+			public var input(default, null): lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
 			public var current(get, never): String;

@@ -12,6 +12,7 @@ class Print {
 	static var mapp = [
 		"Eof"     => "$",
 		"CInt"    => "int",
+		"CStr"    => "str",
 		"OpPlus"  => "+",
 		"OpMinus" => "-",
 		"OpTimes" => "*",

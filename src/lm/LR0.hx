@@ -62,7 +62,7 @@ class LR0Builder {
 	var lhsA: LhsArray;
 	var lhsMap: Map<String,Lhs>;
 	var sEof: String;            // by @:rule from Lexer
-	var funMap: Map<String, {name: String, ct: ComplexType}>; //  TokenName => FunctionName
+	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_tk: ComplexType;
 
 	public function new(tk, es) {
@@ -225,7 +225,7 @@ class LR0Builder {
 		// duplicate var checking. & transform expr
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var row = new Map<String,Bool>();
+				var row = ["s" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				for (i in 0...len) {
@@ -254,7 +254,11 @@ class LR0Builder {
 							a.push(macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
-							a.push(macro var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+							if (ofstr.args == 3) {
+								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
+							} else {
+								a.push(macro var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+							}
 						}
 					} else {
 						var ct = lhs.ct;
@@ -625,7 +629,7 @@ class LR0Builder {
 						var p0 = ofstr.params[0];
 						switch(p0.expr){
 						case EConst(CIdent(s)) | EConst(CString(s)):
-							lrb.funMap.set(s, {name: f.name, ct: fun.ret});
+							lrb.funMap.set(s, {name: f.name, ct: fun.ret, args: fun.args.length});
 						default:
 							Context.error("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
 						}
