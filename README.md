@@ -7,7 +7,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 * [x] Parser: **Rollback-Able LR(0)** that use rollback `O(1) + S(2NStates)` to resolve conflicts.
-  - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon. (*Actually it is very difficult to use*)
+  - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon.
     ```hx
     switch(s) {
     case [A, B, C] if(expr): 0; // if false then rollback to case [A]:
@@ -184,7 +184,7 @@ the you can compile it use:
 var $hxEnums = $hxEnums || {};
 var Demo = function() { };
 Demo.main = function() {
-  console.log("Demo.hx:8:",new Parser(new Lexer("1 + 2 + 3 + -1"))._entry(0,8));
+  console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 + 2 + 3 + -1")).stream,0,8));
 };
 var lm_Lexer = function() { };
 var Lexer = function(s) {
@@ -258,6 +258,57 @@ Lexer.prototype = {
 var Parser = function(lex) {
   this.stream = new lm_Stream(lex,0);
 };
+Parser._entry = function(stream,state,exp) {
+  var prev = state;
+  var t;
+  var dx = 0;
+  while(true) {
+    while(true) {
+      t = stream.next();
+      state = Parser.raw.charCodeAt(16 * prev + t.term);
+      t.state = state;
+      if(state >= 11) {
+        break;
+      }
+      prev = state;
+    }
+    if(state == 255) {
+      state = prev;
+      dx = 1;
+    } else {
+      dx = 0;
+    }
+    var q = Parser.raw.charCodeAt(271 - state);
+    if(q < 8) {
+      stream.pos -= dx;
+    } else {
+      q = Parser.raw.charCodeAt(state + 176);
+      if(q < 8) {
+        stream.rollback(dx + Parser.raw.charCodeAt(state + 208));
+      } else {
+        break;
+      }
+    }
+    while(true) {
+      var value = Parser.cases(q,stream);
+      t = stream.cached[stream.pos + -1];
+      if(t.term == exp) {
+        --stream.pos;
+        stream.right = stream.pos;
+        return value;
+      }
+      t.val = value;
+      t.state = Parser.raw.charCodeAt(16 * stream.cached[stream.pos + -2].state + t.term);
+      prev = t.state;
+      if(prev < 11) {
+        break;
+      }
+      q = Parser.raw.charCodeAt(271 - prev);
+    }
+  }
+  var last = stream.cached[stream.pos + -1];
+  throw new Error("Unexpected \"" + stream.lex.getString(last.pmin,last.pmax - last.pmin) + "\" at " + last.pmin + "-" + last.pmax);
+};
 Parser.cases = function(f,s) {
   switch(f) {
   case 0:
@@ -299,56 +350,6 @@ Parser.cases = function(f,s) {
     return n;
   }
 };
-Parser.prototype = {
-  _entry: function(state,exp) {
-    var prev = state;
-    var t;
-    var dx = 0;
-    while(true) {
-      while(true) {
-        t = this.stream.next();
-        state = Parser.raw.charCodeAt(16 * prev + t.term);
-        t.state = state;
-        if(state >= 11) {
-          break;
-        }
-        prev = state;
-      }
-      if(state == 255) {
-        state = prev;
-        dx = 1;
-      } else {
-        dx = 0;
-      }
-      var q = Parser.raw.charCodeAt(271 - state);
-      if(q < 8) {
-        this.stream.pos -= dx;
-      } else {
-        q = Parser.raw.charCodeAt(state + 176);
-        if(q < 8) {
-          this.stream.rollback(dx + Parser.raw.charCodeAt(state + 208));
-        } else {
-          break;
-        }
-      }
-      var value = Parser.cases(q,this.stream);
-      var _this = this.stream;
-      t = _this.cached[_this.pos + -1];
-      if(t.term == exp) {
-        --this.stream.pos;
-        this.stream.junk(0);
-        return value;
-      }
-      t.val = value;
-      var _this1 = this.stream;
-      t.state = Parser.raw.charCodeAt(16 * _this1.cached[_this1.pos + -2].state + t.term);
-      prev = t.state;
-    }
-    var _this2 = this.stream;
-    var last = _this2.cached[_this2.pos + -1];
-    throw new Error("Unexpected \"" + this.stream.lex.getString(last.pmin,last.pmax - last.pmin) + "\" at " + last.pmin + "-" + last.pmax);
-  }
-};
 var HxOverrides = function() { };
 HxOverrides.cca = function(s,index) {
   var x = s.charCodeAt(index);
@@ -382,24 +383,7 @@ var lm_Stream = function(l,s) {
   this.pos = 1;
 };
 lm_Stream.prototype = {
-  junk: function(n) {
-    if(n <= 0) {
-      this.right = this.pos;
-    } else if(this.right - this.pos >= n) {
-      this.right -= n;
-      var _g = this.pos;
-      var _g1 = this.right;
-      while(_g < _g1) {
-        var i = _g++;
-        this.cached[i] = this.cached[i + n];
-      }
-    } else {
-      n -= this.right - this.pos;
-      while(n-- > 0) this.lex.token();
-      this.right = this.pos;
-    }
-  }
-  ,next: function() {
+  next: function() {
     if(this.right == this.pos) {
       var t = this.lex.token();
       this.cached[this.right++] = new lm_Tok(t,this.lex.pmin,this.lex.pmax);
@@ -433,4 +417,5 @@ Lexer.raw = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xf
 Parser.raw = "\xff\x11\xff\x03\xff\xff\x04\xff\xff\x01\xff\xff\xff\xff\xff\xff\x12\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x06\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x10\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x05\xff\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\x0f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x0e\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x0d\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x0c\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\x0b\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x07\x06\x05\x01\x02\x03\x04\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
 Demo.main();
 })();
+
 ```

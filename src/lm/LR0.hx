@@ -170,7 +170,7 @@ class LR0Builder {
 						// TODO: match all terminals
 						//case EParenthesis(macro $i{i}):
 						//	firstCharChecking(i, LOWER, e.pos);            // for all termls
-						//	g.syms.push( {t: true, name: null, cset: termlsC_All,       ex: i,    pos: e.pos} );
+						//	g.syms.push( {t: true, name: "_",  cset: termlsC_All,       ex: i,    pos: e.pos} );
 
 						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n)
 							firstCharChecking(i, UPPER, e.pos);
@@ -518,19 +518,24 @@ class LR0Builder {
 						if (q < NRULES) {
 							stream.rollback( dx + rollL(state) );
 						} else {
-							break;          // throw error.
+							break;  // throw error.
 						}
 					}
-					var value = gotos(q, stream);
-					t = stream.offset( -1); // last token
-					if (t.term == exp) {
-						-- stream.pos;      // discard the last token
-						stream.right = stream.pos;
-						return value;
+					while (true) {
+						var value = gotos(q, stream);
+						t = stream.offset( -1); // last token
+						if (t.term == exp) {
+							-- stream.pos;      // discard the last token
+							stream.right = stream.pos;
+							return value;
+						}
+						t.val = value;
+						t.state = trans(stream.offset( -2).state, t.term);
+						prev = t.state;
+						if (prev < NSEGS) break;
+						// do operator priority here
+						q = exits(prev);
 					}
-					t.val = value;
-					t.state = trans(stream.offset( -2).state, t.term);
-					prev = t.state;
 				}
 				var last = stream.offset( -1);
 				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pmin + "-" + last.pmax);
