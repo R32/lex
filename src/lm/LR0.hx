@@ -166,11 +166,10 @@ class LR0Builder {
 						case EConst(CIdent(i)):
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
-
-						// TODO: match all terminals
-						//case EParenthesis(macro $i{i}):
-						//	firstCharChecking(i, LOWER, e.pos);            // for all termls
-						//	g.syms.push( {t: true, name: "_",  cset: termlsC_All,       ex: i,    pos: e.pos} );
+						// TODO: maybe it's not good..
+						case EParenthesis(macro $i{i}):
+							firstCharChecking(i, LOWER, e.pos);            // all termls but no Eof
+							g.syms.push( {t: true, name: "_",  cset: termlsC_All,       ex: i,    pos: e.pos} );
 
 						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n)
 							firstCharChecking(i, UPPER, e.pos);
@@ -265,23 +264,23 @@ class LR0Builder {
 						a.push( macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				//
+				var reduce = len > 0 ? macro s.reduce($v{lhs.value}, $v{len}): macro s.reduceEP($v{lhs.value});
 				li.expr = if (li.guard == null) {
 					macro @:pos(li.expr.pos) {
 						@:mergeBlock $b{a};
-						@:privateAccess s.reduce($v{lhs.value}, $v{len});
+						@:privateAccess $reduce;
 						@:mergeBlock $e{li.expr}
 					}
 				} else {
 					macro @:pos(li.expr.pos) {
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
-							@:privateAccess s.reduce($v{lhs.value}, $v{len});
+							@:privateAccess $reduce;
 							@:mergeBlock $e{li.expr}
 						} else {
-							var x = @:privateAccess s.offset( -1).state;
-							@:privateAccess s.rollback( rollL(x) );
-							gotos(rollB(x), s);
+							var _1 = @:privateAccess s.offset( -1).state;
+							@:privateAccess s.rollback( rollL(_1) );
+							gotos(rollB(_1), s);
 						}
 					}
 				} // end if else
@@ -497,7 +496,7 @@ class LR0Builder {
 			@:access(lm.Stream)
 			static function _entry(stream: lm.Stream, state:Int, exp:Int) {
 				var prev = state;
-				var t: lm.Stream.Tok;
+				var t: lm.Stream.Tok = null;
 				var dx = 0;
 				while (true) {
 					while (true) {
@@ -530,7 +529,7 @@ class LR0Builder {
 						t = stream.offset( -1); // last token
 						if (t.term == exp) {
 							-- stream.pos;      // discard the last token
-							stream.right = stream.pos;
+							stream.junk(1);
 							return value;
 						}
 						t.val = value;
