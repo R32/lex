@@ -30,7 +30,6 @@ typedef Symbol = { // from switch cases
 typedef SymSwitch = {
 	name: String,        // Associated var name
 	value: Int,          // Automatic growth
-	ct: ComplexType,     // Type of siwtch
 	cases: Array<Case>,
 	pos: Position,
 }
@@ -45,7 +44,6 @@ typedef SymbolSet = {
 typedef Lhs = {    // one switch == one Lhs
 	name: String,  // associated var name(non-terminals name)
 	value: Int,    // automatic increase from "maxValue"
-	ct: ComplexType,
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
 	pos: Position,
@@ -63,9 +61,10 @@ class LR0Builder {
 	var lhsMap: Map<String,Lhs>;
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
-	var ct_tk: ComplexType;
+	var ct_tok: ComplexType;     // token completeType
+	var ct_lhs: ComplexType;     // unify all type of lhsA.
 
-	public function new(tk, es) {
+	public function new(t_tok, t_lhs, es) {
 		maxValue = 0;
 		termls = [];
 		termlsC_All = [];
@@ -74,8 +73,9 @@ class LR0Builder {
 		lhsMap = new Map();
 		funMap = new Map();
 		sEof = es;
-		ct_tk = Context.toComplexType(tk);
-		parseToken(tk);
+		ct_tok = Context.toComplexType(t_tok);
+		ct_lhs = Context.toComplexType(t_lhs);
+		parseToken(t_tok);
 	}
 
 	function parseToken(tk: Type) {
@@ -154,7 +154,7 @@ class LR0Builder {
 			return cset;
 		}
 		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, ct: sw.ct, cases: [], epsilon: false, pos: sw.pos};
+			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], epsilon: false, pos: sw.pos};
 			for (c in sw.cases) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
@@ -249,8 +249,7 @@ class LR0Builder {
 					if (s.t) {
 						var ofstr = funMap.get(s.name); //
 						if (ofstr == null) {
-							var ct = ct_tk;
-							a.push(macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).term);
+							a.push(macro var $name: $ct_tok = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							if (ofstr.args == 3) {
@@ -260,8 +259,7 @@ class LR0Builder {
 							}
 						}
 					} else {
-						var ct = lhs.ct;
-						a.push( macro var $name: $ct = cast @:privateAccess s.offset($v{dx}).val );
+						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
 				var reduce = len > 0 ? macro s.reduce($v{lhs.value}, $v{len}): macro s.reduceEP($v{lhs.value});
@@ -403,7 +401,8 @@ class LR0Builder {
 	static public function build() {
 		var cls = Context.getLocalClass().get();
 		var ct_lr0 = TPath({pack: cls.pack, name: cls.name});
-		var tk:Type = null;
+		var t_tok:Type = null;
+		var t_lhs: Type = null;
 		var eof: Expr = null;
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.LR0") {
@@ -411,7 +410,7 @@ class LR0Builder {
 				case TInst(_.get() => lex, _):
 					for (it in lex.interfaces) {
 						if (it.t.toString() == "lm.Lexer") {
-							tk = it.params[0];
+							t_tok = it.params[0];
 							eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
 								Context.error("Invalid EOF value " + eof.toString(), lex.pos);
@@ -420,13 +419,14 @@ class LR0Builder {
 					}
 				default:
 				}
+				t_lhs = it.params[1];
 				break;
 			}
 		}
-		if (tk == null || !Context.unify(tk, Context.getType("Int")))
+		if (t_tok == null || !Context.unify(t_tok, Context.getType("Int")))
 			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
 		// begin
-		var lrb = new LR0Builder(tk, eof.toString());
+		var lrb = new LR0Builder(t_tok, t_lhs, eof.toString());
 		var allFields = new haxe.ds.StringMap<Field>();
 		var switches = filter(Context.getBuildFields(), allFields, lrb);
 		if (switches.length == 0)
@@ -476,6 +476,7 @@ class LR0Builder {
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
 		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
+		var ct_stream = macro :lm.Stream<$ct_lhs>;
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES  = $v{lex.nrules};
@@ -486,15 +487,15 @@ class LR0Builder {
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
 			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
 			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
-			static inline function gotos(fid:Int, s:lm.Stream) return cases(fid, s);
-			var stream: lm.Stream; var stack: Array<Int>;
+			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
+			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = new lm.Stream(lex, $v{lex.entrys[0].begin});
+				this.stream = new lm.Stream<$ct_lhs>(lex, $v{lex.entrys[0].begin});
 			}
 			@:access(lm.Stream)
-			static function _entry(stream: lm.Stream, state:Int, exp:Int) {
+			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
 				var prev = state;
-				var t: lm.Stream.Tok = null;
+				var t: lm.Stream.Tok<$ct_lhs> = null;
 				var dx = 0;
 				while (true) {
 					while (true) {
@@ -523,7 +524,7 @@ class LR0Builder {
 						}
 					}
 					while (true) {
-						var value = gotos(q, stream);
+						var value:$ct_lhs = gotos(q, stream);
 						t = stream.offset( -1); // last token
 						if (t.term == exp) {
 							-- stream.pos;      // discard the last token
@@ -552,8 +553,8 @@ class LR0Builder {
 			name: "cases",
 			access: [AStatic],
 			kind: FFun({
-				args: [{name: "f", type: macro: Int}, {name: "s", type: macro :lm.Stream}],
-				ret: null,
+				args: [{name: "f", type: macro: Int}, {name: "s", type: ct_stream}],
+				ret: ct_lhs,
 				expr: macro {
 					@:mergeBlock $b{exprs.defs};
 					return $eSwitch;
@@ -570,7 +571,7 @@ class LR0Builder {
 			access: [APublic, AInline],
 			kind: FFun({
 				args: [],
-				ret: lhs.ct,
+				ret: ct_lhs,
 				expr: macro return _entry(stream, $v{entry.begin}, $v{lhs.value})
 			}),
 			pos: lhs.pos,
@@ -584,8 +585,8 @@ class LR0Builder {
 				name: lhs.name,
 				access: [AStatic, AInline],
 				kind: FFun({
-					args: [{name: "s", type: macro :lm.Stream}],
-					ret: lhs.ct,
+					args: [{name: "s", type: ct_stream}],
+					ret: ct_lhs,
 					expr: macro return _entry(s, $v{entry.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
@@ -609,7 +610,9 @@ class LR0Builder {
 						if (edef != null)
 							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
 						firstCharChecking(f.name, LOWER, f.pos);
-						ret.push({name: f.name, value: lvalue++, ct: ct, cases: cl, pos: f.pos});
+						if ( ct != null && !Context.unify(ct.toType(), lrb.ct_lhs.toType()) )
+							Context.error("All types of lhs must be uniform.", f.pos);
+						ret.push({name: f.name, value: lvalue++, cases: cl, pos: f.pos});
 					case _:
 					}
 					continue;
@@ -709,5 +712,5 @@ class LR0Builder{}
 
 @:autoBuild(lm.LR0Builder.build())
 #end
-@:remove interface LR0<T> {
+@:remove interface LR0<LEX, LHS> {
 }

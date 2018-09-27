@@ -1,11 +1,11 @@
 package lm;
 
-class Tok {
+class Tok<LHS> {
 	public var state: Int;
 	public var term: Int;  // terminal & non-terminal value
 	public var pmin: Int;
 	public var pmax: Int;
-	public var val: Dynamic;
+	public var val: LHS;
 	public function new(t, min, max) {
 		term = t;
 		pmin = min;
@@ -17,11 +17,9 @@ class Tok {
 	}
 }
 
-class Stream {
+class Stream<LHS> {
 
-	static inline var N_CACHED = 128;
-
-	var cached: haxe.ds.Vector<Tok>;
+	var cached: haxe.ds.Vector<Tok<LHS>>;
 	var lex: lm.Lexer<Int>;
 
 	var pos: Int;
@@ -31,17 +29,17 @@ class Stream {
 
 	public function new(l: lm.Lexer<Int>, s: Int) {
 		lex = l;
-		cached = new haxe.ds.Vector<Tok>(N_CACHED);
-		cached[0] = new Tok(0, 0, 0);
+		cached = new haxe.ds.Vector<Tok<LHS>>(128);
+		cached[0] = new Tok<LHS>(0, 0, 0);
 		cached[0].state = s;
 		right = 1;
 		pos = 1;
 	}
 
-	public function peek(i: Int):Tok {
+	public function peek(i: Int):Tok<LHS> {
 		while (rest <= i) {
 			var t = lex.token();
-			cached[right++] = new Tok(t, lex.pmin, lex.pmax);
+			cached[right++] = new Tok<LHS>(t, lex.pmin, lex.pmax);
 		}
 		return cached[pos + i];
 	}
@@ -61,14 +59,14 @@ class Stream {
 		}
 	}
 
-	inline function str(t: Tok):String return lex.getString(t.pmin, t.pmax - t.pmin);
+	inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
 	inline function stri(dx):String return str( offset(dx) );
 	inline function offset(i: Int) return cached[pos + i];  // unsafe
 
 	function next() {
 		if (right == pos) {
 			var t = lex.token();
-			cached[right++] = new Tok(t, lex.pmin, lex.pmax);
+			cached[right++] = new Tok<LHS>(t, lex.pmin, lex.pmax);
 		}
 		return cached[pos++];
 	}
@@ -96,7 +94,7 @@ class Stream {
 	function reduceEP(lv) {
 		// copy
 		var cur = cached[pos];
-		var t = new Tok(lv, cur.pmin, cur.pmin);
+		var t = new Tok<LHS>(lv, cur.pmin, cur.pmin);
 		t.state = cached[pos - 1].state;
 		var i = right;
 		while (i >= pos) {

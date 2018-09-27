@@ -9,7 +9,7 @@ class Demo {
 	}
 }
 
-// NOTICE: the lm.LR0 only works with "enum abstract (Int)"
+// NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"
 enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;
@@ -56,7 +56,7 @@ enum abstract Token(Int) to Int {
 	];
 }
 
-class Parser implements lm.LR0<Lexer> {
+class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {
 		case [e = expr, Eof]: e;
@@ -66,7 +66,7 @@ class Parser implements lm.LR0<Lexer> {
 		case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
 		case [e1 = expr, OpMinus, e2 = expr]: e1 - e2;
 		case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
-		case [e1 = expr, OpDiv, e2 = expr]: e1 / e2;
+		case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
 		case [LParen, e = expr, RParen]: e;
 		case [OpMinus, e = expr]: -e;
 		case [CInt(n)]: n;
