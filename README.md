@@ -192,7 +192,7 @@ compile:
 
 ```bash
 # NOTE: "-D nodejs" is used to remove js.compat.TypedArray
-haxe -dce full -D lex_switch -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js
+haxe -dce full -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js
 ```
 
 <br />

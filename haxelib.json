@@ -1,11 +1,11 @@
 {
   "name": "lex",
   "classPath": "src",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "url": "https://github.com/R32/lex/",
   "license": "MIT",
   "tags": ["lex","lexer", "parser", "LR0"],
   "description": "Build lightweight lexer/parser(LR0) state transition tables in macro(compile phase)",
-  "releasenote": "See https://github.com/R32/lex/",
+  "releasenote": "minor",
   "contributors": ["r32"]
 }

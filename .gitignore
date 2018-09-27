@@ -7,3 +7,7 @@ dump
 *.exe
 *.*-table
 *.zip
+*.swf
+*.o
+*.obj
+*.jpg
