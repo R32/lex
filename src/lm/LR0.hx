@@ -476,8 +476,6 @@ class LR0Builder {
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
 		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
-		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
-		var gotos = useSwitch ? (macro cases(fid, s)) : (macro cases[fid](s));
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES  = $v{lex.nrules};
@@ -488,7 +486,7 @@ class LR0Builder {
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
 			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
 			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
-			static inline function gotos(fid:Int, s:lm.Stream) return $gotos;
+			static inline function gotos(fid:Int, s:lm.Stream) return cases(fid, s);
 			var stream: lm.Stream; var stack: Array<Int>;
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream(lex, $v{lex.entrys[0].begin});
@@ -544,34 +542,23 @@ class LR0Builder {
 				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pmin + "-" + last.pmax);
 			}
 		}
-
-		// jump table or switch..
+		// build switch
 		var cases:Array<Expr> = Lambda.flatten( lhsA.map(l -> l.cases)).map( s -> s.expr );
 		var here = TPositionTools.here();
-		if (useSwitch) {
-			var defCase = cases.pop();
-			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
-			var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
-			defs.fields.push({
-				name: "cases",
-				access: [AStatic],
-				kind: FFun({
-					args: [{name: "f", type: macro: Int}, {name: "s", type: macro :lm.Stream}],
-					ret: null,
-					expr: macro return $eSwitch,
-				}),
-				pos: here,
-			});
+		var defCase = cases.pop();
+		var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
+		defs.fields.push({
+			name: "cases",
+			access: [AStatic],
+			kind: FFun({
+				args: [{name: "f", type: macro: Int}, {name: "s", type: macro :lm.Stream}],
+				ret: null,
+				expr: macro return $eSwitch,
+			}),
+			pos: here,
+		});
 
-		} else {
-			var funs = cases.map(function(e){ return macro (s: lm.Stream) -> $e; });
-			defs.fields.push({
-				name: "cases",
-				access: [AStatic],
-				kind: FVar(null, macro [$a{ funs }]),
-				pos: here,
-			});
-		}
 		// main entry => member inline
 		var entry = lex.entrys[0];
 		var lhs = lhsA[0];

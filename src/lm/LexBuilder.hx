@@ -82,14 +82,7 @@ class LexBuilder {
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
-		var rules = [];
-		var cases = [];
-		for (g in groups) {
-			rules.push( g.rules.map( s -> LexEngine.parse(s, c_all) ));
-			for (i in 0...g.rules.length) {
-				cases.push(macro (lex: $ct_lex) -> $e{g.cases[i]});
-			}
-		}
+		var rules = groups.map( g -> g.rules.map(s->LexEngine.parse(s, c_all)) );
 		var lex = new LexEngine(rules, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
@@ -112,8 +105,6 @@ class LexBuilder {
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
 		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
-		var useSwitch = lex.nrules < 6 || Context.defined("lex_switch");
-		var gotos = useSwitch ? (macro cases(s, lex)) : (macro cases[s](lex));
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
@@ -123,7 +114,7 @@ class LexBuilder {
 			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
 			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
 			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
-			static inline function gotos(s:Int, lex: $ct_lex) return $gotos;
+			static inline function gotos(s:Int, lex: $ct_lex) return cases(s, lex);
 			public var input(default, null): lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
@@ -188,30 +179,21 @@ class LexBuilder {
 				pos: pos,
 			});
 		}
-		// switch or functions array jump table.
-		if (useSwitch) {
-			cases = Lambda.flatten( groups.map(g -> g.cases) );
-			var defCase = cases.pop();
-			var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
-			var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
-			defs.fields.push({
-				name: "cases",
-				access: [AStatic],
-				kind: FFun({
-					args: [{name: "s", type: macro: Int}, {name: "lex", type: ct_lex}],
-					ret: null,
-					expr: macro return $eSwitch,
-				}),
-				pos: pos,
-			});
-		} else {
-			defs.fields.push({
-				name: "cases",
-				access: [AStatic],
-				kind: FVar(null, macro [$a{cases}]),
-				pos: pos,
-			});
-		}
+		// build switch
+		var cases = Lambda.flatten( groups.map(g -> g.cases) );
+		var defCase = cases.pop();
+		var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
+		defs.fields.push({
+			name: "cases",
+			access: [AStatic],
+			kind: FFun({
+				args: [{name: "s", type: macro: Int}, {name: "lex", type: ct_lex}],
+				ret: null,
+				expr: macro return $eSwitch,
+			}),
+			pos: pos,
+		});
 
 		for (f in defs.fields)
 				if (!all_fields.exists(f.name))

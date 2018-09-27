@@ -23,8 +23,6 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 It looks very messy here.
 
-* use `-D lex_switch` or the numble of rules is less then 6 then the function jump table will be converted as `switch` expr
-
 * `-D lex_charmax`: to simply handle for utf16 char, Because the State Transition Table is 8-bit
 
   ```hx
