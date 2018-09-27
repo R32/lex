@@ -342,39 +342,42 @@ Parser._entry = function(stream,state,exp) {
   throw new Error("Unexpected \"" + stream.lex.getString(last.pmin,last.pmax - last.pmin) + "\" at " + last.pmin + "-" + last.pmax);
 };
 Parser.cases = function(f,s) {
+  var e1;
+  var e;
+  var e2;
   switch(f) {
   case 0:
-    var e = s.cached[s.pos + -2].val;
+    e = s.cached[s.pos + -2].val;
     s.reduce(9,2);
     return e;
   case 1:
-    var e1 = s.cached[s.pos + -3].val;
-    var e2 = s.cached[s.pos + -1].val;
+    e1 = s.cached[s.pos + -3].val;
+    e2 = s.cached[s.pos + -1].val;
     s.reduce(10,3);
     return e1 + e2;
   case 2:
-    var e11 = s.cached[s.pos + -3].val;
-    var e21 = s.cached[s.pos + -1].val;
+    e1 = s.cached[s.pos + -3].val;
+    e2 = s.cached[s.pos + -1].val;
     s.reduce(10,3);
-    return e11 - e21;
+    return e1 - e2;
   case 3:
-    var e12 = s.cached[s.pos + -3].val;
-    var e22 = s.cached[s.pos + -1].val;
+    e1 = s.cached[s.pos + -3].val;
+    e2 = s.cached[s.pos + -1].val;
     s.reduce(10,3);
-    return e12 * e22;
+    return e1 * e2;
   case 4:
-    var e13 = s.cached[s.pos + -3].val;
-    var e23 = s.cached[s.pos + -1].val;
+    e1 = s.cached[s.pos + -3].val;
+    e2 = s.cached[s.pos + -1].val;
     s.reduce(10,3);
-    return e13 / e23;
+    return e1 / e2;
   case 5:
-    var e3 = s.cached[s.pos + -2].val;
+    e = s.cached[s.pos + -2].val;
     s.reduce(10,3);
-    return e3;
+    return e;
   case 6:
-    var e4 = s.cached[s.pos + -1].val;
+    e = s.cached[s.pos + -1].val;
     s.reduce(10,2);
-    return -e4;
+    return -e;
   case 7:
     var t = s.cached[s.pos + -1];
     var n = Std.parseInt(s.lex.getString(t.pmin,t.pmax - t.pmin));
@@ -473,5 +476,4 @@ Lexer.raw = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xf
 Parser.raw = "\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x01\xff\xff\xff\xff\xff\x13\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x06\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x11\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x05\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\x10\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x0e\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x0d\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x0c\xff\xff\xff\xff\xff\xff\x12\xff\x03\xff\xff\x04\xff\x0f\xff\x0b\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x07\x06\x05\x08\x01\x02\x03\x04\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
 Demo.main();
 })();
-
 ```
