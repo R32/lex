@@ -7,7 +7,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **Rollback-Able LR(0)**.
+* [x] Parser: **Rollback-Able LR(0)**. **(WIP)**
 
   - [ ] Operator Priority
 
@@ -18,9 +18,6 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     case [A]: 1;
     }
     ```
-
-
-*Need More Tests in Parser*
 
 ### Defines
 
@@ -193,11 +190,12 @@ class Parser implements lm.LR0<Lexer> {
 
 ```
 
-the you can compile it use:
+compile:
 
-`haxe -dce full -D lex_switch -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js`
-
-> NOTE: `-D nodejs` is used to remove js.compat.TypedArray
+```bash
+# NOTE: "-D nodejs" is used to remove js.compat.TypedArray
+haxe -dce full -D lex_switch -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js
+```
 
 <br />
 
