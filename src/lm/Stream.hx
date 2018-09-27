@@ -19,28 +19,23 @@ class Tok {
 
 class Stream {
 
-	static inline var FULL = 128;
+	static inline var N_CACHED = 128;
 
 	var cached: haxe.ds.Vector<Tok>;
 	var lex: lm.Lexer<Int>;
 
-	public var pos(default, null): Int;
-	public var right(default, null): Int;
-	public var rest(get, never): Int;
+	var pos: Int;
+	var right: Int;
+	var rest(get, never): Int;
 	inline function get_rest():Int return right - pos;
 
 	public function new(l: lm.Lexer<Int>, s: Int) {
 		lex = l;
-		cached = new haxe.ds.Vector<Tok>(FULL);
+		cached = new haxe.ds.Vector<Tok>(N_CACHED);
 		cached[0] = new Tok(0, 0, 0);
 		cached[0].state = s;
 		right = 1;
 		pos = 1;
-	}
-
-	public function destroy() {
-		lex = null;
-		cached = null;
 	}
 
 	public function peek(i: Int):Tok {

@@ -87,7 +87,7 @@ class LR0Builder {
 					switch(meta.params[0].expr) {
 					case ECast({expr: EConst(CInt(i))}, _):
 						var n = Std.parseInt(i);
-						if (n < 0 || n > 99) // TODO:
+						if (n < 0 || n > 99) // TODO: limited token value
 							Context.error("Value should be [0-99]", field.pos);
 						if (n > maxValue) maxValue = n;
 						firstCharChecking(field.name, UPPER, field.pos);
@@ -614,7 +614,7 @@ class LR0Builder {
 				case FVar(ct, e) if (e != null):
 					switch(e.expr) {
 					case ESwitch(macro ($i{"s"}), cl, edef):
-						if (cl.length == 0) continue; // TODO: if (cl.length == 0 && edef == null)
+						if (cl.length == 0 && edef == null) continue;
 						if (edef != null)
 							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
 						firstCharChecking(f.name, LOWER, f.pos);
