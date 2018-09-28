@@ -92,8 +92,12 @@ class LexBuilder {
 		// generate
 		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
 		var raw = macro haxe.Resource.getBytes($v{resname});
+		var getU8 = macro raw.get(i);
 		if (force_bytes) {
 			Context.addResource(resname, lex.table);
+			#if hl
+			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
+			#end
 		} else {
 			var out = haxe.macro.Compiler.getOutput() + ".lex-table";
 			var dir = haxe.io.Path.directory(out);
@@ -103,8 +107,8 @@ class LexBuilder {
 			lex.write(f);
 			f.close();
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
+			getU8 = macro StringTools.fastCodeAt(raw, i);
 		}
-		var getU8 = force_bytes ? macro raw.get(i) : macro StringTools.fastCodeAt(raw, i);
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var NRULES = $v{lex.nrules};
