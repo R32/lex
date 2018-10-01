@@ -136,8 +136,8 @@ enum abstract Token(Int) to Int {
   static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
   static var r_int = "-?[1-9][0-9]*";
   static var tok =  [                  // a rule set definition
-    "[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
-    r_zero + "|" + r_int => CInt,    //
+    "[ \t]+" => lex.token(),           // and the "lex" is an instance of this class.
+    r_zero + "|" + r_int => CInt,      //
     "+" => OpPlus,
     "-" => OpMinus,
     "*" => OpTimes,
@@ -155,7 +155,7 @@ enum abstract Token(Int) to Int {
   static var str = [
     '\\\\"' => lex.str(),
     '[^\\\\"]+' => lex.str(),
-    '"' => CStr,          // do escape in Parser @:ofStr(CStr)
+    '"' => CStr,          // do escape in Parser @:rule(CStr)
   ];
 }
 
@@ -177,11 +177,11 @@ class Parser implements lm.LR0<Lexer, Int> {
   }
 
   // for extract n from CInt(n)
-  @:ofStr(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
+  @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 
-  // if the @:ofStr function has 3 params then the macro will auto pass it the following parameters.
+  // if the @:rule function has 3 params then the macro will auto pass it the following parameters.
   // Note: This function does not handle escape
-  @:ofStr(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
+  @:rule(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
     return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
   }
 }

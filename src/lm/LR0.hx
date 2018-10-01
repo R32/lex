@@ -621,7 +621,7 @@ class LR0Builder {
 					}
 					continue;
 				case FFun(fun):
-					var ofstr = Lambda.find(f.meta, m->m.name == ":ofStr");
+					var ofstr = Lambda.find(f.meta, m->m.name == ":rule");
 					if (ofstr != null && ofstr.params.length > 0) {
 						var p0 = ofstr.params[0];
 						switch(p0.expr){

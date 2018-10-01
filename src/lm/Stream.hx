@@ -1,5 +1,8 @@
 package lm;
 
+#if static
+@:generic
+#end
 class Tok<LHS> {
 	public var state: Int;
 	public var term: Int;  // terminal & non-terminal value
@@ -17,6 +20,9 @@ class Tok<LHS> {
 	}
 }
 
+#if static
+@:generic
+#end
 class Stream<LHS> {
 
 	var cached: haxe.ds.Vector<Tok<LHS>>;
