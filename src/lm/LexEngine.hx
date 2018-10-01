@@ -43,13 +43,18 @@ class LexEngine {
 	*/
 	public var segs(default, null): Int;
 
+	/**
+	* If no valid opAssoc, then its value will be the same as segs;
+	*/
+	public var segsEx(default, null): Int;
+
 	public var nrules(default, null): Int;
 
 	public var nstates(default, null): Int;
 
 	public var entrys(default, null): Array<{begin:Int, segs:Int, nrules:Int}>;
 
-	public function new(a: Array<PatternSet>, cmax = Char.MAX, lr0 = false) {
+	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lr0:{assoc:lm.LR0.OpAssoc, max:Int}) {
 		this.entrys = [];
 		this.parts = new Map();
 		this.per = cmax + 1;
@@ -106,9 +111,10 @@ class LexEngine {
 		this.parts = null;
 		this.lparts = null;
 
-		// compress finalState
+		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.perRB = 1 + ((nstates - 1) | 15);
+		// compress finalState
 		var diff = final_counter + 1 - segs;
 		for (s in lstates) {
 			for (i in 0...s.targets.length)
@@ -116,20 +122,20 @@ class LexEngine {
 					s.targets[i] -= diff;
 			if (s.id > segs) s.id -= diff;
 		}
-
+		if (lr0 != null) {
+			this.states = Lambda.array(this.lstates);
+			this.states.sort(State.onSort);
+			doPriority(lr0.assoc, lr0.max);
+		}
 		// DFA -> Tables
 		this.makeTables();
 		// rollback detection
 		this.makeRollback();
 
-		if (lr0) {
-			this.states = Lambda.array(this.lstates);
-			this.states.sort(State.onSort);
-		}
 		this.lstates = null;
 	}
 
-	public inline function posRB() return this.segs * this.per;
+	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 
 	inline function node() return new Node(uid++);
@@ -207,12 +213,12 @@ class LexEngine {
 	}
 
 	function makeTables() {
-		var bytes = (segs * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
+		var bytes = (segsEx * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
 		var tbls = haxe.io.Bytes.alloc(bytes);
 		tbls.fill(0, bytes, INVALID);
 		for (s in this.lstates) {
 			tbls.set(bytes - 1 - s.id, first(0, INVALID, s.prev_nrules, s.finals)); // Reverse write checking table
-			if (s.id < segs)
+			if (s.id < segsEx)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
 		this.table = tbls;
@@ -241,6 +247,171 @@ class LexEngine {
 			}
 		}
 	}
+
+	function doPriority(assoc: lm.LR0.OpAssoc, maxValue: Int) {
+		inline function segStart(i) return i * this.per;
+		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
+		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
+		function parse(table, begin, max) {
+			for (i in begin...max) {
+				var start = segStart(i);
+				for (op in assoc) {
+					var nxt = table.get(start + op.value);
+					if (nxt >= this.segs) continue;
+					var fi = segStart(nxt);
+					for (p in (fi + maxValue)...(fi + this.per)) { // only non-terminal
+						var fid = table.get(p);
+						if (fid == INVALID || fid < this.segs) continue;
+						// now check which stage can jump to "i"
+						var hit = p - fi;
+						for (j in begin...max) {
+							if (table.get(segStart(j) + hit) == i) {
+								var col = lvlMap.get(i);
+								if (col == null) {
+									col = [];
+									lvlMap.set(i, col);
+								}
+								var ex = fidMap.get(fid);
+								if (ex == null) {
+									ex = [];
+									fidMap.set(fid, ex);
+								}
+								var x = {lvl: i, hit: hit, nxt: nxt, fid: fid, prio: op.prio, value: op.value, left: op.left};
+								col.push(x);
+								ex.push(x);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		function swap(dst, src) {
+			if (dst == src) return;
+			var x = this.states[dst]; // x.id == dst
+			var y = this.states[src]; // y.id == src;
+			// swap targets
+			for (s in this.states) {
+				for (i in 0...s.targets.length) {
+					var t = s.targets[i];
+					if (t == dst) {
+						s.targets[i] = src;
+					} else if (t == src) {
+						s.targets[i] = dst;
+					}
+				}
+			}
+			// swap states
+			x.id = src;
+			y.id = dst;
+			this.states[dst] = y;
+			this.states[src] = x;
+			// swap opAssocEx.
+			var a = fidMap.get(dst);
+			var b = fidMap.get(src);
+			if (a != null) {
+				for (op in a)
+					op.fid = src;
+				fidMap.set(src, a);
+			} else {
+				fidMap.remove(src);
+			}
+			for (op in b)
+				op.fid = dst;
+			fidMap.set(dst, b);
+		}
+
+		// need a tmp table for analysis
+		var tmp = haxe.io.Bytes.alloc( segStart(this.segs) );
+		tmp.fill(0, segStart(this.segs), INVALID);
+		for (s in this.lstates) {
+			if (s.id >= this.segs) continue;
+			makeTrans(tmp, segStart(s.id), this.trans[s.part], s.targets);
+		}
+		// analysis
+		for (e in entrys)
+			parse(tmp, e.begin, e.begin + e.segs);
+		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
+		for (a in fidMap) {
+			var prio = a[0].prio;
+			for (i in 1...a.length)
+				if (a[i].prio != prio)
+					throw "Operator Priority Conflict";
+		}
+		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
+		for (lvl in lvlMap.keys()) {
+			var a = lvlMap.get(lvl);
+			var prio = a[0].prio;
+			var find = false;
+			for (i in 1...a.length)
+				if (prio != a[i].prio || a[i].left == false) {
+					find = true;
+					break;
+				}
+			if (!find) lvlMap.remove(lvl);
+		}
+		// highest(minimum) priority left and right.
+		var larMap = new Map<Int, {left:Int, right: Int}>();
+		for (a in lvlMap) {
+			var lar = {left: 255, right: 255};
+			larMap.set(a[0].lvl, lar);
+			for (op in a) {
+				if (op.left) {
+					if (op.prio < lar.left) lar.left = op.prio;
+				} else {
+					if (op.prio < lar.right) lar.right = op.prio;
+				}
+			}
+		}
+		// (just to reduce the size of the table)
+		var dst = this.segs;
+		var hight = 0;
+		var count = 0;
+		var dupMap = new Map<Int, Bool>();
+		for (a in lvlMap) {
+			var lar = larMap.get(a[0].lvl);
+			for (op in a) {
+				if (dupMap.exists(op.fid)) continue;
+				count ++;
+				if (op.left && lar.left < lar.right && op.prio == lar.left) {
+					++ hight;
+				} else {
+					swap(dst++, op.fid);
+				}
+				dupMap.set(op.fid, true);
+			}
+		}
+		this.segsEx = segs + count - hight;
+		//trace(segsEx, dst, segs, count, hight);
+		for (fid in segs...segsEx) {
+			var s = this.states[fid];
+			var own = fidMap.get(fid)[0];
+			var tar = []; // targets
+			var tas = []; // trans
+			var i = 0;
+			var a = lvlMap.get(own.lvl);
+			for (op in a) {
+				if (own.left) {
+					if (op.prio < own.prio) {
+						tar[i] = op.nxt;
+						tas[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				} else {
+					if (op.prio <= own.prio) {
+						tar[i] = op.nxt;
+						tas[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				}
+			}
+			s.part = this.trans.length;
+			s.targets = tar;
+			this.trans.push(tas);
+		}
+	}
+
 	#if sys
 	public function write(out: haxe.io.Output, split = false) {
 		var left = posRB();
@@ -530,4 +701,14 @@ private class State {
 		prev_nrules = n;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
+}
+
+private typedef OpAssocExt = {
+	var lvl: Int;    // which state is op value found
+	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
+	var hit: Int;    // in nxt state, a hit value
+	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
+	var prio: Int;   // op priority. The smaller the value, the higher the priority
+	var value: Int;  // op value
+	var left: Bool;  // is left assoc?
 }

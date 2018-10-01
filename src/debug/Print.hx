@@ -17,6 +17,7 @@ class Print {
 		"OpMinus" => "-",
 		"OpTimes" => "*",
 		"OpDiv"   => "/",
+		"OpMod"   => "%",
 		"LParen"  => "(",
 		"RParen"  => ")",
 		"Semicolon"    => ";",
@@ -105,7 +106,9 @@ class Print {
 			add(s == INVALID ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
 		}
 		// body
-		for (i in 0...lex.segs) {
+		for (i in 0...lex.segsEx) {
+			if (i == lex.segs) // op priority
+				buf.add(sRepeat(lineWidth, "-") + "\n");
 			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
 			var base = i * lex.per;
 			for (v in col) {
@@ -123,7 +126,7 @@ class Print {
 			}
 			buf.add(lineSp);
 		}
-		for (i in lex.segs...lex.nstates) {
+		for (i in lex.segsEx...lex.nstates) {
 			sp(); add(i + ""); sp(); s_rollback(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		}
