@@ -91,7 +91,6 @@ class LR0Builder {
 					false;
 				} else {
 					continue;
-					false;
 				}
 				switch (li.expr) {
 				case EArrayDecl(a):

@@ -351,20 +351,20 @@ class LexEngine {
 				}
 			if (!find) lvlMap.remove(lvl);
 		}
-		// highest(minimum) priority left and right.
+		// highest(maximum) priority left and right.
 		var larMap = new Map<Int, {left:Int, right: Int}>();
 		for (a in lvlMap) {
-			var lar = {left: 255, right: 255};
+			var lar = {left: 0, right: 0};
 			larMap.set(a[0].lvl, lar);
 			for (op in a) {
 				if (op.left) {
-					if (op.prio < lar.left) lar.left = op.prio;
+					if (op.prio > lar.left) lar.left = op.prio;
 				} else {
-					if (op.prio < lar.right) lar.right = op.prio;
+					if (op.prio > lar.right) lar.right = op.prio;
 				}
 			}
 		}
-		// (just to reduce the size of the table)
+		// (for reduce the size of the table)
 		var dst = this.segs;
 		var hight = 0;
 		var count = 0;
@@ -374,7 +374,7 @@ class LexEngine {
 			for (op in a) {
 				if (dupMap.exists(op.fid)) continue;
 				count ++;
-				if (op.left && lar.left < lar.right && op.prio == lar.left) {
+				if (op.left && lar.left > lar.right && op.prio == lar.left) {
 					++ hight;
 				} else {
 					swap(dst++, op.fid);
@@ -383,7 +383,7 @@ class LexEngine {
 			}
 		}
 		this.segsEx = segs + count - hight;
-		//trace(segsEx, dst, segs, count, hight);
+		// write to s.targets and this.trans
 		for (fid in segs...segsEx) {
 			var s = this.states[fid];
 			var own = fidMap.get(fid)[0];
@@ -393,13 +393,13 @@ class LexEngine {
 			var a = lvlMap.get(own.lvl);
 			for (op in a) {
 				if (own.left) {
-					if (op.prio < own.prio) {
+					if (op.prio > own.prio) {
 						tar[i] = op.nxt;
 						tas[i] = Char.c3(op.value, op.value, i);
 						++ i;
 					}
 				} else {
-					if (op.prio <= own.prio) {
+					if (op.prio >= own.prio) {
 						tar[i] = op.nxt;
 						tas[i] = Char.c3(op.value, op.value, i);
 						++ i;
@@ -708,7 +708,7 @@ private typedef OpAssocExt = {
 	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
 	var hit: Int;    // in nxt state, a hit value
 	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
-	var prio: Int;   // op priority. The smaller the value, the higher the priority
+	var prio: Int;   // op priority. The higher the value, the higher the priority
 	var value: Int;  // op value
 	var left: Bool;  // is left assoc?
 }
