@@ -1,4 +1,4 @@
-package lm;
+package lms;
 
 #if large_pos
 
@@ -17,13 +17,13 @@ class Position {
 #else
 
 extern abstract Position(Int) {
-	var pmin(get, never):Int; // 20BIT, 0xFFFFF -> 1048575
-	var plen(get, never):Int; // 12BIT, 0xFFF   -> 4095
+	var pmin(get, never):Int; // 16BIT, 0xFFFF -> 65535
+	var plen(get, never):Int; // 16BIT, 0xFFFF -> 65535
 	var pmax(get, never):Int;
-	private inline function get_pmin():Int return this & 0xFFFFF;
-	private inline function get_plen():Int return this >>> 20;
-	private inline function get_pmax():Int return pmin+plen;
-	inline function new(min:Int, max:Int) this = min | (max-min) << 20;
+	private inline function get_pmin():Int return this & 0xFFFF;
+	private inline function get_plen():Int return pmax - pmin;
+	private inline function get_pmax():Int return this >>> 16;
+	inline function new(min:Int, max:Int) this = min | max << 16;
 	inline function toString():String return '$pmin-$pmax';
 }
 

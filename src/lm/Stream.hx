@@ -15,8 +15,8 @@ class Tok<LHS> {
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
-	public function getPosition(): lm.Position {
-		return new lm.Position(pmin, pmax);
+	public function getPosition(): lms.Position {
+		return new lms.Position(pmin, pmax);
 	}
 }
 

@@ -18,6 +18,6 @@ class Utils {
 			++ char;
 			++ i;
 		}
-		return new lm.Position(line, char);
+		return new lms.Position(line, char);
 	}
 }
