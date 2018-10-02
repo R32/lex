@@ -2,10 +2,10 @@ package;
 
 class Demo {
 	static function main() {
-		var str = '1 + 2 * (3 + 4) + 5 * 6';
+		var str = '1 - 2 * (3 + 4) + 5 * 6';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var par = new Parser(lex);
-		trace(par.main() == (1 + 2 * (3 + 4) + 5 * 6));
+		trace(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
 	}
 }
 
@@ -66,8 +66,7 @@ enum abstract Token(Int) to Int {
 	}
 
 	static var expr = switch(s) {
-		case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
-		case [e1 = expr, OpMinus, e2 = expr]: e1 - e2;
+		case [e1 = expr, op = [OpPlus,OpMinus], e2 = expr]: op == OpPlus ? e1 + e2 : e1 - e2;
 		case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
 		case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
 		case [LParen, e = expr, RParen]: e;
@@ -75,7 +74,7 @@ enum abstract Token(Int) to Int {
 		case [CInt(n)]: n;
 	}
 
-	// for extract n from CInt(n)
+	// for extract n from CInt(n), NOTICE: If you don't define @:rule(CInt) function, then the "n" type is Token.
 	@:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 
 	// if the @:rule function has 3 params then the macro will auto pass it the following parameters.

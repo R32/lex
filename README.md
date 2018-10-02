@@ -22,13 +22,28 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     case [A]: 1;
     }
     ```
-  Inside the actions, you can use `_t1~_tN` to access the position indirectly.
+  Inside the actions, you can use `_t1~_tN` to access the position.
 
   ```hx
   _t1.getPosition(); // return a lms.Position.
   _t1.pmax - _t1.pmin
   ```
 
+  Since the Parser can only be used with `enum abstract(Int)`, So here are 2 ways to combine Tokens
+
+  If you put tokens together with **different priorities**, you will get a conflict error.
+
+  ```haxe
+  // 1. same prefix(At least 2 characters).
+  switch(s) {
+  case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
+  }
+
+  // 2.
+  switch(s) {
+  case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+  }
+  ```
 
 ### Defines
 
@@ -57,43 +72,42 @@ It looks very messy here.
   ```
   Production:
     (R0)  MAIN --> EXPR $
-    (R1)  EXPR --> EXPR + EXPR
-    (R2)       --> EXPR - EXPR
-    (R3)       --> EXPR * EXPR
-    (R4)       --> EXPR / EXPR
-    (R5)       --> ( EXPR )
-    (R6)       --> - EXPR
-    (R7)       --> int
+    (R1)  EXPR --> EXPR [+-] EXPR
+    (R2)       --> EXPR * EXPR
+    (R3)       --> EXPR / EXPR
+    (R4)       --> ( EXPR )
+    (R5)       --> - EXPR
+    (R6)       --> int
   -------------------------------------------------------------------------------------------------------------
   |  (S)   |  (RB)  |  (EP)  |   $    |  int   |   +    |   -    |   *    |   /    |   (    |   )    |  EXPR  |
   -------------------------------------------------------------------------------------------------------------
-  |   0    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        |   1    |
+  |   0    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        |   1    |
   -------------------------------------------------------------------------------------------------------------
-  |   1    |  NULL  |  NULL  | R0,S18 |        |   7    |   8    |   9    |   10   |        |        |        |
+  |   1    |  NULL  |  NULL  | R0,S16 |        |   7    |   7    |   8    |   9    |        |        |        |
   -------------------------------------------------------------------------------------------------------------
-  |   2    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        |   6    |
+  |   2    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        |   6    |
   -------------------------------------------------------------------------------------------------------------
-  |   3    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        | R6,S16 |
+  |   3    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        | R5,S14 |
   -------------------------------------------------------------------------------------------------------------
-  |   4    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        |   5    |
+  |   4    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        |   5    |
   -------------------------------------------------------------------------------------------------------------
-  |   5    |  NULL  |  NULL  |        |        |   7    |   8    |   9    |   10   |        | R5,S15 |        |
+  |   5    |  NULL  |  NULL  |        |        |   7    |   7    |   8    |   9    |        | R4,S13 |        |
   -------------------------------------------------------------------------------------------------------------
-  |   6    |  NULL  |  NULL  |        |        |   7    |   8    |   9    |   10   |        |        |        |
+  |   6    |  NULL  |  NULL  |        |        |   7    |   7    |   8    |   9    |        |        |        |
   -------------------------------------------------------------------------------------------------------------
-  |   7    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        | R1,S11 |
+  |   7    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        | R1,S10 |
   -------------------------------------------------------------------------------------------------------------
-  |   8    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        | R2,S12 |
+  |   8    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        | R2,S11 |
   -------------------------------------------------------------------------------------------------------------
-  |   9    |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        | R3,S13 |
-  -------------------------------------------------------------------------------------------------------------
-  |   10   |  NULL  |  NULL  |        | R7,S17 |        |   3    |        |        |   4    |        | R4,S14 |
+  |   9    |  NULL  |  NULL  |        | R6,S15 |        |   3    |        |        |   4    |        | R3,S12 |
   -------------------------------------------------------------------------------------------------------------
   -------------------------------------------------------------------------------------------------------------
-  |   11   |  NULL  |   R1   |        |        |        |        |   9    |   10   |        |        |        |
+  |   10   |  NULL  |   R1   |        |        |        |        |   8    |   9    |        |        |        |
   -------------------------------------------------------------------------------------------------------------
-  |   12   |  NULL  |   R2   |        |        |        |        |   9    |   10   |        |        |        |
-  -------------------------------------------------------------------------------------------------------------
+  |   11   |  NULL  |
+  -------------------
+  |   12   |  NULL  |
+  -------------------
   |   13   |  NULL  |
   -------------------
   |   14   |  NULL  |
@@ -101,10 +115,6 @@ It looks very messy here.
   |   15   |  NULL  |
   -------------------
   |   16   |  NULL  |
-  -------------------
-  |   17   |  NULL  |
-  -------------------
-  |   18   |  NULL  |
   -------------------
   ```
 
@@ -116,25 +126,25 @@ copy from [demo/Demo.hx](demo/Demo.hx)
 package;
 
 class Demo {
-  static function main() {
-    var str = '1 + 2 * (3 + 4) + 5 * 6';
-    var lex = new Lexer(lms.ByteData.ofString(str));
-    var par = new Parser(lex);
-    trace(par.main() == (1 + 2 * (3 + 4) + 5 * 6));
-  }
+    static function main() {
+        var str = '1 - 2 * (3 + 4) + 5 * 6';
+        var lex = new Lexer(lms.ByteData.ofString(str));
+        var par = new Parser(lex);
+        trace(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
+    }
 }
 
 // NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"
 enum abstract Token(Int) to Int {
-  var Eof = 0;
-  var CInt;
-  var OpPlus;
-  var OpMinus;
-  var OpTimes;
-  var OpDiv;
-  var LParen;
-  var RParen;
-  var CStr;
+    var Eof = 0;
+    var CInt;
+    var OpPlus;
+    var OpMinus;
+    var OpTimes;
+    var OpDiv;
+    var LParen;
+    var RParen;
+    var CStr;
 }
 
 /**
@@ -145,59 +155,58 @@ enum abstract Token(Int) to Int {
 * and all the `static var X = "string"` will be treated as rules if no `@:skip`
 */
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
-  static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
-  static var r_int = "-?[1-9][0-9]*";
-  static var tok =  [                  // a rule set definition
-    "[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
-    r_zero + "|" + r_int => CInt,    //
-    "+" => OpPlus,
-    "-" => OpMinus,
-    "*" => OpTimes,
-    "/" => OpDiv,
-    "(" => LParen,
-    ")" => RParen,
-    '"' => {
-      var pmin = lex.pmin;
-      var t = lex.str(); // maybe Eof.
-      lex.pmin = pmin;   // punion
-      t;
-    }
-  ];
+    static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
+    static var r_int = "-?[1-9][0-9]*";
+    static var tok =  [                  // a rule set definition
+        "[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
+        r_zero + "|" + r_int => CInt,    //
+        "+" => OpPlus,
+        "-" => OpMinus,
+        "*" => OpTimes,
+        "/" => OpDiv,
+        "(" => LParen,
+        ")" => RParen,
+        '"' => {
+            var pmin = lex.pmin;
+            var t = lex.str(); // maybe Eof.
+            lex.pmin = pmin;   // punion
+            t;
+        }
+    ];
 
-  static var str = [
-    '\\\\"' => lex.str(),
-    '[^\\\\"]+' => lex.str(),
-    '"' => CStr,          // do escape in Parser @:ofStr(CStr)
-  ];
+    static var str = [
+        '\\\\"' => lex.str(),
+        '[^\\\\"]+' => lex.str(),
+        '"' => CStr,          // do escape in Parser @:ofStr(CStr)
+    ];
 }
 
 @:rule({
-  left: [OpPlus, OpMinus],
-  left: [OpTimes, OpDiv], // The lower will have higher priority
+    left: [OpPlus, OpMinus],
+    left: [OpTimes, OpDiv],
 }) class Parser implements lm.LR0<Lexer, Int> {
 
-  static var main = switch(s) {
-    case [e = expr, Eof]: e;
-  }
+    static var main = switch(s) {
+        case [e = expr, Eof]: e;
+    }
 
-  static var expr = switch(s) {
-    case [e1 = expr, OpPlus, e2 = expr]: e1 + e2;
-    case [e1 = expr, OpMinus, e2 = expr]: e1 - e2;
-    case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
-    case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
-    case [LParen, e = expr, RParen]: e;
-    case [OpMinus, e = expr]: -e;
-    case [CInt(n)]: n;
-  }
+    static var expr = switch(s) {
+        case [e1 = expr, op = [OpPlus,OpMinus], e2 = expr]: op == OpPlus ? e1 + e2 : e1 - e2;
+        case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
+        case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
+        case [LParen, e = expr, RParen]: e;
+        case [OpMinus, e = expr]: -e;
+        case [CInt(n)]: n;
+    }
 
-  // for extract n from CInt(n)
-  @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
+    // for extract n from CInt(n), NOTICE: If you don't define @:rule(CInt) function, then the "n" type is Token.
+    @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 
-  // if the @:rule function has 3 params then the macro will auto pass it the following parameters.
-  // Note: This function does not handle escape
-  @:rule(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
-    return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
-  }
+    // if the @:rule function has 3 params then the macro will auto pass it the following parameters.
+    // Note: This function does not handle escape
+    @:rule(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
+        return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
+    }
 }
 ```
 
@@ -218,268 +227,269 @@ haxe -dce full -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js
 var $hxEnums = $hxEnums || {};
 var Demo = function() { };
 Demo.main = function() {
-  console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 + 2 * (3 + 4) + 5 * 6")).stream,0,9) == 45);
+    console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 - 2 * (3 + 4) + 5 * 6")).stream,0,9) == 17);
 };
 var lm_Lexer = function() { };
 var Lexer = function(s) {
-  this.input = s;
-  this.pmin = 0;
-  this.pmax = 0;
+    this.input = s;
+    this.pmin = 0;
+    this.pmax = 0;
 };
 Lexer.cases = function(s,lex) {
-  switch(s) {
-  case 0:
-    return lex._token(0);
-  case 1:
-    return 1;
-  case 2:
-    return 2;
-  case 3:
-    return 3;
-  case 4:
-    return 4;
-  case 5:
-    return 5;
-  case 6:
-    return 6;
-  case 7:
-    return 7;
-  case 8:
-    var pmin = lex.pmin;
-    var t = lex._token(4);
-    lex.pmin = pmin;
-    return t;
-  case 9:
-    return lex._token(4);
-  case 10:
-    return lex._token(4);
-  default:
-    return 8;
-  }
+    switch(s) {
+    case 0:
+        return lex._token(0);
+    case 1:
+        return 1;
+    case 2:
+        return 2;
+    case 3:
+        return 3;
+    case 4:
+        return 4;
+    case 5:
+        return 5;
+    case 6:
+        return 6;
+    case 7:
+        return 7;
+    case 8:
+        var pmin = lex.pmin;
+        var t = lex._token(4);
+        lex.pmin = pmin;
+        return t;
+    case 9:
+        return lex._token(4);
+    case 10:
+        return lex._token(4);
+    default:
+        return 8;
+    }
 };
 Lexer.prototype = {
-  getString: function(p,len) {
-    return this.input.substr(p,len);
-  }
-  ,_token: function(state) {
-    var i = this.pmax;
-    var len = this.input.length;
-    if(i >= len) {
-      return 0;
+    getString: function(p,len) {
+        return this.input.substr(p,len);
     }
-    this.pmin = i;
-    var prev = state;
-    while(i < len) {
-      var c = this.input.charCodeAt(i++);
-      state = Lexer.raw.charCodeAt(128 * state + c);
-      if(state >= 7) {
-        break;
-      }
-      prev = state;
+    ,_token: function(state) {
+        var i = this.pmax;
+        var len = this.input.length;
+        if(i >= len) {
+            return 0;
+        }
+        this.pmin = i;
+        var prev = state;
+        while(i < len) {
+            var c = this.input.charCodeAt(i++);
+            state = Lexer.raw.charCodeAt(128 * state + c);
+            if(state >= 7) {
+                break;
+            }
+            prev = state;
+        }
+        if(state == 255) {
+            state = prev;
+            prev = 1;
+        } else {
+            prev = 0;
+        }
+        var q = Lexer.raw.charCodeAt(943 - state);
+        if(q < 12) {
+            this.pmax = i - prev;
+        } else {
+            q = Lexer.raw.charCodeAt(state + 896);
+            if(q < 12) {
+                this.pmax = i - prev - Lexer.raw.charCodeAt(state + 912);
+            } else {
+                throw new Error("UnMatached: " + this.pmin + "-" + this.pmax + ": \"" + this.input.substr(this.pmin,i - this.pmin) + "\"");
+            }
+        }
+        return Lexer.cases(q,this);
     }
-    if(state == 255) {
-      state = prev;
-      prev = 1;
-    } else {
-      prev = 0;
+    ,token: function() {
+        return this._token(0);
     }
-    var q = Lexer.raw.charCodeAt(943 - state);
-    if(q < 12) {
-      this.pmax = i - prev;
-    } else {
-      q = Lexer.raw.charCodeAt(state + 896);
-      if(q < 12) {
-        this.pmax = i - prev - Lexer.raw.charCodeAt(state + 912);
-      } else {
-        throw new Error("UnMatached: " + this.pmin + "-" + this.pmax + ": \"" + this.input.substr(this.pmin,i - this.pmin) + "\"");
-      }
-    }
-    return Lexer.cases(q,this);
-  }
-  ,token: function() {
-    return this._token(0);
-  }
 };
 var Parser = function(lex) {
-  this.stream = new lm_Stream(lex,0);
+    this.stream = new lm_Stream(lex,0);
 };
 Parser._entry = function(stream,state,exp) {
-  var prev = state;
-  var t = null;
-  var dx = 0;
-  while(true) {
+    var prev = state;
+    var t = null;
+    var dx = 0;
     while(true) {
-      t = stream.next();
-      state = Parser.raw.charCodeAt(16 * prev + t.term);
-      t.state = state;
-      if(state >= 11) {
-        break;
-      }
-      prev = state;
+        while(true) {
+            t = stream.next();
+            state = Parser.raw.charCodeAt(16 * prev + t.term);
+            t.state = state;
+            if(state >= 10) {
+                break;
+            }
+            prev = state;
+        }
+        if(state == 255) {
+            state = prev;
+            dx = 1;
+        } else {
+            dx = 0;
+        }
+        var q = Parser.raw.charCodeAt(271 - state);
+        if(q < 7) {
+            stream.pos -= dx;
+        } else {
+            q = Parser.raw.charCodeAt(state + 176);
+            if(q < 7) {
+                stream.rollback(dx + Parser.raw.charCodeAt(state + 208));
+            } else {
+                break;
+            }
+        }
+        while(true) {
+            var value = Parser.cases(q,stream);
+            t = stream.cached[stream.pos + -1];
+            if(t.term == exp) {
+                --stream.pos;
+                stream.junk(1);
+                return value;
+            }
+            t.val = value;
+            t.state = Parser.raw.charCodeAt(16 * stream.cached[stream.pos + -2].state + t.term);
+            prev = t.state;
+            if(prev < 11) {
+                break;
+            }
+            q = Parser.raw.charCodeAt(271 - prev);
+        }
     }
-    if(state == 255) {
-      state = prev;
-      dx = 1;
-    } else {
-      dx = 0;
-    }
-    var q = Parser.raw.charCodeAt(303 - state);
-    if(q < 8) {
-      stream.pos -= dx;
-    } else {
-      q = Parser.raw.charCodeAt(state + 208);
-      if(q < 8) {
-        stream.rollback(dx + Parser.raw.charCodeAt(state + 240));
-      } else {
-        break;
-      }
-    }
-    while(true) {
-      var value = Parser.cases(q,stream);
-      t = stream.cached[stream.pos + -1];
-      if(t.term == exp) {
-        --stream.pos;
-        stream.junk(1);
-        return value;
-      }
-      t.val = value;
-      t.state = Parser.raw.charCodeAt(16 * stream.cached[stream.pos + -2].state + t.term);
-      prev = t.state;
-      if(prev < 13) {
-        break;
-      }
-      q = Parser.raw.charCodeAt(303 - prev);
-    }
-  }
-  var last = stream.cached[stream.pos + -1];
-  throw new Error("Unexpected \"" + stream.lex.getString(last.pmin,last.pmax - last.pmin) + "\" at " + last.pmin + "-" + last.pmax);
+    var last = stream.cached[stream.pos + -1];
+    throw new Error("Unexpected \"" + stream.lex.getString(last.pmin,last.pmax - last.pmin) + "\" at " + last.pmin + "-" + last.pmax);
 };
 Parser.cases = function(f,s) {
-  var e1;
-  var e;
-  var e2;
-  switch(f) {
-  case 0:
-    e = s.cached[s.pos + -2].val;
-    s.reduce(9,2);
-    return e;
-  case 1:
-    e1 = s.cached[s.pos + -3].val;
-    e2 = s.cached[s.pos + -1].val;
-    s.reduce(10,3);
-    return e1 + e2;
-  case 2:
-    e1 = s.cached[s.pos + -3].val;
-    e2 = s.cached[s.pos + -1].val;
-    s.reduce(10,3);
-    return e1 - e2;
-  case 3:
-    e1 = s.cached[s.pos + -3].val;
-    e2 = s.cached[s.pos + -1].val;
-    s.reduce(10,3);
-    return e1 * e2;
-  case 4:
-    e1 = s.cached[s.pos + -3].val;
-    e2 = s.cached[s.pos + -1].val;
-    s.reduce(10,3);
-    return e1 / e2 | 0;
-  case 5:
-    e = s.cached[s.pos + -2].val;
-    s.reduce(10,3);
-    return e;
-  case 6:
-    e = s.cached[s.pos + -1].val;
-    s.reduce(10,2);
-    return -e;
-  default:
-    var t = s.cached[s.pos + -1];
-    var n = Std.parseInt(s.lex.getString(t.pmin,t.pmax - t.pmin));
-    s.reduce(10,1);
-    return n;
-  }
+    var e1;
+    var e;
+    var e2;
+    switch(f) {
+    case 0:
+        e = s.cached[s.pos + -2].val;
+        s.reduce(9,2);
+        return e;
+    case 1:
+        e1 = s.cached[s.pos + -3].val;
+        var op = s.cached[s.pos + -2].term;
+        e2 = s.cached[s.pos + -1].val;
+        s.reduce(10,3);
+        if(op == 2) {
+            return e1 + e2;
+        } else {
+            return e1 - e2;
+        }
+        break;
+    case 2:
+        e1 = s.cached[s.pos + -3].val;
+        e2 = s.cached[s.pos + -1].val;
+        s.reduce(10,3);
+        return e1 * e2;
+    case 3:
+        e1 = s.cached[s.pos + -3].val;
+        e2 = s.cached[s.pos + -1].val;
+        s.reduce(10,3);
+        return e1 / e2 | 0;
+    case 4:
+        e = s.cached[s.pos + -2].val;
+        s.reduce(10,3);
+        return e;
+    case 5:
+        e = s.cached[s.pos + -1].val;
+        s.reduce(10,2);
+        return -e;
+    default:
+        var t = s.cached[s.pos + -1];
+        var n = Std.parseInt(s.lex.getString(t.pmin,t.pmax - t.pmin));
+        s.reduce(10,1);
+        return n;
+    }
 };
 var HxOverrides = function() { };
 HxOverrides.cca = function(s,index) {
-  var x = s.charCodeAt(index);
-  if(x != x) {
-    return undefined;
-  }
-  return x;
+    var x = s.charCodeAt(index);
+    if(x != x) {
+        return undefined;
+    }
+    return x;
 };
 var Std = function() { };
 Std.parseInt = function(x) {
-  var v = parseInt(x,10);
-  if(v == 0 && (HxOverrides.cca(x,1) == 120 || HxOverrides.cca(x,1) == 88)) {
-    v = parseInt(x);
-  }
-  if(isNaN(v)) {
-    return null;
-  }
-  return v;
+    var v = parseInt(x,10);
+    if(v == 0 && (HxOverrides.cca(x,1) == 120 || HxOverrides.cca(x,1) == 88)) {
+        v = parseInt(x);
+    }
+    if(isNaN(v)) {
+        return null;
+    }
+    return v;
 };
 var lm_Tok = function(t,min,max) {
-  this.term = t;
-  this.pmin = min;
-  this.pmax = max;
+    this.term = t;
+    this.pmin = min;
+    this.pmax = max;
 };
 var lm_Stream = function(l,s) {
-  this.lex = l;
-  this.cached = new Array(128);
-  this.cached[0] = new lm_Tok(0,0,0);
-  this.cached[0].state = s;
-  this.right = 1;
-  this.pos = 1;
+    this.lex = l;
+    this.cached = new Array(128);
+    this.cached[0] = new lm_Tok(0,0,0);
+    this.cached[0].state = s;
+    this.right = 1;
+    this.pos = 1;
 };
 lm_Stream.prototype = {
-  junk: function(n) {
-    if(n <= 0) {
-      this.right = this.pos;
-    } else if(this.right - this.pos >= n) {
-      this.right -= n;
-      var _g = this.pos;
-      var _g1 = this.right;
-      while(_g < _g1) {
-        var i = _g++;
-        this.cached[i] = this.cached[i + n];
-      }
-    } else {
-      n -= this.right - this.pos;
-      while(n-- > 0) this.lex.token();
-      this.right = this.pos;
+    junk: function(n) {
+        if(n <= 0) {
+            this.right = this.pos;
+        } else if(this.right - this.pos >= n) {
+            this.right -= n;
+            var _g = this.pos;
+            var _g1 = this.right;
+            while(_g < _g1) {
+                var i = _g++;
+                this.cached[i] = this.cached[i + n];
+            }
+        } else {
+            n -= this.right - this.pos;
+            while(n-- > 0) this.lex.token();
+            this.right = this.pos;
+        }
     }
-  }
-  ,next: function() {
-    if(this.right == this.pos) {
-      var t = this.lex.token();
-      this.cached[this.right++] = new lm_Tok(t,this.lex.pmin,this.lex.pmax);
+    ,next: function() {
+        if(this.right == this.pos) {
+            var t = this.lex.token();
+            this.cached[this.right++] = new lm_Tok(t,this.lex.pmin,this.lex.pmax);
+        }
+        return this.cached[this.pos++];
     }
-    return this.cached[this.pos++];
-  }
-  ,rollback: function(dx) {
-    this.pos -= dx;
-    this.right = this.pos;
-    this.lex.pmax = this.cached[this.pos].pmin;
-  }
-  ,reduce: function(lv,w) {
-    var pmax = this.cached[this.pos + -1].pmax;
-    this.pos -= w;
-    var t = this.cached[this.pos];
-    t.term = lv;
-    t.pmax = pmax;
-    ++this.pos;
-    --w;
-    this.right -= w;
-    var _g = this.pos;
-    var _g1 = this.right;
-    while(_g < _g1) {
-      var i = _g++;
-      this.cached[i] = this.cached[i + w];
+    ,rollback: function(dx) {
+        this.pos -= dx;
+        this.right = this.pos;
+        this.lex.pmax = this.cached[this.pos].pmin;
     }
-  }
+    ,reduce: function(lv,w) {
+        var pmax = this.cached[this.pos + -1].pmax;
+        this.pos -= w;
+        var t = this.cached[this.pos];
+        t.term = lv;
+        t.pmax = pmax;
+        ++this.pos;
+        --w;
+        this.right -= w;
+        var _g = this.pos;
+        var _g1 = this.right;
+        while(_g < _g1) {
+            var i = _g++;
+            this.cached[i] = this.cached[i + w];
+        }
+    }
 };
 if( String.fromCodePoint == null ) String.fromCodePoint = function(c) { return c < 0x10000 ? String.fromCharCode(c) : String.fromCharCode((c>>10)+0xD7C0)+String.fromCharCode((c&0x3FF)+0xDC00); }
 Lexer.raw = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\x0f\xff\xff\xff\xff\xff\x0e\x0d\x0c\x0b\xff\x02\xff\x0a\x09\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x08\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x06\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x08\x06\x07\x04\x02\x05\x01\x0b\x09\xff\x0a\xff\x01\x03\x00\xff";
-Parser.raw = "\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x01\xff\xff\xff\xff\xff\x12\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x06\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x10\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x05\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\x0f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\x08\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x0b\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x0c\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x0d\xff\xff\xff\xff\xff\xff\x11\xff\x03\xff\xff\x04\xff\xff\xff\x0e\xff\xff\xff\xff\xff\xff\xff\xff\xff\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x09\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x07\x06\x05\x04\x03\x02\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
+Parser.raw = "\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x01\xff\xff\xff\xff\xff\x10\xff\x07\x07\x08\x09\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x06\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x0e\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x05\xff\xff\xff\xff\xff\xff\xff\x07\x07\x08\x09\xff\x0d\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\x07\x08\x09\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x0a\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x0b\xff\xff\xff\xff\xff\xff\x0f\xff\x03\xff\xff\x04\xff\xff\xff\x0c\xff\xff\xff\xff\xff\xff\xff\xff\xff\x08\x09\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x06\x05\x04\x03\x02\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
 Demo.main();
 })();
 ```
