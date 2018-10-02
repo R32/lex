@@ -22,6 +22,13 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     case [A]: 1;
     }
     ```
+  Inside the actions, you can use `_t1~_tN` to access the position indirectly.
+
+  ```hx
+  _t1.getPosition(); // return a lms.Position.
+  _t1.pmax - _t1.pmin
+  ```
+
 
 ### Defines
 

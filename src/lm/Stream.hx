@@ -3,19 +3,20 @@ package lm;
 #if static
 @:generic
 #end
+@:allow(lm.Stream)
 class Tok<LHS> {
-	public var state: Int;
-	public var term: Int;  // terminal & non-terminal value
-	public var pmin: Int;
-	public var pmax: Int;
-	public var val: LHS;
+	public var state(default, null): Int;
+	public var term(default, null): Int;  // terminal & non-terminal value
+	public var pmin(default, null): Int;
+	public var pmax(default, null): Int;
+	public var val(default, null): LHS;
 	public function new(t, min, max) {
 		term = t;
 		pmin = min;
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
-	public function getPosition(): lms.Position {
+	public inline function getPosition(): lms.Position {
 		return new lms.Position(pmin, pmax);
 	}
 }

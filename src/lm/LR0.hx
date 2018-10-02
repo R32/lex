@@ -273,10 +273,10 @@ class LR0Builder {
 				for (i in 0...len) {
 					var s = li.syms[i];
 
-					// position var which will be auto removed by dce if you dont use it.
+					// Stream.Tok<T> which will be auto removed by dce if you dont use it.
 					var dx = -(len - i);
-					var spos = "_p" + i;
-					a.push( macro var $spos = @:privateAccess s.offset($v{dx}).getPosition() );
+					var stok = "_t" + (i + 1);
+					a.push( macro var $stok = @:privateAccess s.offset($v{dx}) );
 
 					// checking...
 					if (s.t == false && s.name == entry.name)
@@ -295,10 +295,13 @@ class LR0Builder {
 							a.push(macro var $name: $ct_tok = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
-							if (ofstr.args == 3) {
-								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
-							} else {
+							switch(ofstr.args) {
+							case 1:  // (string)
 								a.push(macro var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+							case 2:  // (input, tok)
+								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
+							default: // (input, pmin, pmax)
+								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
 							}
 						}
 					} else {
@@ -541,7 +544,7 @@ class LR0Builder {
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream<$ct_lhs>(lex, $v{lex.entrys[0].begin});
 			}
-			@:access(lm.Stream)
+			@:access(lm)
 			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
 				var prev = state;
 				var t: lm.Stream.Tok<$ct_lhs> = null;
