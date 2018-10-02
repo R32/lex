@@ -7,11 +7,9 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **Rollback-Able LR(0)**. **(WIP)**
+* [x] Parser: **Rollback-Able LR(0)**. **(WIP)** It can only have a maximum of [0-254] states(*The future may increase to 16-bit size*).
 
-  > It can only have a maximum of [0-254] states(*The future may increase to 16-bit size*).
-
-  - [x] Operator Priority. Only operators with the same position will have priority competition
+  - [x] Operator Precedence. Only operators in the same position have priority competition.
 
     > I don't know how yacc implements it, I used my own way. so there might be bugs
     >
@@ -168,7 +166,7 @@ enum abstract Token(Int) to Int {
 
 @:rule({
   left: [OpPlus, OpMinus],
-  left: [OpTimes, OpDiv],
+  left: [OpTimes, OpDiv], // The lower will have higher priority
 }) class Parser implements lm.LR0<Lexer, Int> {
 
   static var main = switch(s) {

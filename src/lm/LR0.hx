@@ -80,7 +80,7 @@ class LR0Builder {
 		parseToken(t_tok);
 	}
 
-	function parseOpPriority(cls:ClassType) {
+	function parsePrecedence(cls:ClassType) {
 		function extract(a: Array<ObjectField>, assoc: OpAssoc) {
 			var dup = new Map<String, Bool>();
 			for (i in 0...a.length) {
@@ -470,7 +470,7 @@ class LR0Builder {
 			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
 		// begin
 		var lrb = new LR0Builder(t_tok, t_lhs, eof.toString());
-		lrb.parseOpPriority(cls);
+		lrb.parsePrecedence(cls);
 		var allFields = new haxe.ds.StringMap<Field>();
 		var switches = filter(Context.getBuildFields(), allFields, lrb);
 		if (switches.length == 0)

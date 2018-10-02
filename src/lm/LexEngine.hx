@@ -125,7 +125,7 @@ class LexEngine {
 		if (lr0 != null) {
 			this.states = Lambda.array(this.lstates);
 			this.states.sort(State.onSort);
-			doPriority(lr0.assoc, lr0.max);
+			doPrecedence(lr0.assoc, lr0.max);
 		}
 		// DFA -> Tables
 		this.makeTables();
@@ -248,7 +248,7 @@ class LexEngine {
 		}
 	}
 
-	function doPriority(assoc: lm.LR0.OpAssoc, maxValue: Int) {
+	function doPrecedence(assoc: lm.LR0.OpAssoc, maxValue: Int) { // parsePrecedence
 		inline function segStart(i) return i * this.per;
 		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
 		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
@@ -337,7 +337,7 @@ class LexEngine {
 			var prio = a[0].prio;
 			for (i in 1...a.length)
 				if (a[i].prio != prio)
-					throw "Operator Priority Conflict";
+					throw "Operator Precedence Conflict";
 		}
 		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
 		for (lvl in lvlMap.keys()) {
@@ -351,7 +351,7 @@ class LexEngine {
 				}
 			if (!find) lvlMap.remove(lvl);
 		}
-		// highest(maximum) priority left and right.
+		// highest(maximum) precedence in lvl
 		var larMap = new Map<Int, {left:Int, right: Int}>();
 		for (a in lvlMap) {
 			var lar = {left: 0, right: 0};
@@ -708,7 +708,7 @@ private typedef OpAssocExt = {
 	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
 	var hit: Int;    // in nxt state, a hit value
 	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
-	var prio: Int;   // op priority. The higher the value, the higher the priority
+	var prio: Int;   // op precedence. The higher the value, the higher the priority
 	var value: Int;  // op value
 	var left: Bool;  // is left assoc?
 }
