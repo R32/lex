@@ -63,6 +63,7 @@ class LR0Builder {
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_tok: ComplexType;     // token completeType
 	var ct_lhs: ComplexType;     // unify all type of lhsA.
+	var opAssoc: OpAssoc;
 
 	public function new(t_tok, t_lhs, es) {
 		maxValue = 0;
@@ -72,10 +73,52 @@ class LR0Builder {
 		udtMap = new Map();
 		lhsMap = new Map();
 		funMap = new Map();
+
 		sEof = es;
 		ct_tok = Context.toComplexType(t_tok);
 		ct_lhs = Context.toComplexType(t_lhs);
 		parseToken(t_tok);
+	}
+
+	function parsePrecedence(cls:ClassType) {
+		function extract(a: Array<ObjectField>, assoc: OpAssoc) {
+			var dup = new Map<String, Bool>();
+			for (i in 0...a.length) {
+				var li = a[i].expr;
+				var left = if (a[i].field == "left") {
+					true;
+				} else if (a[i].field == "right") {
+					false;
+				} else {
+					continue;
+				}
+				switch (li.expr) {
+				case EArrayDecl(a):
+					for (e in a) {
+						var term = null;
+						switch (e.expr) {
+						case EConst(CIdent(s)) if ((term = this.udtMap.get(s)) != null && term.t):
+							if (dup.exists(s))
+								Context.error("Duplicate Token " + e.toString(), e.pos);
+							dup.set(s, true);
+							assoc.push( {left: left, prio: i, value: term.value} );
+						case _:
+							Context.error("UnSupported Token: " + e.toString(), e.pos);
+						}
+					}
+				default:
+					Context.error("UnSupported Type",li.pos);
+				}
+			}
+		}
+		opAssoc = [];
+		var rule = cls.meta.extract(":rule")[0];
+		var obj = rule.params[0];
+		switch (obj.expr) {
+		case EObjectDecl(a):
+			extract(a, opAssoc);
+		default:
+		}
 	}
 
 	function parseToken(tk: Type) {
@@ -427,13 +470,14 @@ class LR0Builder {
 			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
 		// begin
 		var lrb = new LR0Builder(t_tok, t_lhs, eof.toString());
+		lrb.parsePrecedence(cls);
 		var allFields = new haxe.ds.StringMap<Field>();
 		var switches = filter(Context.getBuildFields(), allFields, lrb);
 		if (switches.length == 0)
 			return null;
 		lrb.transform(switches);
 		var pats = lrb.toPartern();
-		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, true);
+		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, {assoc: lrb.opAssoc, max: lrb.maxValue});
 		// modify lex.table as LR0
 		lrb.modify(lex);
 
@@ -485,6 +529,7 @@ class LR0Builder {
 			static var raw = $raw;
 			static inline var NRULES  = $v{lex.nrules};
 			static inline var NSEGS   = $v{lex.segs};
+			static inline var NSEGS_EX = $v{lex.segsEx};
 			static inline var INVALID = $v{INVALID};
 			static inline function getU8(i:Int):Int return $getU8;
 			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
@@ -538,8 +583,7 @@ class LR0Builder {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGS) break;
-						// do operator priority here
+						if (prev < NSEGS_EX) break;
 						q = exits(prev);
 					}
 				}
@@ -718,3 +762,5 @@ class LR0Builder{}
 #end
 @:remove interface LR0<LEX, LHS> {
 }
+
+typedef OpAssoc= Array<{left: Bool, prio: Int, value: Int}>
