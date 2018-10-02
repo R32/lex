@@ -227,6 +227,21 @@ class LR0Builder {
 								Context.error("Infinite recursion", e.pos);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
+						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
+							var cset = CSet.C_EMPTY;
+							for (t in a) {
+								switch (t.expr) {
+								case EConst(CIdent(s)):
+									firstCharChecking(s, UPPER, t.pos);
+									cset = CSet.union(cset, getCSet(s, t.pos));
+								default:
+									Context.error("Unsupported: " + t.toString(), t.pos);
+								}
+							}
+							if (cset == CSet.C_EMPTY)
+								Context.error("Empty", pos);
+							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
+
 						case _:
 							Context.error("Unsupported: " + e.toString(), e.pos);
 						}
