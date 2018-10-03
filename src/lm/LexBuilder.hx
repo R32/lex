@@ -166,7 +166,7 @@ class LexBuilder {
 				return gotos(q, this);
 			}
 		}// class end
-		var pos = TPositionTools.here();
+		var pos = Context.currentPos();
 		for (i in 0...groups.length) {
 			var g = groups[i];
 			var seg = lex.entrys[i];

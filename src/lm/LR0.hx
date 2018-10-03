@@ -611,7 +611,7 @@ class LR0Builder {
 		}
 		// build switch
 		var exprs = perttyVars(Lambda.flatten( lhsA.map(l -> l.cases)).map( s -> s.expr ));
-		var here = TPositionTools.here();
+		var here = Context.currentPos();
 		var defCase = exprs.cases.pop();
 		var liCase = Lambda.mapi( exprs.cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
 		var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
