@@ -31,8 +31,6 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
   Since the Parser can only be used with `enum abstract(Int)`, So here are 2 ways to combine Tokens
 
-  If you put tokens together with **different priorities**, you will get a conflict error.
-
   ```haxe
   // 1. same prefix(At least 2 characters).
   switch(s) {
@@ -44,6 +42,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
   case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
   }
   ```
+  If you put tokens together with **different priorities**, you will get a conflict error.
 
 ### Defines
 
@@ -177,7 +176,7 @@ enum abstract Token(Int) to Int {
     static var str = [
         '\\\\"' => lex.str(),
         '[^\\\\"]+' => lex.str(),
-        '"' => CStr,          // do escape in Parser @:ofStr(CStr)
+        '"' => CStr,          // do escape in Parser @:rule(CStr)
     ];
 }
 
