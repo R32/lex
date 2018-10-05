@@ -1,7 +1,6 @@
 package lm;
 
 #if macro
-import lm.LexEngine.INVALID;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
@@ -80,6 +79,7 @@ class LexBuilder {
 		meta.cmax = meta.cmax & 255 | 15;
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
+		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true; // if platform doesn't support ucs2 then force bytes.
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = groups.map( g -> g.rules.map(s->LexEngine.parse(s, c_all)) );
@@ -90,13 +90,18 @@ class LexBuilder {
 		f.close();
 		#end
 		// generate
-		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
-		var raw = macro haxe.Resource.getBytes($v{resname});
-		var getU8 = macro raw.get(i);
+		var getU: Expr = null;
+		var raw: Expr = null;
 		if (force_bytes) {
-			Context.addResource(resname, lex.table);
+			var bytes = lex.bytesTable();
+			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
+			Context.addResource(resname, bytes);
 			#if hl
+			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUI16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
+			#else
+			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+			raw = macro haxe.Resource.getBytes($v{resname});
 			#end
 		} else {
 			var out = haxe.macro.Compiler.getOutput() + ".lex-table";
@@ -107,17 +112,18 @@ class LexBuilder {
 			lex.write(f);
 			f.close();
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
-			getU8 = macro StringTools.fastCodeAt(raw, i);
+			getU = macro StringTools.fastCodeAt(raw, i);
 		}
 		var defs = macro class {
 			static var raw = $raw;
+			static inline var INVALID = $v{lex.invalid};
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
-			static inline function getU8(i:Int):Int return $getU8;
-			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
-			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
-			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
-			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
+			static inline function getU(i:Int):Int return $getU;
+			static inline function trans(s:Int, c:Int):Int return getU($v{lex.per} * s + c);
+			static inline function exits(s:Int):Int return getU($v{lex.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU(s + $v{lex.posRB()});
+			static inline function rollL(s:Int):Int return getU(s + $v{lex.posRBL()});
 			static inline function gotos(s:Int, lex: $ct_lex) return cases(s, lex);
 			public var input(default, null): lms.ByteData;
 			public var pmin(default, null): Int;
@@ -146,7 +152,7 @@ class LexBuilder {
 						break;
 					prev = state;
 				}
-				if (state == $v{INVALID}) {
+				if (state == INVALID) {
 					state = prev;
 					prev = 1; // use prev as dx.
 				} else {

@@ -6,8 +6,8 @@ typedef PatternSet = Array<Pattern>;
 
 class LexEngine {
 
-	public static inline var U8MAX = 255;
-	public static inline var INVALID = U8MAX;
+	public static inline var U8MAX = 0xFF;
+	public static inline var U16MAX = 0xFFFF;
 
 	var uid(default, null): Int;
 	var finals: Array<Node>;
@@ -36,7 +36,7 @@ class LexEngine {
 	/**
 	 format: [seg0,seg1,......,segN, rollback,rollback_len,exits]
 	*/
-	public var table(default, null): haxe.io.Bytes;
+	public var table(default, null): haxe.ds.Vector<Int>;
 
 	/**
 	 state_counter
@@ -54,6 +54,8 @@ class LexEngine {
 
 	public var entrys(default, null): Array<{begin:Int, segs:Int, nrules:Int}>;
 
+	public var invalid(default, null): Int;
+
 	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lr0:{assoc:lm.LR0.OpAssoc, max:Int}) {
 		this.entrys = [];
 		this.parts = new Map();
@@ -61,7 +63,8 @@ class LexEngine {
 		this.lparts = new List();
 		this.lstates = new List();
 		this.segs = 0;  // state_counter
-		this.final_counter = U8MAX - 1; // 255 is used for invalid
+		this.invalid = U16MAX;
+		this.final_counter = U16MAX - 1; // compress it later.
 		this.part_counter = 0;
 		this.nrules = 0;
 		this.finals = [];
@@ -96,6 +99,7 @@ class LexEngine {
 		this.finals = null;
 		this.finals_tmp = null;
 		var i = 0;
+		// get trans
 		this.trans = [];
 		this.trans.resize(lparts.length);
 		for (part in lparts) {
@@ -110,9 +114,10 @@ class LexEngine {
 		}
 		this.parts = null;
 		this.lparts = null;
-
+		// init some properties
 		this.segsEx = this.segs;
 		this.nstates = lstates.length;
+		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
 		this.perRB = 1 + ((nstates - 1) | 15);
 		// compress finalState
 		var diff = final_counter + 1 - segs;
@@ -213,9 +218,11 @@ class LexEngine {
 	}
 
 	function makeTables() {
+		var INVALID = this.invalid;
 		var bytes = (segsEx * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
-		var tbls = haxe.io.Bytes.alloc(bytes);
-		tbls.fill(0, bytes, INVALID);
+		var tbls = new haxe.ds.Vector<Int>(bytes);
+		for (i in 0...bytes) tbls.set(i, INVALID);
+
 		for (s in this.lstates) {
 			tbls.set(bytes - 1 - s.id, first(0, INVALID, s.prev_nrules, s.finals)); // Reverse write checking table
 			if (s.id < segsEx)
@@ -226,6 +233,7 @@ class LexEngine {
 
 	function makeRollback() {
 		inline function epsilon(seg) return this.table.get(this.table.length - 1 - seg);
+		var INVALID = this.invalid;
 		var rollpos = posRB();
 		var rlenpos = posRBL();
 		function loop(exit, seg, length) {
@@ -250,9 +258,10 @@ class LexEngine {
 
 	function doPrecedence(assoc: lm.LR0.OpAssoc, maxValue: Int) { // parsePrecedence
 		inline function segStart(i) return i * this.per;
+		var INVALID = this.invalid;
 		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
 		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
-		function parse(table, begin, max) {
+		function parse(table: haxe.ds.Vector<Int>, begin, max) {
 			for (i in begin...max) {
 				var start = segStart(i);
 				for (op in assoc) {
@@ -323,8 +332,9 @@ class LexEngine {
 		}
 
 		// need a tmp table for analysis
-		var tmp = haxe.io.Bytes.alloc( segStart(this.segs) );
-		tmp.fill(0, segStart(this.segs), INVALID);
+		var tmp = new haxe.ds.Vector<Int>( segStart(this.segs) );
+		for (i in 0...tmp.length) tmp.set(i, INVALID);
+
 		for (s in this.lstates) {
 			if (s.id >= this.segs) continue;
 			makeTrans(tmp, segStart(s.id), this.trans[s.part], s.targets);
@@ -412,26 +422,41 @@ class LexEngine {
 		}
 	}
 
+	public function bytesTable(): haxe.io.Bytes {
+		if (invalid == U8MAX) {
+			var b = haxe.io.Bytes.alloc(table.length);
+			for (i in 0...table.length)
+				b.set(i, table[i]);
+			return b;
+		} else {
+			var b = haxe.io.Bytes.alloc(table.length << 1);
+			for (i in 0...table.length)
+				b.setUInt16(i << 1, table[i]);
+			return b;
+		}
+	}
 	#if sys
 	public function write(out: haxe.io.Output, split = false) {
 		var left = posRB();
 		var rest = this.table.length - left;
 		if (!split) out.writeByte('"'.code);
+		var prefix = this.invalid == U8MAX ? "\\x" : "\\u";
+		var padd = this.invalid == U8MAX ? 2 : 4;
 		for (i in 0...left) {
 			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
 			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
-			out.writeString( "\\x" + StringTools.hex(table.get(i), 2).toLowerCase() );
+			out.writeString( prefix + StringTools.hex(table.get(i), padd).toLowerCase() );
 		}
 		for (i in 0...rest) {
 			if (split && i % 16 == 0) out.writeString("\n");
 			if (split && i % this.perRB == 0) out.writeString("\n");
-			out.writeString( "\\x" + StringTools.hex(table.get(left + i), 2).toLowerCase() );
+			out.writeString( prefix + StringTools.hex(table.get(left + i), padd).toLowerCase() );
 		}
 		if (!split) out.writeByte('"'.code);
 		out.flush();
 	}
 	#end
-	static function makeTrans(tbls: haxe.io.Bytes, start: Int, trans: Array<Char>, targets: Array<Int>) {
+	static function makeTrans(tbls: haxe.ds.Vector<Int>, start: Int, trans: Array<Char>, targets: Array<Int>) {
 		for (c in trans) {
 			var i = c.min + start;
 			var max = c.max + start;

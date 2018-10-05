@@ -52,13 +52,13 @@ enum abstract Token(Int) to Int {
 	static var str = [
 		'\\\\"' => lex.str(),
 		'[^\\\\"]+' => lex.str(),
-		'"' => CStr,          // do escape in Parser @:ofStr(CStr)
+		'"' => CStr,          // do escape in Parser @:rule(CStr)
 	];
 }
 
 @:rule({
 	left: [OpPlus, OpMinus],
-	left: [OpTimes, OpDiv],
+	left: [OpTimes, OpDiv],   // the lower have higher Priority.
 }) class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {

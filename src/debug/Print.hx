@@ -3,7 +3,6 @@ package debug;
 import StringTools.rpad;
 import StringTools.lpad;
 import lm.LexEngine;
-import lm.LexEngine.INVALID;
 import lm.LR0;
 
 @:access(lm)
@@ -97,6 +96,7 @@ class Print {
 		var raw = lex.table;
 		var rollpos = lex.posRB();
 		var rlenpos = lex.posRBL();
+		var INVALID = lex.invalid;
 		function s_epsilon(i) {
 			var s = lex.table.get(lex.table.length - 1 - i);
 			add(s == INVALID ? "NULL" : "R" + s);

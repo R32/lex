@@ -7,7 +7,6 @@ import haxe.macro.Context;
 import haxe.macro.Expr.Position;
 import lm.Charset;
 import lm.LexEngine;
-import lm.LexEngine.INVALID;
 
 using haxe.macro.Tools;
 
@@ -349,6 +348,7 @@ class LR0Builder {
 
 	function checking(lex: LexEngine) {
 		var table = lex.table;
+		var INVALID = lex.invalid;
 		// init exitN => final_state
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
 		for (n in 0...lex.nrules)
@@ -426,7 +426,7 @@ class LR0Builder {
 						addition(lex, next, follow, -1, lpos);
 					}
 				} else {
-					if (follow != INVALID) {
+					if (follow != lex.invalid) {
 						var id = Lambda.find(udtMap, u -> u.value == i).name;
 						Context.error("rewrite conflict: " + id, lpos);
 					}
@@ -439,6 +439,7 @@ class LR0Builder {
 
 	function modify(lex: LexEngine) {
 		var b = lex.table;
+		var INVALID = lex.invalid;
 		var per = lex.per;
 		for (seg in 0...lex.segs) {
 			var base = seg * per;
@@ -523,13 +524,19 @@ class LR0Builder {
 	function generate(lex: lm.LexEngine) {
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(lex.table)).toLowerCase();
-		var raw = macro haxe.Resource.getBytes($v{resname});
-		var getU8 = macro raw.get(i);
+		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true;
+		var getU:Expr = null;
+		var raw:Expr = null;
 		if (force_bytes) {
-			Context.addResource(resname, lex.table);
+			var bytes = lex.bytesTable();
+			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
+			Context.addResource(resname, bytes);
 			#if hl
+			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUI16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
+			#else
+			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+			raw = macro haxe.Resource.getBytes($v{resname});
 			#end
 		} else {
 			var out = haxe.macro.Compiler.getOutput() + ".lr0-table";
@@ -539,21 +546,21 @@ class LR0Builder {
 			var f = sys.io.File.write(out);
 			lex.write(f);
 			f.close();
+			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
-			getU8 = macro StringTools.fastCodeAt(raw, i);
 		}
 		var ct_stream = macro :lm.Stream<$ct_lhs>;
 		var defs = macro class {
 			static var raw = $raw;
+			static inline var INVALID = $v{lex.invalid};
 			static inline var NRULES  = $v{lex.nrules};
 			static inline var NSEGS   = $v{lex.segs};
-			static inline var NSEGS_EX = $v{lex.segsEx};
-			static inline var INVALID = $v{INVALID};
-			static inline function getU8(i:Int):Int return $getU8;
-			static inline function trans(s:Int, c:Int):Int return getU8($v{lex.per} * s + c);
-			static inline function exits(s:Int):Int return getU8($v{lex.table.length - 1} - s);
-			static inline function rollB(s:Int):Int return getU8(s + $v{lex.posRB()});
-			static inline function rollL(s:Int):Int return getU8(s + $v{lex.posRBL()});
+			static inline var NSEGSEX = $v{lex.segsEx};
+			static inline function getU(i:Int):Int return $getU;
+			static inline function trans(s:Int, c:Int):Int return getU($v{lex.per} * s + c);
+			static inline function exits(s:Int):Int return getU($v{lex.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU(s + $v{lex.posRB()});
+			static inline function rollL(s:Int):Int return getU(s + $v{lex.posRBL()});
 			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
@@ -601,7 +608,7 @@ class LR0Builder {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGS_EX) break;
+						if (prev < NSEGSEX) break;
 						q = exits(prev);
 					}
 				}
