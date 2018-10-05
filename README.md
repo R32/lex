@@ -7,7 +7,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **Rollback-Able LR(0)**. **(WIP)** It can only have a maximum of [0-254] states(*The future may increase to 16-bit size*).
+* [x] Parser: **Rollback-Able LR(0)**. **(WIP)**.
 
   - [x] Operator Precedence. Only operators in the same position have priority competition.
 
@@ -43,6 +43,12 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
   }
   ```
   If you put tokens together with **different priorities**, you will get a conflict error.
+
+### CHANGES
+
+* `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
+* `0.2.0`: Operator Precedence
+* `0.1.x`: init
 
 ### Defines
 
@@ -182,7 +188,7 @@ enum abstract Token(Int) to Int {
 
 @:rule({
     left: [OpPlus, OpMinus],
-    left: [OpTimes, OpDiv],
+    left: [OpTimes, OpDiv],   // the lower have higher Priority.
 }) class Parser implements lm.LR0<Lexer, Int> {
 
     static var main = switch(s) {
