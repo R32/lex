@@ -699,6 +699,10 @@ class LR0Builder {
 						default:
 							Context.error("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
 						}
+						if (fun.args.length == 2 && fun.args[1].type == null) { // improved for display
+							var x = lrb.ct_lhs;
+							fun.args[1].type = macro :lm.Stream.Tok<$x>;
+						}
 					}
 				default:
 				}

@@ -212,6 +212,11 @@ enum abstract Token(Int) to Int {
     @:rule(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
         return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
     }
+
+    // if the @:rule function has 2 params then the type of the second argument is lm.Stream.Tok<AUTO>.
+    //@:rule(CStr) static function unescape(input: lms.ByteData, t):String {
+    //  return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
+    //}
 }
 ```
 
