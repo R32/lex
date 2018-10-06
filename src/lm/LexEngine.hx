@@ -610,8 +610,11 @@ class LexEngine {
 				r = star(r);
 			case "?".code if (r != Empty):
 				r = opt(r);
-			case '|'.code if (r != Empty):
-				return Choice(r, parseInner(b, i, len, c_all));
+			case '|'.code if (r != Empty && i < len):
+				var inner = parseInner(b, i, len, c_all);
+				if (inner == Empty)
+					throw 'The right side of "|" is empty';
+				return Choice(r, inner);
 			case "[".code if (i < len):
 				var not = b.get(i) == "^".code;
 				if (not) ++i;

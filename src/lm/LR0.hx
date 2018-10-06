@@ -98,15 +98,15 @@ class LR0Builder {
 						switch (e.expr) {
 						case EConst(CIdent(s)) if ((term = this.udtMap.get(s)) != null && term.t):
 							if (dup.exists(s))
-								Context.error("Duplicate Token " + e.toString(), e.pos);
+								Context.fatalError("Duplicate Token " + e.toString(), e.pos);
 							dup.set(s, true);
 							assoc.push( {left: left, prio: i, value: term.value} );
 						case _:
-							Context.error("UnSupported Token: " + e.toString(), e.pos);
+							Context.fatalError("UnSupported Token: " + e.toString(), e.pos);
 						}
 					}
 				default:
-					Context.error("UnSupported Type",li.pos);
+					Context.fatalError("UnSupported Type",li.pos);
 				}
 			}
 		}
@@ -130,7 +130,7 @@ class LR0Builder {
 					case ECast({expr: EConst(CInt(i))}, _):
 						var n = Std.parseInt(i);
 						if (n < 0 || n > 99) // TODO: limited token value
-							Context.error("Value should be [0-99]", field.pos);
+							Context.fatalError("Value should be [0-99]", field.pos);
 						if (n > maxValue) maxValue = n;
 						firstCharChecking(field.name, UPPER, field.pos);
 						var t = {t: true, name: field.name, value: n, cset: CSet.single(n), pos: field.pos};
@@ -187,12 +187,12 @@ class LR0Builder {
 			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
 		}
 		inline function setEpsilon(lhs, pos) {
-			if (lhs.epsilon) Context.error('Duplicate "default:" or "case _:"', pos);
+			if (lhs.epsilon) Context.fatalError('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
 		function getCSet(name, pos) {
 			var cset = getTermlCSet(name);
-			if (cset == null) Context.error("Undefined: " + name, pos);
+			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
 		for (sw in swa) {
@@ -201,7 +201,7 @@ class LR0Builder {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
-						Context.error('This case is unused', c.values[0].pos);
+						Context.fatalError('This case is unused', c.values[0].pos);
 					var g: SymbolSet = {expr: c.expr, guard: c.guard, syms: [], pos: pos};
 					for (e in el) {
 						switch (e.expr) {
@@ -221,9 +221,9 @@ class LR0Builder {
 						case EBinop(OpAssign, macro $i{v}, macro $i{nt}):  // e.g: e = expr
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
-								Context.error("Undefined non-terminal: " + nt, e.pos);
+								Context.fatalError("Undefined non-terminal: " + nt, e.pos);
 							if (el.length == 1 && nt == sw.name)
-								Context.error("Infinite recursion", e.pos);
+								Context.fatalError("Infinite recursion", e.pos);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
@@ -234,15 +234,15 @@ class LR0Builder {
 									firstCharChecking(s, UPPER, t.pos);
 									cset = CSet.union(cset, getCSet(s, t.pos));
 								default:
-									Context.error("Unsupported: " + t.toString(), t.pos);
+									Context.fatalError("Unsupported: " + t.toString(), t.pos);
 								}
 							}
 							if (cset == CSet.C_EMPTY)
-								Context.error("Empty", pos);
+								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
 
 						case _:
-							Context.error("Unsupported: " + e.toString(), e.pos);
+							Context.fatalError("Unsupported: " + e.toString(), e.pos);
 						}
 					}
 					if (g.syms.length == 0)
@@ -252,9 +252,9 @@ class LR0Builder {
 					setEpsilon(lhs, pos);
 					lhs.cases.push({expr: c.expr, guard: null, syms: [], pos: pos});
 				case [e]:
-					Context.error("Expected [ patterns ]", e.pos);
+					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
-					Context.error("Comma notation is not allowed while matching streams", c.values[0].pos);
+					Context.fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
 			this.lhsA.push(lhs);
@@ -266,7 +266,7 @@ class LR0Builder {
 		// add to lhsMap.
 		for (lhs in lhsA) {
 			if (lhsMap.exists(lhs.name))
-				Context.error("Duplicate rule field declaration: " + lhs.name, lhs.pos);
+				Context.fatalError("Duplicate rule field declaration: " + lhs.name, lhs.pos);
 			lhsMap.set(lhs.name, lhs);
 		}
 
@@ -275,7 +275,7 @@ class LR0Builder {
 		for (li in entry.cases) {
 			var last = li.syms[li.syms.length - 1];
 			if (last.name == null || last.name != this.sEof)
-				Context.error("for entry you must place *"+ this.sEof +"* at the end", last.pos);
+				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", last.pos);
 		}
 
 		// duplicate var checking. & transform expr
@@ -294,11 +294,11 @@ class LR0Builder {
 
 					// checking...
 					if (s.t == false && s.name == entry.name)
-						Context.error("the entry non-terminal(\"" + s.name +"\") is not allowed on the right", s.pos);
+						Context.fatalError("the entry non-terminal(\"" + s.name +"\") is not allowed on the right", s.pos);
 					if (s.ex == null)
 						continue;
 					if (row.exists(s.ex))
-						Context.error("duplicate var: " + s.ex, s.pos);
+						Context.fatalError("duplicate var: " + s.ex, s.pos);
 					row.set(s.ex, true);
 
 					// transform expr
@@ -363,7 +363,7 @@ class LR0Builder {
 		// 1. Is switch case unreachable?
 		for (n in 0...lex.nrules)
 			if (exits[n] == INVALID)
-				Context.error("Unreachable switch case", indexCase(n).pos);
+				Context.fatalError("Unreachable switch case", indexCase(n).pos);
 
 		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly.
 		for (index in 0...lex.entrys.length) {
@@ -376,7 +376,7 @@ class LR0Builder {
 					break;
 				}
 			}
-			if (!find) Context.error("There must be at least one terminator.", lhsA[index].pos);
+			if (!find) Context.fatalError("There must be at least one terminator.", lhsA[index].pos);
 		}
 
 		// 3. switch guard
@@ -386,7 +386,7 @@ class LR0Builder {
 				if (li.guard != null) {
 					var final_state = exits[n];
 					if (lex.table.get(lex.posRB() + final_state) == INVALID)
-						Context.error("No switch case that can be rollback from here", li.guard.pos);
+						Context.fatalError("No switch case that can be rollback from here", li.guard.pos);
 				}
 				++ n;
 			}
@@ -428,7 +428,7 @@ class LR0Builder {
 				} else {
 					if (follow != lex.invalid) {
 						var id = Lambda.find(udtMap, u -> u.value == i).name;
-						Context.error("rewrite conflict: " + id, lpos);
+						Context.fatalError("rewrite conflict: " + id, lpos);
 					}
 					lex.table.set(dstStart + i, s);
 				}
@@ -452,7 +452,7 @@ class LR0Builder {
 				if (l.epsilon) {
 					var dst = b.length - 1 - seg;
 					if (b.get(dst) != INVALID)
-						Context.error("epsilon conflict with " + l.name, l.pos);
+						Context.fatalError("epsilon conflict with " + l.name, l.pos);
 					var src = b.length - 1 - entry.begin;
 					b.set(dst, b.get(src));
 				}
@@ -475,7 +475,7 @@ class LR0Builder {
 							t_tok = it.params[0];
 							eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
-								Context.error("Invalid EOF value " + eof.toString(), lex.pos);
+								Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
 							break;
 						}
 					}
@@ -486,7 +486,7 @@ class LR0Builder {
 			}
 		}
 		if (t_tok == null || !Context.unify(t_tok, Context.getType("Int")))
-			Context.error("Wrong generic Type for lm.LR0<?>", cls.pos);
+			Context.fatalError("Wrong generic Type for lm.LR0<?>", cls.pos);
 		// begin
 		var lrb = new LR0Builder(t_tok, t_lhs, eof.toString());
 		lrb.parsePrecedence(cls);
@@ -684,7 +684,7 @@ class LR0Builder {
 							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
 						firstCharChecking(f.name, LOWER, f.pos);
 						if ( ct != null && !Context.unify(ct.toType(), lrb.ct_lhs.toType()) )
-							Context.error("All types of lhs must be uniform.", f.pos);
+							Context.fatalError("All types of lhs must be uniform.", f.pos);
 						ret.push({name: f.name, value: lvalue++, cases: cl, pos: f.pos});
 					case _:
 					}
@@ -697,7 +697,7 @@ class LR0Builder {
 						case EConst(CIdent(s)) | EConst(CString(s)):
 							lrb.funMap.set(s, {name: f.name, ct: fun.ret, args: fun.args.length});
 						default:
-							Context.error("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
+							Context.fatalError("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
 						}
 						if (fun.args.length == 2 && fun.args[1].type == null) { // improved for display
 							var x = lrb.ct_lhs;
@@ -718,10 +718,10 @@ class LR0Builder {
 		var c = s.charCodeAt(0);
 		if (upper) {
 			if ( !(c >= "A".code && c <= "Z".code) )
-				Context.error("Should be start with a capital letter: " + s, pos);
+				Context.fatalError("Should be start with a capital letter: " + s, pos);
 		} else {
 			if ( !(c >= "a".code && c <= "z".code || c == "_".code) )
-				Context.error("Should be start with a lowercase letter: " + s, pos);
+				Context.fatalError("Should be start with a lowercase letter: " + s, pos);
 		}
 	}
 

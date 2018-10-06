@@ -8,7 +8,7 @@ using haxe.macro.Tools;
 
 private typedef Group = {
 	name: String,
-	rules: Array<String>,
+	rules: Array<Expr>,
 	cases: Array<Expr>,
 }
 
@@ -32,12 +32,12 @@ class LexBuilder {
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
 		if (meta.eof == null)
-			Context.error("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
-					Context.error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
 				break;
 			}
 		}
@@ -55,14 +55,14 @@ class LexBuilder {
 					for (e in el)
 						switch (e.expr) {
 						case EBinop(OpArrow, rule, e):
-							g.rules.push(exprString(rule, idmap));
+							g.rules.push(rule);
 							g.cases.push(e);
 						default:
-							Context.error("Expected pattern => function", e.pos);
+							Context.fatalError("Expected pattern => function", e.pos);
 						}
 					if (g.rules.length > 0) {
 						if (Lambda.exists(groups, x->x.name == g.name))
-							Context.error("Duplicate: " + g.name, f.pos);
+							Context.fatalError("Duplicate: " + g.name, f.pos);
 						groups.push(g);
 					}
 					continue;
@@ -82,7 +82,13 @@ class LexBuilder {
 		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true; // if platform doesn't support ucs2 then force bytes.
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
-		var rules = groups.map( g -> g.rules.map(s->LexEngine.parse(s, c_all)) );
+		var rules = groups.map( g -> g.rules.map(function(r){
+			return try {
+				LexEngine.parse(exprString(r, idmap), c_all);
+			} catch(err: Dynamic) {
+				Context.fatalError(Std.string(err), r.pos);
+			}
+		}));
 		var lex = new LexEngine(rules, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
@@ -216,14 +222,14 @@ class LexBuilder {
 		case EConst(CIdent(i)):
 			var s = map.get(i);
 			if (s == null)
-				Context.error("Undefined identifier: " + i, e.pos);
+				Context.fatalError("Undefined identifier: " + i, e.pos);
 			s;
 		case EBinop(OpAdd, e1, e2):
 			exprString(e1, map) + exprString(e2, map);
 		case EParenthesis(e):
 			exprString(e, map);
 		default:
-			Context.error("Invalid rule", e.pos);
+			Context.fatalError("Invalid rule", e.pos);
 		}
 	}
 	static function addInlineFVar(name, value, pos):Field {
