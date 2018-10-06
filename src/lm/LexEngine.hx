@@ -295,7 +295,6 @@ class LexEngine {
 				}
 			}
 		}
-
 		function swap(dst, src) {
 			if (dst == src) return;
 			var x = this.states[dst]; // x.id == dst
@@ -364,7 +363,7 @@ class LexEngine {
 		// highest(maximum) precedence in lvl
 		var larMap = new Map<Int, {left:Int, right: Int}>();
 		for (a in lvlMap) {
-			var lar = {left: 0, right: 0};
+			var lar = {left: -1, right: -1};
 			larMap.set(a[0].lvl, lar);
 			for (op in a) {
 				if (op.left) {
