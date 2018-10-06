@@ -318,7 +318,7 @@ class LR0Builder {
 								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
 							}
 						}
-					} else {
+					} else if (name != "_") {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
