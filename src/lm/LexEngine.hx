@@ -612,8 +612,7 @@ class LexEngine {
 				r = opt(r);
 			case '|'.code if (r != Empty):
 				return Choice(r, parseInner(b, i, len, c_all));
-			case "[".code:
-				var err = i - 1;
+			case "[".code if (i < len):
 				var not = b.get(i) == "^".code;
 				if (not) ++i;
 				var range = 0;
@@ -649,6 +648,8 @@ class LexEngine {
 					if (not)
 						acc = CSet.complement(acc, c_all);
 					r = next(r, Match(acc));
+				} else {
+					throw "Empty range: []";
 				}
 			case "\\".code:
 				c = readChar();
