@@ -112,7 +112,7 @@ class LR0Builder {
 		}
 		opAssoc = [];
 		var rule = cls.meta.extract(":rule");
-		if (rule.length > 1) {
+		if (rule.length > 0) {
 			var obj = rule[0].params[0];
 			switch (obj.expr) {
 			case EObjectDecl(a):
