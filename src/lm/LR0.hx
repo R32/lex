@@ -325,6 +325,8 @@ class LR0Builder {
 					}
 				}
 				var reduce = len > 0 ? macro s.reduce($v{lhs.value}, $v{len}): macro s.reduceEP($v{lhs.value});
+				if (li.expr == null)
+					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
 				li.expr = if (li.guard == null) {
 					macro @:pos(li.expr.pos) @:mergeBlock {
 						@:mergeBlock $b{a};

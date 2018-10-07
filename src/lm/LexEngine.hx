@@ -130,7 +130,8 @@ class LexEngine {
 		if (lr0 != null) {
 			this.states = Lambda.array(this.lstates);
 			this.states.sort(State.onSort);
-			doPrecedence(lr0.assoc, lr0.max);
+			if (lr0.assoc.length > 0)
+				doPrecedence(lr0.assoc, lr0.max);
 		}
 		// DFA -> Tables
 		this.makeTables();
