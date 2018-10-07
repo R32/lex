@@ -145,8 +145,8 @@ class LexBuilder {
 			}
 			function _token(state: Int) {
 				var i = pmax, len = input.length;
-				if (i >= len) return $e{meta.eof};
 				pmin = i;
+				if (i >= len) return $e{meta.eof};
 				var prev = state;
 				while (i < len) {
 					var c = input.readByte(i++);

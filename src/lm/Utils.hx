@@ -9,14 +9,14 @@ class Utils {
 		var line = 1;
 		var char = 0;
 		var i = 0;
-		while (i <= pmin) {
-			var c = input.readByte(i);
+		while (i < pmin) {
+			var c = input.readByte(i++);
 			if (c == "\n".code) {
 				char = 0;
 				++ line;
+			} else {
+				++ char;
 			}
-			++ char;
-			++ i;
 		}
 		return new lms.Position(line, char);
 	}
