@@ -369,10 +369,13 @@ class LR0Builder {
 			if (exits[n] == INVALID)
 				Context.fatalError("Unreachable switch case", indexCase(n).pos);
 
-		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly.
+		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly or be epsilon.
 		for (index in 0...lex.entrys.length) {
-			var base = lex.entrys[index].begin * lex.per;
+			var entry = lex.entrys[index];
+			var base = entry.begin * lex.per;
 			var find = false;
+			if (table.get(table.length - 1 - entry.begin) != INVALID) // epsilon
+				continue;
 			for (i in base ... base + this.maxValue) {
 				var c = table.get(i);
 				if (c != INVALID) {

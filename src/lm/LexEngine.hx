@@ -69,7 +69,6 @@ class LexEngine {
 		this.nrules = 0;
 		this.finals = [];
 		this.finals_tmp = [];
-
 		var prev = 0;
 		var nodes = [];
 		for (pats in a) {
@@ -88,7 +87,7 @@ class LexEngine {
 				finals_tmp[i] = false;
 			}
 			// NFA -> DFA
-			compile(addNodes([], nodes));
+			compile(addNodes([], nodes), true);
 			if (final_counter < segs)
 				throw "Too many states";
 			entrys.push({begin: prev, segs: segs - prev, nrules: len});
@@ -187,14 +186,14 @@ class LexEngine {
 		return id;
 	}
 
-	function compile(nodes: Array<Node>): Int {
+	function compile(nodes: Array<Node>, first: Bool): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
 		var id = h.get(sid);
 		if (id != null)
 			return id;
 		var ta: Array<NAChars> = getTransitions(nodes);
 		var len = ta.length;
-		id = if (len == 0) {
+		id = if (!first && len == 0) {
 			final_counter--; // final state.
 		} else {
 			segs++;
@@ -208,7 +207,7 @@ class LexEngine {
 
 		var targets = []; targets.resize(len);
 		for (i in 0...len)
-			targets[i] = compile(ta[i].ns);
+			targets[i] = compile(ta[i].ns, false);
 
 		var f = finals_tmp.copy();
 		for (n in nodes)
