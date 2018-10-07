@@ -431,10 +431,11 @@ class LR0Builder {
 					}
 				} else {
 					if (follow != lex.invalid) {
-						var id = Lambda.find(udtMap, u -> u.value == i).name;
-						Context.fatalError("rewrite conflict: " + id, lpos);
+						if (s != follow)
+							Context.fatalError("rewrite conflict: " + Lambda.find(udtMap, u -> u.value == i).name, lpos);
+					} else {
+						lex.table.set(dstStart + i, s);
 					}
-					lex.table.set(dstStart + i, s);
 				}
 				++ i;
 			}
