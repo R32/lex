@@ -60,8 +60,10 @@ class LR0Builder {
 	var lhsMap: Map<String,Lhs>;
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
-	var ct_tok: ComplexType;     // token completeType
+	var ct_terms: ComplexType;   // token completeType
 	var ct_lhs: ComplexType;     // unify all type of lhsA.
+	var ct_stream: ComplexType;  //
+	var ct_stream_tok: ComplexType;
 	var opAssoc: OpAssoc;
 
 	public function new(t_tok, t_lhs, es) {
@@ -74,8 +76,10 @@ class LR0Builder {
 		funMap = new Map();
 
 		sEof = es;
-		ct_tok = Context.toComplexType(t_tok);
+		ct_terms = Context.toComplexType(t_tok);
 		ct_lhs = Context.toComplexType(t_lhs);
+		ct_stream = macro :lm.Stream<$ct_lhs>;
+		ct_stream_tok = macro :lm.Stream.Tok<$ct_lhs>;
 		parseToken(t_tok);
 	}
 
@@ -308,7 +312,7 @@ class LR0Builder {
 					if (s.t) {
 						var ofstr = funMap.get(s.name); //
 						if (ofstr == null) {
-							a.push(macro var $name: $ct_tok = cast @:privateAccess s.offset($v{dx}).term);
+							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
@@ -557,7 +561,6 @@ class LR0Builder {
 			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var ct_stream = macro :lm.Stream<$ct_lhs>;
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var INVALID = $v{lex.invalid};
@@ -719,11 +722,19 @@ class LR0Builder {
 						case EConst(CIdent(s)) | EConst(CString(s)):
 							lrb.funMap.set(s, {name: f.name, ct: fun.ret, args: fun.args.length});
 						default:
-							Context.fatalError("UnSupperted value for @:ofStr: " + p0.toString(), p0.pos);
+							Context.fatalError("UnSupperted value for @:rule: " + p0.toString(), p0.pos);
 						}
 						if (fun.args.length == 2 && fun.args[1].type == null) { // improved for display
-							var x = lrb.ct_lhs;
-							fun.args[1].type = macro :lm.Stream.Tok<$x>;
+							fun.args[1].type = lrb.ct_stream_tok;
+						}
+					} else {
+						for (arg in fun.args) {
+							if (arg.type != null) continue;
+							switch(arg.name) {
+							case "t": arg.type = lrb.ct_stream_tok;
+							case "s": arg.type = lrb.ct_stream;
+							default:
+							}
 						}
 					}
 				default:
