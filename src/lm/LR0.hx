@@ -571,11 +571,12 @@ class LR0Builder {
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream<$ct_lhs>(lex, $v{lex.entrys[0].begin});
 			}
-			@:access(lm)
+			@:access(lm.Stream, lm.Tok)
 			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
 				var prev = state;
 				var t: lm.Stream.Tok<$ct_lhs> = null;
 				var dx = 0;
+				var keep = stream.pos; // used for _side.
 				while (true) {
 					while (true) {
 						t = stream.next();
@@ -617,8 +618,22 @@ class LR0Builder {
 						q = exits(prev);
 					}
 				}
+				if (exp == -1 && (stream.pos - dx) > keep)
+					return stream.cached[keep].val;
 				var last = stream.offset( -1);
 				throw lm.Utils.error('Unexpected "' + stream.str(last) + '" at ' + last.pmin + "-" + last.pmax);
+			}
+			@:access(lm.Stream, lm.Tok)
+			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {
+				var keep = stream.pos;
+				var prev = stream.offset( -1);
+				var t = new lm.Stream.Tok(lv, prev.pmax, prev.pmax);
+				t.state = state;
+				stream.shift(t); // like Array.shift
+				var value = _entry(stream, state, -1); // -1 then until to match failed
+				stream.pos = keep;
+				stream.junk(2);
+				return value;
 			}
 		}
 		// build switch
@@ -655,7 +670,6 @@ class LR0Builder {
 			pos: lhs.pos,
 		});
 		// other entrys => static inline
-
 		for (i in 1...lex.entrys.length) {
 			var entry = lex.entrys[i];
 			var lhs = lhsA[i];
@@ -665,7 +679,7 @@ class LR0Builder {
 				kind: FFun({
 					args: [{name: "s", type: ct_stream}],
 					ret: ct_lhs,
-					expr: macro return _entry(s, $v{entry.begin}, $v{lhs.value})
+					expr: macro return _side(s, $v{entry.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});

@@ -97,18 +97,16 @@ class Stream<LHS> {
 		for (i in pos...right)
 			cached[i] = cached[i + w];
 	}
-
 	function reduceEP(lv) {
-		// copy
-		var cur = cached[pos];
-		var t = new Tok<LHS>(lv, cur.pmin, cur.pmin);
-		t.state = cached[pos - 1].state;
+		var prev = cached[pos - 1];
+		var t = new Tok<LHS>(lv, prev.pmax, prev.pmax);
+		t.state = prev.state;
+		shift(t);
+	}
+	inline function shift(t: Tok<LHS>) {
 		var i = right;
-		while (i >= pos) {
+		while (--i >= pos)
 			cached[i + 1] = cached[i];
-			-- i;
-		}
-		// replace
 		cached[pos] = t;
 		++pos;
 		++right;

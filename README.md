@@ -74,6 +74,8 @@ It looks very messy here.
 
 * `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
 
+  > You need to modify the `mmap` field in `debug.Print`
+
   ```
   Production:
     (R0)  MAIN --> EXPR $

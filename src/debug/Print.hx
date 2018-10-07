@@ -12,14 +12,21 @@ class Print {
 		"Eof"     => "$",
 		"CInt"    => "int",
 		"CStr"    => "str",
+		"CIdent"    => "id",
+		"CFloat"    => "float",
+		"CHex"    => "hex",
 		"OpPlus"  => "+",
+		"OpAdd"  => "+",
 		"OpMinus" => "-",
+		"OpSub" => "-",
 		"OpTimes" => "*",
+		"OpMul" => "*",
 		"OpDiv"   => "/",
 		"OpMod"   => "%",
 		"LParen"  => "(",
 		"RParen"  => ")",
-		"Semicolon"    => ";",
+		"Semicolon" => ";",
+		"Percent"   => "%",
 	];
 
 	static public function lr0Production(lrb: LR0Builder) {
