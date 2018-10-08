@@ -645,10 +645,10 @@ class LR0Builder {
 			}
 		}
 		// build switch
-		var exprs = perttyVars(Lambda.flatten( lhsA.map(l -> l.cases)).map( s -> s.expr ));
+		var exprs = Lambda.flatten( lhsA.map(l -> l.cases) ).map( s -> s.expr );
 		var here = Context.currentPos();
-		var defCase = exprs.cases.pop();
-		var liCase = Lambda.mapi( exprs.cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var defCase = exprs.pop();
+		var liCase = Lambda.mapi( exprs, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
 		var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
 		defs.fields.push({
 			name: "cases",
@@ -658,7 +658,6 @@ class LR0Builder {
 				ret: ct_lhs,
 				expr: macro {
 					var __r = 0;  // (lv << 8 | len)
-					@:mergeBlock $b{exprs.defs};
 					var __v = $eSwitch;
 					if (__r != 0) // reduceEp or rollback occurred in actions.
 						@:privateAccess s.reduce(__r);
@@ -764,65 +763,6 @@ class LR0Builder {
 			if ( !(c >= "a".code && c <= "z".code || c == "_".code) )
 				Context.fatalError("Should be start with a lowercase letter: " + s, pos);
 		}
-	}
-
-	// to reduce the number of temp variable in @:mergeBlock
-	static public function perttyVars(exprs: Array<Expr>) {
-		var ret:{cases:Array<Expr>, defs: Array<Expr>} = {cases: [], defs: []};
-		var map = new Map<String, {i:Int, ct:ComplexType, pos: Position}>();
-		function find(e: Expr) {
-			switch (e.expr) {
-			case EMeta({name: ":mergeBlock"}, eb):
-				switch(eb.expr) {
-				case EBlock(el):
-					for (e in el)
-						find(e);
-				default:
-				}
-			case EVars([v]):
-				var x = map.get(v.name);
-				if (x == null) {
-					map.set(v.name, {i: 1, ct: v.type, pos: e.pos});
-				} else if (x.ct == v.type
-					|| (x.ct != null && v.type != null && Context.unify(x.ct.toType(), v.type.toType()))) {
-					x.i += 1;
-				}
-			default:
-			}
-		}
-		function replace(e: Expr) {
-			return switch (e.expr) {
-			case EMeta(meta = {name:":mergeBlock"}, eb):
-				switch(eb.expr) {
-				case EBlock(el):
-					var el = el.map(replace);
-					{expr: EMeta(meta, {expr: EBlock(el), pos: eb.pos}), pos: e.pos}
-				default:
-					e;
-				}
-			case EVars([v]):
-				var x = map.get(v.name);
-				if (x != null) {
-					macro @:pos(e.pos) $i{v.name} = $e{v.expr};
-				} else {
-					e;
-				}
-			default:
-				e;
-			}
-		}
-		Lambda.iter(exprs, find);
-		for (name in map.keys()) {
-			var x = map.get(name);
-			if (x.i > 1) {
-				var type = x.ct;
-				ret.defs.push({expr: EVars([{name: name, type: x.ct, expr: null}]), pos: x.pos});
-			} else {
-				map.remove(name);
-			}
-		}
-		ret.cases = Lambda.map(exprs, replace);
-		return ret;
 	}
 }
 
