@@ -236,22 +236,27 @@ class LexEngine {
 		var INVALID = this.invalid;
 		var rollpos = posRB();
 		var rlenpos = posRBL();
-		function loop(exit, seg, length) {
+		function loop(exit, seg, smax, length) {
 			var base = seg * this.per;
+			var prev = INVALID; // simply avoid repeated writes in same seg
 			for (p in base...base + this.per) {
-				var follow = this.table.get(p);
-				if (follow == INVALID || follow == seg) continue;
-				this.table.set(rollpos + follow, exit);
-				this.table.set(rlenpos + follow, length); // junk(length) when rollback.
-				if (epsilon(follow) == INVALID && follow < this.segs)
-					loop(exit, follow, length + 1);
+				var nxt = this.table.get(p);
+				var nxt_exit = epsilon(nxt);
+				if (nxt == INVALID || nxt <= seg || nxt == prev || nxt_exit == exit)
+					continue;
+				this.table.set(rollpos + nxt, exit);
+				this.table.set(rlenpos + nxt, length); // junk(length) when rollback.
+				prev = nxt;
+				if (nxt_exit == INVALID && nxt < smax)
+					loop(exit, nxt, smax, length + 1);
 			}
 		}
 		for (e in this.entrys) {
-			for (seg in e.begin...e.begin + e.segs) {
+			var smax = e.begin + e.segs;
+			for (seg in e.begin...smax) {
 				var exit = epsilon(seg);
 				if (exit == INVALID) continue;
-				loop(exit, seg, 1);
+				loop(exit, seg, smax, 1);
 			}
 		}
 	}
