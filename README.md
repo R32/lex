@@ -17,9 +17,41 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
   - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon.
     ```hx
-    switch(s) {
-    case [A, B, C] if(expr): 0; // if false then rollback to case [A]:
-    case [A]: 1;
+    class Main {
+        static function main() {
+            var str = 'ab';
+            var lex = new Lexer(lms.ByteData.ofString(str));
+            var par = new Parser(lex);
+            trace(par.main());
+        }
+    }
+    enum abstract Token(Int) to Int {
+        var Eof = 0;
+        var A;
+        var B;
+    }
+    @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
+        static var tok =  [
+            "a" => A,
+            "b" => B,
+        ];
+    }
+    class Parser implements lm.LR0<Lexer, Int> {
+        static var main = switch(s) {
+            case [e1 = expr, Eof]: e1;
+            case [e1 = expr, e2 = expr, Eof]: e1 + e2;
+        }
+        static var expr = switch(s) {
+            case [A, B] if (Math.random() > 0.5):  // if false then rollback to case [A]
+                trace("A: " + _t1.getPosition() + ", B: " + _t2.getPosition());
+                303;
+            case [A]:
+                trace("A: " + _t1.getPosition());
+                101;
+            case [B]:
+                trace("B: " + _t1.getPosition());
+                202;
+        }
     }
     ```
   Inside the actions, you can use `_t1~_tN` to access the position.

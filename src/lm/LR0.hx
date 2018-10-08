@@ -279,9 +279,9 @@ class LR0Builder {
 		// the "entry" must place  "EOF " at the end
 		var entry = lhsA[0];
 		for (li in entry.cases) {
-			var last = li.syms[li.syms.length - 1];
-			if (last.name == null || last.name != this.sEof)
-				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", last.pos);
+			var last = li.syms.length > 0 ? li.syms[li.syms.length - 1] : null;
+			if (last == null || last.name == null || last.name != this.sEof)
+				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", li.pos);
 		}
 
 		// duplicate var checking. & transform expr
