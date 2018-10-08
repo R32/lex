@@ -425,9 +425,7 @@ Parser.cases = function(f,s) {
         __r = 2561;
         __v = Std.parseInt(s.stri(-1));
     }
-    if(__r != 0) {
-        s.reduce(__r);
-    }
+    s.reduce(__r);
     return __v;
 };
 var Std = function() { };

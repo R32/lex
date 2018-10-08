@@ -328,9 +328,12 @@ class LR0Builder {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				var reduce = len > 0 ? (macro __r = $v{lhs.value << 8 | len}) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
+
 				if (li.expr == null)
 					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
+				var reduce = len > 0 ? (macro __r = $v{lhs.value << 8 | len}) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
+				if (len == 0) // if epsilon then return directly
+					li.expr = macro @:pos(li.expr.pos) return $e{li.expr};
 				li.expr = if (li.guard == null) {
 					macro @:pos(li.expr.pos) @:mergeBlock {
 						$reduce;
@@ -344,10 +347,9 @@ class LR0Builder {
 						if ($e{li.guard}) {
 							@:mergeBlock $e{li.expr}
 						} else {
-							__r = 0; // reset
 							var _1 = @:privateAccess s.offset( -1).state;
 							@:privateAccess s.rollback( rollL(_1) );
-							gotos(rollB(_1), s);
+							return gotos(rollB(_1), s);
 						}
 					}
 				} // end if else
@@ -659,8 +661,7 @@ class LR0Builder {
 				expr: macro {
 					var __r = 0;  // (lv << 8 | len)
 					var __v = $eSwitch;
-					if (__r != 0) // reduceEp or rollback occurred in actions.
-						@:privateAccess s.reduce(__r);
+					@:privateAccess s.reduce(__r);
 					return __v;
 				}
 			}),
