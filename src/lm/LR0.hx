@@ -328,22 +328,23 @@ class LR0Builder {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				var reduce = len > 0 ? macro s.reduce($v{lhs.value}, $v{len}): macro s.reduceEP($v{lhs.value});
+				var reduce = len > 0 ? (macro __r = $v{lhs.value << 8 | len}) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (li.expr == null)
 					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
 				li.expr = if (li.guard == null) {
 					macro @:pos(li.expr.pos) @:mergeBlock {
+						$reduce;
 						@:mergeBlock $b{a};
-						@:privateAccess $reduce;
 						@:mergeBlock $e{li.expr}
 					}
 				} else {
 					macro @:pos(li.expr.pos) @:mergeBlock {
+						$reduce;
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
-							@:privateAccess $reduce;
 							@:mergeBlock $e{li.expr}
 						} else {
+							__r = 0; // reset
 							var _1 = @:privateAccess s.offset( -1).state;
 							@:privateAccess s.rollback( rollL(_1) );
 							gotos(rollB(_1), s);
@@ -634,7 +635,7 @@ class LR0Builder {
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {
 				var keep = stream.pos;
 				var prev = stream.offset( -1);
-				var t = new lm.Stream.Tok(lv, prev.pmax, prev.pmax);
+				var t = new lm.Stream.Tok<$ct_lhs>(lv, prev.pmax, prev.pmax);
 				t.state = state;
 				stream.shift(t); // like Array.shift
 				var value = _entry(stream, state, -1); // -1 then until to match failed
@@ -656,8 +657,12 @@ class LR0Builder {
 				args: [{name: "f", type: macro: Int}, {name: "s", type: ct_stream}],
 				ret: ct_lhs,
 				expr: macro {
+					var __r = 0;  // (lv << 8 | len)
 					@:mergeBlock $b{exprs.defs};
-					return $eSwitch;
+					var __v = $eSwitch;
+					if (__r != 0) // reduceEp or rollback occurred in actions.
+						@:privateAccess s.reduce(__r);
+					return __v;
 				}
 			}),
 			pos: here,

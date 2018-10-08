@@ -84,11 +84,12 @@ class Stream<LHS> {
 		@:privateAccess lex.pmax = cached[pos].pmin; // hack
 	}
 
-	function reduce(lv, w) {
+	function reduce(lvw) { // lvw == lv << 8 | w;
 		var pmax = offset(-1).pmax;
+		var w = lvw & 0xFF;
 		pos -= w;
 		var t = cached[pos];
-		t.term = lv;
+		t.term = lvw >>> 8;
 		t.pmax = pmax;
 		++ pos;
 		// fast junk(w - 1)
