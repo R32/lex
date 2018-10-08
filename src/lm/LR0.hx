@@ -741,6 +741,8 @@ class LR0Builder {
 				default:
 				}
 			}
+			if (allFields.exists(f.name))
+				Context.fatalError("Duplicate field: " + f.name, f.pos);
 			allFields.set(f.name, f);
 		}
 		return ret;
