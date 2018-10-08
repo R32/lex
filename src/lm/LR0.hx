@@ -776,7 +776,8 @@ class LR0Builder {
 				var x = map.get(v.name);
 				if (x == null) {
 					map.set(v.name, {i: 1, ct: v.type, pos: e.pos});
-				} else if (x.ct == v.type) {
+				} else if (x.ct == v.type
+					|| (x.ct != null && v.type != null && Context.unify(x.ct.toType(), v.type.toType()))) {
 					x.i += 1;
 				}
 			default:

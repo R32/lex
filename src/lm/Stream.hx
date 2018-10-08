@@ -67,7 +67,7 @@ class Stream<LHS> {
 	}
 
 	public inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
-	inline function stri(dx):String return str( offset(dx) );
+	function stri(dx):String return str( offset(dx) );
 	inline function offset(i: Int) return cached[pos + i];  // unsafe
 
 	function next() {
