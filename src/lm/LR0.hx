@@ -300,7 +300,7 @@ class LR0Builder {
 
 					// checking...
 					if (s.t == false && s.name == entry.name)
-						Context.fatalError("the entry non-terminal(\"" + s.name +"\") is not allowed on the right", s.pos);
+						Context.fatalError("the entry LHS(\"" + s.name +"\") is not allowed on the right side", s.pos);
 					if (s.ex == null)
 						continue;
 					if (row.exists(s.ex))

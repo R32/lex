@@ -95,6 +95,7 @@ class LexBuilder {
 		lex.write(f, true);
 		f.close();
 		#end
+		reachable(lex, groups);
 		// generate
 		var getU: Expr = null;
 		var raw: Expr = null;
@@ -216,6 +217,7 @@ class LexBuilder {
 					ret.push(f);
 		return ret;
 	}
+
 	static function exprString(e: Expr, map:Map<String,String>): String {
 		return switch (e.expr) {
 		case EConst(CString(s)): s;
@@ -239,6 +241,33 @@ class LexBuilder {
 			kind: FVar(null, macro $v{value}),
 			pos: pos,
 		}
+	}
+
+	static function reachable(lex: lm.LexEngine, groups: Array<Group>) {
+		// copy from LR0Builder.checking
+		var table = lex.table;
+		var INVALID = lex.invalid;
+		var exits = new haxe.ds.Vector<Int>(lex.nrules);
+		for (n in 0...lex.nrules)
+			exits[n] = INVALID;
+		for (i in table.length-lex.perRB...table.length) {
+			var n = table.get(i);
+			if (n == INVALID) continue;
+			exits[n] = table.length - 1 - i;
+		}
+		function indexPattern(i) {
+			var index = 0;
+			for (g in groups) {
+				for (r in g.rules) {
+					if (index == i) return r;
+					++ index;
+				}
+			}
+			throw "NotFound";
+		}
+		for (n in 0...lex.nrules)
+			if (exits[n] == INVALID)
+				Context.fatalError("UnReachable pattern", indexPattern(n).pos);
 	}
 }
 #else
