@@ -680,8 +680,7 @@ class LR0Builder {
 				if (exp == -1 && (stream.pos - dx) > keep)
 					return stream.cached[keep].val;
 				t = stream.offset( -1);
-				var p = lm.Utils.line(stream.lex.input, t.pmin);
-				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '" at line: ' + p.pmin + ", char: " + p.pmax);
+				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"' + stream.errpos(t.pmin));
 			}
 			@:access(lm.Stream, lm.Tok)
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {

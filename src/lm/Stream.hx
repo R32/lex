@@ -64,6 +64,23 @@ class Stream<LHS> {
 		}
 	}
 
+	public function errpos(pmin: Int): String {
+		var input = lex.input;
+		var line = 1;
+		var char = 0;
+		var i = 0;
+		while (i < pmin) {
+			var c = input.readByte(i++);
+			if (c == "\n".code) {
+				char = 0;
+				++ line;
+			} else {
+				++ char;
+			}
+		}
+		return " at line: " + line + ", char: " + char;
+	}
+
 	public inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
 	function stri(dx):String return str( offset(dx) );
 	inline function offset(i: Int) return cached[pos + i];  // unsafe
