@@ -39,7 +39,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     static var expr_list = switch(s) {
         case []:                    // epsilon
             var e = expr(s);        // call LHS expr.
-            var t = s.peek();
+            var t = s.peek(0);
             if (t.term == Eof) {
                 e;
             } else if (t.term == Comma) {
