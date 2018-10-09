@@ -324,6 +324,8 @@ class LR0Builder {
 			for (li in lhs.cases) {
 				tmp = [];
 				tmp.resize(li.syms.length);
+				if (li.expr == null)
+					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
 				li.expr.iter(loop);
 				toks[ti++] = tmp;
 			}
@@ -375,9 +377,6 @@ class LR0Builder {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-
-				if (li.expr == null)
-					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
 				var reduce = len > 0 ? (macro __r = $v{lhs.value << 8 | len}) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
 					li.expr = macro @:pos(li.expr.pos) return $e{li.expr};
