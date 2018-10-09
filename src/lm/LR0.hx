@@ -303,7 +303,7 @@ class LR0Builder {
 			var stok = "_t" + (i + 1);
 			preDefs.push(macro var $stok: $ct_stream_tok);
 		}
-		//
+		// Scanning for reduce the temp varialbes of _t1~_tN
 		var tmp: Array<Null<Bool>>;
 		function loop(e: Expr) {
 			switch(e.expr) {
@@ -337,8 +337,6 @@ class LR0Builder {
 				var len = li.syms.length;
 				for (i in 0...len) {
 					var s = li.syms[i];
-
-					// Stream.Tok<T> which will be auto removed by dce if you dont use it.
 					var dx = -(len - i);
 					if (toks[ti][i]) {
 						var stok = "_t" + (i + 1);
