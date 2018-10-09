@@ -689,7 +689,7 @@ class LR0Builder {
 				var prev = stream.offset( -1);
 				var t = new lm.Stream.Tok<$ct_lhs>(lv, prev.pmax, prev.pmax);
 				t.state = state;
-				stream.shift(t); // like Array.shift
+				stream.shift(t);
 				var value = _entry(stream, state, -1); // -1 then until to match failed
 				stream.pos = keep;
 				stream.junk(2);
