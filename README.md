@@ -43,13 +43,13 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
         }
         static var expr = switch(s) {
             case [A, B] if (Math.random() > 0.5):  // if false then rollback to case [A]
-                trace("A: " + _t1.getPosition() + ", B: " + _t2.getPosition());
+                trace("A: " + _t1.pstr() + ", B: " + _t2.pstr());
                 303;
             case [A]:
-                trace("A: " + _t1.getPosition());
+                trace("A: " + _t1.pstr());
                 101;
             case [B]:
-                trace("B: " + _t1.getPosition());
+                trace("B: " + _t1.pstr());
                 202;
         }
     }
@@ -57,8 +57,8 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
   Inside the actions, you can use `_t1~_tN` to access the position.
 
   ```hx
-  _t1.getPosition(); // return a lms.Position.
-  _t1.pmax - _t1.pmin
+  _t1.pmax - _t1.pmin;
+  _t1.pstr();
   ```
 
   Since the Parser can only be used with `enum abstract(Int)`, So here are 2 ways to combine Tokens

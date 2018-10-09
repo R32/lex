@@ -16,9 +16,7 @@ class Tok<LHS> {
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
-	public inline function getPosition(): lms.Position {
-		return new lms.Position(pmin, pmax);
-	}
+	public inline function pstr():String return '$pmin-$pmax';
 }
 
 #if static
