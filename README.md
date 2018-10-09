@@ -9,14 +9,52 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Parser: **Rollback-Able LR(0)**. **(WIP)**.
 
-  - [x] Operator Precedence. Only operators in the same position have priority competition.
+  - [x] Operator Precedence. Only operators in the same position.
 
     > I don't know how yacc implements it, I used my own way. so there might be bugs
     >
     > In fact, this LR0 parser just modifies the table that LexEngine built. So as parser it's may also be unstable.
 
+  - [x] Independent LHS. *I don't know what it should be called.* in the [Usage](#usage) example:
+
+    ```haxe
+    // skip the main entry(par.main()) and call expr() independently
+    static function main() {
+        var str = '1 - 2 * (3 + 4) + 5 * 6';
+        var lex = new Lexer(lms.ByteData.ofString(str));
+        var par = new Parser(lex);
+        var s = @:privateAccess par.stream;
+        trace(@:privateAccess Parser.expr(s) == (1 - 2 * (3 + 4) + 5 * 6) );
+        var t = s.peek(0);
+        trace(t.term == Eof);
+    }
+    ```
+
+    In fact you should use it in `actions`, somethins like:
+
+    ```haxe
+    static var main = switch(s) {
+        case [e = expr_list, Eof];  // use expr_list instead of expr
+    }
+    static var expr_list = switch(s) {
+        case []:                    // epsilon
+            var e = expr(s);        // call LHS expr.
+            var t = s.peek();
+            if (t.term == Eof) {
+                e;
+            } else if (t.term == Comma) {
+                s.junk(1);          // discard Comma
+                var e2 = expr(s);
+                //......
+                e + e2;
+            }
+    }
+    static var expr = switch(s)     // .....
+    ```
+
   - [x] Guard, If the production(rhs) have a "left sub rhs" or can be epsilon.
-    ```hx
+
+    ```haxe
     class Main {
         static function main() {
             var str = 'ab';
@@ -54,7 +92,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
         }
     }
     ```
-  Inside the actions, you can use `_t1~_tN` to access the position.
+  Inside the actions, you could use `_t1~_tN` to access the position.
 
   ```hx
   _t1.pmax - _t1.pmin;
@@ -74,10 +112,11 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
   case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
   }
   ```
-  If you put tokens together with **different priorities**, you will get a conflict error.
+  NOTICE: If you put tokens together with **different priorities**, you will get a conflict error.
 
 ### CHANGES
 
+* `0.4.0`: Independent LHS
 * `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
 * `0.2.0`: Operator Precedence
 * `0.1.x`: init
