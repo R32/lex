@@ -64,6 +64,7 @@ class LR0Builder {
 	var ct_lhs: ComplexType;     // unify all type of lhsA.
 	var ct_stream: ComplexType;  //
 	var ct_stream_tok: ComplexType;
+	var preDefs: Array<Expr>;    // for function cases()
 	var opAssoc: OpAssoc;
 
 	public function new(t_tok, t_lhs, es) {
@@ -71,6 +72,7 @@ class LR0Builder {
 		termls = [];
 		termlsC_All = [];
 		lhsA = [];
+		preDefs = [];
 		udtMap = new Map();
 		lhsMap = new Map();
 		funMap = new Map();
@@ -284,7 +286,50 @@ class LR0Builder {
 				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", li.pos);
 		}
 
+		// find max and second largest
+		var lsecond = 0, lmax = 0, lcases = 0;
+		for (lhs in lhsA) {
+			lcases += lhs.cases.length;
+			for (li in lhs.cases) {
+				var len = li.syms.length;
+				if (len > lmax) {
+					lsecond = lmax;
+					lmax = len;
+				}
+			}
+		}
+		if (lsecond == 0) lsecond = lmax;
+		for (i in 0...lsecond) {
+			var stok = "_t" + (i + 1);
+			preDefs.push(macro var $stok: $ct_stream_tok);
+		}
+		//
+		var tmp: Array<Null<Bool>>;
+		function loop(e: Expr) {
+			switch(e.expr) {
+			case EConst(CIdent(s)):
+				if (s.substr(0, 2) == "_t") {
+					var i = Std.parseInt(s.substr(2, s.length - 2));
+					if (i != null)
+						tmp[i - 1] = true;
+				}
+			default:
+				e.iter(loop);
+			}
+		}
+		var toks:Array<Array<Null<Bool>>> = [];
+		toks.resize(lcases);
+		var ti = 0;
+		for (lhs in lhsA) {
+			for (li in lhs.cases) {
+				tmp = [];
+				tmp.resize(li.syms.length);
+				li.expr.iter(loop);
+				toks[ti++] = tmp;
+			}
+		}
 		// duplicate var checking. & transform expr
+		ti = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
 				var row = ["s" => true]; // reserve "s" as stream
@@ -295,9 +340,13 @@ class LR0Builder {
 
 					// Stream.Tok<T> which will be auto removed by dce if you dont use it.
 					var dx = -(len - i);
-					var stok = "_t" + (i + 1);
-					a.push( macro var $stok = @:privateAccess s.offset($v{dx}) );
-
+					if (toks[ti][i]) {
+						var stok = "_t" + (i + 1);
+						if (i < lsecond)
+							a.push( macro $i{stok} = @:privateAccess s.offset($v{dx}) );
+						else
+							a.push( macro var $stok: $ct_stream_tok = @:privateAccess s.offset($v{dx}) );
+					}
 					// checking...
 					if (s.t == false && s.name == entry.name)
 						Context.fatalError("the entry LHS(\"" + s.name +"\") is not allowed on the right side", s.pos);
@@ -353,6 +402,7 @@ class LR0Builder {
 						}
 					}
 				} // end if else
+				++ ti;
 			}
 		}
 	}
@@ -659,6 +709,7 @@ class LR0Builder {
 				args: [{name: "f", type: macro: Int}, {name: "s", type: ct_stream}],
 				ret: ct_lhs,
 				expr: macro {
+					@:mergeBlock $b{preDefs};
 					var __r = 0;  // (lv << 8 | len)
 					var __v = $eSwitch;
 					@:privateAccess s.reduce(__r);
