@@ -397,7 +397,7 @@ class LR0Builder {
 							@:mergeBlock $e{li.expr}
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
-							@:privateAccess s.rollback( rollL(_1) );
+							@:privateAccess s.rollback( rollL(_1), $v{maxValue} );
 							return gotos(rollB(_1), s);
 						}
 					}
@@ -657,7 +657,7 @@ class LR0Builder {
 					} else {
 						q = rollB(state);
 						if (q < NRULES) {
-							stream.rollback( dx + rollL(state) );
+							stream.rollback( dx + rollL(state), $v{maxValue} );
 						} else {
 							break;  // throw error.
 						}

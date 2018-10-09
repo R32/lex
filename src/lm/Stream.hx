@@ -93,10 +93,17 @@ class Stream<LHS> {
 		return cached[pos++];
 	}
 
-	function rollback(dx: Int) {
+	function rollback(dx: Int, maxv: Int) {
 		pos -= dx;
-		right = pos;
-		@:privateAccess lex.pmax = cached[pos].pmin; // hack
+		dx = pos;
+		while (dx < right) {
+			if (cached[dx].term >= maxv) { // non-terminal if true then need hack the lex.pmax
+				right = dx;
+				@:privateAccess lex.pmax = cached[dx].pmin;
+				break;
+			}
+			++ dx;
+		}
 	}
 
 	function reduce(lvw) { // lvw == lv << 8 | w;
