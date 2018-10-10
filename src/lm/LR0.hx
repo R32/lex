@@ -520,6 +520,37 @@ class LR0Builder {
 				}
 			}
 		}
+		rollback(lex);
+	}
+
+	function rollback(lex: LexEngine) {
+		var table = lex.table;
+		inline function epsilon(seg) return table.get(table.length - 1 - seg);
+		var alt = new haxe.ds.Vector<Bool>(lex.perRB);
+		for (i in 0...alt.length) alt[i] = false;
+		var INVALID = lex.invalid;
+		var rollpos = lex.posRB();
+		var rlenpos = lex.posRBL();
+		function loop(exit, seg, length) {
+			alt[seg] = true;
+			var deeps: Array<{exit: Int, nxt: Int, len: Int}> = [];
+			var base = seg * lex.per;
+			for (lv in 0...lex.per) {
+				var nxt = table.get(lv + base);
+				if (nxt == INVALID || alt[nxt] || lv >= maxValue) continue;
+				table.set(rollpos + nxt, exit);
+				table.set(rlenpos + nxt, length);
+				if (epsilon(nxt) == INVALID)
+					deeps.push({exit: exit, nxt: nxt, len: length + 1});
+			}
+			for (d in deeps)
+				loop(d.exit, d.nxt, d.len);
+		}
+		for (seg in 0...lex.segs) {
+			var exit = epsilon(seg);
+			if (exit == INVALID) continue;
+			loop(exit, seg, 1);
+		}
 	}
 
 	static public function build() {
@@ -633,7 +664,7 @@ class LR0Builder {
 				var t: lm.Stream.Tok<$ct_lhs> = null;
 				var dx = 0;
 				var keep = stream.pos; // used for _side.
-				while (true) {
+				while (prev < NSEGSEX) {
 					while (true) {
 						t = stream.next();
 						state = trans(prev, t.term);
@@ -645,8 +676,6 @@ class LR0Builder {
 					if (state == INVALID) {
 						state = prev;
 						dx = 1;
-					} else {
-						dx = 0;
 					}
 					var q = exits(state);
 					if (q < NRULES) {
@@ -659,6 +688,7 @@ class LR0Builder {
 							break;  // throw error.
 						}
 					}
+					dx = 0;         // reset dx after rollback
 					while (true) {
 						var value:$ct_lhs = gotos(q, stream);
 						t = stream.offset( -1); // last token
@@ -670,7 +700,7 @@ class LR0Builder {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGSEX) break;
+						if (prev < NSEGSEX || prev == INVALID) break;
 						q = exits(prev);
 					}
 				}
@@ -764,9 +794,9 @@ class LR0Builder {
 						if ( ct != null && !Context.unify(ct.toType(), lrb.ct_lhs.toType()) )
 							Context.fatalError("All types of lhs must be uniform.", f.pos);
 						ret.push({name: f.name, value: lvalue++, cases: cl, pos: f.pos});
+						continue;
 					case _:
 					}
-					continue;
 				case FFun(fun):
 					var ofstr = Lambda.find(f.meta, m->m.name == ":rule");
 					if (ofstr != null && ofstr.params.length > 0) {

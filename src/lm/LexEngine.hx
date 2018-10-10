@@ -134,8 +134,8 @@ class LexEngine {
 		}
 		// DFA -> Tables
 		this.makeTables();
-		// rollback detection
-		this.makeRollback();
+		// rollback detection, only for lexer, LR0 has its own way to rollback
+		if (lr0 == null) this.rollback();
 
 		this.lstates = null;
 	}
@@ -231,24 +231,19 @@ class LexEngine {
 		this.table = tbls;
 	}
 
-	function makeRollback() {
+	function rollback() {
 		inline function epsilon(seg) return this.table.get(this.table.length - 1 - seg);
 		var INVALID = this.invalid;
 		var rollpos = posRB();
 		var rlenpos = posRBL();
 		function loop(exit, seg, smax, length) {
 			var base = seg * this.per;
-			var prev = INVALID; // simply avoid repeated writes in same seg
 			for (p in base...base + this.per) {
 				var nxt = this.table.get(p);
-				var nxt_exit = epsilon(nxt);
-				if (nxt == INVALID || nxt <= seg || nxt == prev || nxt_exit == exit)
-					continue;
+				if (nxt >= smax || epsilon(nxt) != INVALID || nxt == seg) continue;
 				this.table.set(rollpos + nxt, exit);
 				this.table.set(rlenpos + nxt, length); // junk(length) when rollback.
-				prev = nxt;
-				if (nxt_exit == INVALID && nxt < smax)
-					loop(exit, nxt, smax, length + 1);
+				loop(exit, nxt, smax, length + 1);
 			}
 		}
 		for (e in this.entrys) {
