@@ -7,7 +7,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Lexer: Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **Rollback-Able LR(0)**. **(WIP)**.
+* [x] Parser: **Rollback-Able LR(0)**. **rollback** is only valid until the reduction is completed. **WIP**
 
   - [x] Operator Precedence. Only operators in the same position.
 
@@ -52,7 +52,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     static var expr = switch(s)     // .....
     ```
 
-  - [x] Guard, If the production(rhs) have a "left sub rhs".
+  - [x] Guard, If the production(rhs) have a "left sub rhs" and **NO "non-terminal"**.
 
     ```haxe
     class Main {
