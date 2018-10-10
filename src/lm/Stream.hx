@@ -115,10 +115,13 @@ class Stream<LHS> {
 		t.pmax = pmax;
 		++ pos;
 		// fast junk(w - 1)
-		w -= 1;
+		-- w;
 		right -= w;
-		for (i in pos...right)
+		var i = pos;
+		while (i < right) {
 			cached[i] = cached[i + w];
+			++ i;
+		}
 	}
 	function reduceEP(lv) {
 		var prev = cached[pos - 1];

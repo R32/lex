@@ -66,6 +66,7 @@ class LR0Builder {
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
 	var opAssoc: OpAssoc;
+	var exits: Array<Expr>;      // index => (lvalue << 8) | syms.length.
 
 	public function new(t_tok, t_lhs, es) {
 		maxValue = 0;
@@ -73,6 +74,7 @@ class LR0Builder {
 		termlsC_All = [];
 		lhsA = [];
 		preDefs = [];
+		exits = [];
 		udtMap = new Map();
 		lhsMap = new Map();
 		funMap = new Map();
@@ -298,6 +300,7 @@ class LR0Builder {
 				}
 			}
 		}
+
 		if (lsecond == 0) lsecond = lmax;
 		for (i in 0...lsecond) {
 			var stok = "_t" + (i + 1);
@@ -330,13 +333,15 @@ class LR0Builder {
 				toks[ti++] = tmp;
 			}
 		}
+		this.exits.resize(lcases);
 		// duplicate var checking. & transform expr
 		ti = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var row = ["s" => true]; // reserve "s" as stream
+				var row = ["s" => true, "_q" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
+				this.exits[ti] = macro $v{lhs.value << 8 | len};
 				for (i in 0...len) {
 					var s = li.syms[i];
 					var dx = -(len - i);
@@ -377,7 +382,7 @@ class LR0Builder {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				var reduce = len > 0 ? (macro __r = $v{lhs.value << 8 | len}) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
+				var reduce = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
 					li.expr = macro @:pos(li.expr.pos) return $e{li.expr};
 				li.expr = if (li.guard == null) {
@@ -531,9 +536,9 @@ class LR0Builder {
 		var INVALID = lex.invalid;
 		var rollpos = lex.posRB();
 		var rlenpos = lex.posRBL();
+		var que = new List<{exit: Int, nxt: Int, len: Int}>(); // FIFO
 		function loop(exit, seg, length) {
 			alt[seg] = true;
-			var deeps: Array<{exit: Int, nxt: Int, len: Int}> = [];
 			var base = seg * lex.per;
 			for (lv in 0...lex.per) {
 				var nxt = table.get(lv + base);
@@ -541,15 +546,18 @@ class LR0Builder {
 				table.set(rollpos + nxt, exit);
 				table.set(rlenpos + nxt, length);
 				if (epsilon(nxt) == INVALID)
-					deeps.push({exit: exit, nxt: nxt, len: length + 1});
+					que.add({exit: exit, nxt: nxt, len: length + 1});
 			}
-			for (d in deeps)
-				loop(d.exit, d.nxt, d.len);
 		}
 		for (seg in 0...lex.segs) {
 			var exit = epsilon(seg);
 			if (exit == INVALID) continue;
 			loop(exit, seg, 1);
+		}
+		while (true) {
+			var x = que.pop();
+			if (x == null) break;
+			loop(x.exit, x.nxt, x.len);
 		}
 	}
 
@@ -642,8 +650,10 @@ class LR0Builder {
 			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
+
 		var defs = macro class {
 			static var raw = $raw;
+			static var lva:Array<Int> = [$a{exits}];
 			static inline var INVALID = $v{lex.invalid};
 			static inline var NRULES  = $v{lex.nrules};
 			static inline var NSEGS   = $v{lex.segs};
@@ -664,7 +674,7 @@ class LR0Builder {
 				var t: lm.Stream.Tok<$ct_lhs> = null;
 				var dx = 0;
 				var keep = stream.pos; // used for _side.
-				while (prev < NSEGSEX) {
+				while (true) {
 					while (true) {
 						t = stream.next();
 						state = trans(prev, t.term);
@@ -683,7 +693,14 @@ class LR0Builder {
 					} else {
 						q = rollB(state);
 						if (q < NRULES) {
-							stream.rollback( dx + rollL(state), $v{maxValue} );
+							var dy = dx + rollL(state);
+							t = stream.offset(-1 - dy);
+							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
+								stream.pos -= dx;
+								exp = 0;
+								break;
+							}
+							stream.rollback(dy, $v{maxValue});
 						} else {
 							break;  // throw error.
 						}
@@ -700,7 +717,9 @@ class LR0Builder {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGSEX || prev == INVALID) break;
+						if (prev < NSEGSEX) break;
+						if (prev == INVALID)   // must be called by _side.
+							return stream.cached[keep].val;
 						q = exits(prev);
 					}
 				}
@@ -727,19 +746,18 @@ class LR0Builder {
 		var here = Context.currentPos();
 		var defCase = exprs.pop();
 		var liCase = Lambda.mapi( exprs, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
-		var eSwitch = {expr: ESwitch(macro (f), liCase, defCase), pos: here};
+		var eSwitch = {expr: ESwitch(macro (_q), liCase, defCase), pos: here};
 		defs.fields.push({
 			name: "cases",
 			access: [AStatic],
 			kind: FFun({
-				args: [{name: "f", type: macro: Int}, {name: "s", type: ct_stream}],
+				args: [{name: "_q", type: macro: Int}, {name: "s", type: ct_stream}],
 				ret: ct_lhs,
 				expr: macro {
 					@:mergeBlock $b{preDefs};
-					var __r = 0;  // (lv << 8 | len)
-					var __v = $eSwitch;
-					@:privateAccess s.reduce(__r);
-					return __v;
+					var _v = $eSwitch;
+					@:privateAccess s.reduce(lva[_q]);
+					return _v;
 				}
 			}),
 			pos: here,
