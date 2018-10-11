@@ -476,7 +476,7 @@ class LR0Builder {
 		return ret;
 	}
 
-	function addition(lex: LexEngine, src: Int, dst: Int, lvalue: Int, lpos) {
+	function mixing(lex: LexEngine, src: Int, dst: Int, lvalue: Int, lpos) {
 		var state = lex.states[src];
 		var targets = state.targets;
 		var dstStart = dst * lex.per;
@@ -485,15 +485,15 @@ class LR0Builder {
 			var max = c.max;
 			var s = targets[c.ext];
 			while ( i <= max ) {
-				var follow = lex.table.get(dstStart + i);
+				var dst_nxt = lex.table.get(dstStart + i);
 				if (i == lvalue) {
-					var next = lex.table.get(src * lex.per + lvalue);
-					if (follow < lex.segs && next < lex.segs) {
-						addition(lex, next, follow, -1, lpos);
+					var src_nxt = lex.table.get(src * lex.per + lvalue);
+					if (dst_nxt < lex.segs && src_nxt < lex.segs) {
+						mixing(lex, src_nxt, dst_nxt, -1, lpos);
 					}
 				} else {
-					if (follow != lex.invalid) {
-						if (s != follow)
+					if (dst_nxt != lex.invalid) {
+						if (s != dst_nxt)
 							Context.fatalError("rewrite conflict: " + Lambda.find(udtMap, u -> u.value == i).name, lpos);
 					} else {
 						lex.table.set(dstStart + i, s);
@@ -508,14 +508,32 @@ class LR0Builder {
 		var b = lex.table;
 		var INVALID = lex.invalid;
 		var per = lex.per;
+		// sort
+		var h = lhsA.copy();
+		h.sort(function(L1, L2) {
+			var I1 = L1.value - this.maxValue;
+			var I2 = L2.value - this.maxValue;
+			var S1 = lex.entrys[I1].begin;
+			var S2 = lex.entrys[I2].begin;
+			var E1 = b.get(S2 * per + L1.value);
+			var E2 = b.get(S1 * per + L2.value);
+			if (E1 != INVALID) {
+				if (E2 != INVALID)
+					Context.fatalError("conflict: " + I1 + " <-> " + I2, L1.pos);
+				return 1;
+			}
+			if (E2 != INVALID)
+				return -1;
+			return L1.value - L2.value;
+		});
 		for (seg in 0...lex.segs) {
 			var base = seg * per;
-			for (l in lhsA) {
+			for (l in h) {
 				if (b.get(base + l.value) == INVALID)
 					continue;
 				var entry = lex.entrys[l.value - this.maxValue]; // the entry Associated with lhs
 				if (entry.begin == seg) continue; // skip self.
-				addition(lex, entry.begin, seg, l.value, l.pos);
+				mixing(lex, entry.begin, seg, l.value, l.pos);
 				if (l.epsilon) {
 					var dst = b.length - 1 - seg;
 					if (b.get(dst) != INVALID)
@@ -718,8 +736,11 @@ class LR0Builder {
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
 						if (prev < NSEGSEX) break;
-						if (prev == INVALID)   // must be called by _side.
-							return stream.cached[keep].val;
+						if (prev == INVALID) {
+							if (exp == -1)
+								return stream.cached[keep].val;
+							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
+						}
 						q = exits(prev);
 					}
 				}

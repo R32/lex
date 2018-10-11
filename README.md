@@ -15,7 +15,9 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     >
     > In fact, this LR0 parser just modifies the table that LexEngine built. So as parser it's may also be unstable.
 
-  - [x] Independent LHS. *I don't know what it should be called.* in the [Usage](#usage) example:
+  - [x] Independent LHS. [*Actually it will have some side effects that may cause some productions to conflict*](https://github.com/R32/lex/issues/3)
+
+    Reference [Usage](#usage) example:
 
     ```haxe
     // skip the main entry(par.main()) and call expr() independently
@@ -52,7 +54,7 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     static var expr = switch(s)     // .....
     ```
 
-  - [x] Guard, If the production(rhs) have a "left sub rhs" and **NO "non-terminal"**.
+  - [x] Guard, If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
     ```haxe
     class Main {
