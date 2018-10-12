@@ -27,6 +27,9 @@ class Print {
 		"RParen"  => ")",
 		"Semicolon" => ";",
 		"Percent"   => "%",
+
+	//	"main" => "S",
+	//	"expr" => "E",
 	];
 
 	static public function lr0Production(lrb: LR0Builder) {
@@ -41,7 +44,10 @@ class Print {
 		inline function LHS(n) buf.add(lpad(n, " ", smax));
 
 		for (lhs in lrb.lhsA) {
-			LABEL(); LHS(lhs.name.toUpperCase()); ARROW();
+			var name = mapp.get(lhs.name);
+			if (name == null)
+				name = lhs.name.toUpperCase();
+			LABEL(); LHS(name); ARROW();
 			for (li in lhs.cases) {
 				if (li != lhs.cases[0]) { // first
 					newLine(); LABEL(); LHS(""); ARROW();
@@ -81,41 +87,31 @@ class Print {
 			if (smax < name.length) smax = name.length;
 			col.push({name: name, value: i});
 		}
-		smax += 4; // | 10 |
-		if (smax < 5) smax = 5;
+		smax += 2; // | 10 |
+		if (smax < 9) smax = 9;
 		col.sort( (a, b) -> a.value - b.value);
 
 		var buf = new StringBuf();
 		inline function add(s) buf.add( sPad(s, smax) );
 		inline function sp() buf.add("|");
-
-		// header
+		inline function nxtLine() buf.add("\n");
 		var lineWidth = 1 + (smax + 1) * (col.length + 3);
-		var lineSp = sRepeat(lineWidth, "-") + "\n";
-		buf.add(lineSp);
-		lineSp = "\n" + lineSp;
-		sp(); add("(S)"); sp(); add("(RB)"); sp(); add("(EP)"); sp();
-		for (v in col) {
-			add(v.name); sp();
-		}
-		buf.add(lineSp);
+		inline function horLine() buf.add(sRepeat(lineWidth, "-"));
 
 		var raw = lex.table;
 		var rollpos = lex.posRB();
 		var rlenpos = lex.posRBL();
 		var INVALID = lex.invalid;
-		function s_epsilon(i) {
-			var s = lex.table.get(lex.table.length - 1 - i);
+		function s_epsilon(fid: Int) {
+			var s = lex.table.get(lex.table.length - 1 - fid);
 			add(s == INVALID ? "NULL" : "R" + s);
 		}
-		function s_rollback(i) {
+		function s_rollback(i: Int) {
 			var s = lex.table.get(rollpos + i);
 			add(s == INVALID ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
 		}
-		// body
-		for (i in 0...lex.segsEx) {
-			if (i == lex.segs) // op priority
-				buf.add(sRepeat(lineWidth, "-") + "\n");
+		function s_row(i: Int, begin: Int, name: String) {
+			horLine(); ( if (i == begin) buf.add(" " + name) ); nxtLine();
 			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
 			var base = i * lex.per;
 			for (v in col) {
@@ -131,8 +127,36 @@ class Print {
 				}
 				sp();
 			}
-			buf.add(lineSp);
+			nxtLine();
 		}
+		// header
+		horLine(); nxtLine();
+		sp(); add("(S)"); sp(); add("(RB)"); sp(); add("(EP)"); sp();
+		for (v in col) {
+			add(v.name); sp();
+		}
+		nxtLine();
+		// body
+		for (j in 0...lex.entrys.length) {
+			var l = lrb.lhsA[j];
+			var name = mapp.get(l.name);
+			if (name == null)
+				name = l.name.toUpperCase();
+			var e = lex.entrys[j];
+			for (i in e.begin...e.begin + e.segs)
+				s_row(i, e.begin, name);
+			horLine(); nxtLine();
+		}
+		if (lex.segsEx > lex.segs) {
+			horLine(); nxtLine();
+		}
+		for (i in lex.segs...lex.segsEx) {
+			s_row(i, lex.segs, "Operator Precedence");
+		}
+		// end line
+		horLine(); nxtLine();
+		// final states
+		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		for (i in lex.segsEx...lex.nstates) {
 			sp(); add(i + ""); sp(); s_rollback(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
@@ -154,7 +178,9 @@ class Print {
 					for (i in c.min...c.max + 1)
 						used.set(i, s_token(i));
 			} else {
-				used.set(syms.cset[0].min, syms.name.toUpperCase());
+				var name = syms.name;
+				var r = mapp.get(name);
+				used.set(syms.cset[0].min, r == null ? name.toUpperCase() : r);
 			}
 		}
 		for (lhs in lrb.lhsA) {
