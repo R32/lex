@@ -673,7 +673,7 @@ class LR0Builder {
 		return ret;
 	}
 
-	function mixing(lex: LexEngine, src: Int, dst: Int, lvalue: Int, lpos) {
+	function mixing(lex: LexEngine, src: Int, dst: Int, lvalue: Int) {
 		var state = lex.states[src];
 		var targets = state.targets;
 		var dstStart = dst * lex.per;
@@ -686,12 +686,12 @@ class LR0Builder {
 				if (i == lvalue) {
 					var src_nxt = lex.table.get(src * lex.per + lvalue);
 					if (dst_nxt < lex.segs && src_nxt < lex.segs) {
-						mixing(lex, src_nxt, dst_nxt, -1, lpos);
+						mixing(lex, src_nxt, dst_nxt, -1);
 					}
 				} else {
 					if (dst_nxt != lex.invalid) {
 						if (s != dst_nxt)
-							Context.fatalError("rewrite conflict: " + Lambda.find(udtMap, u -> u.value == i).name, lpos);
+							Context.fatalError("rewrite conflict: " + Lambda.find(udtMap, u -> u.value == i).name, byState(src).pos);
 					} else {
 						lex.table.set(dstStart + i, s);
 					}
@@ -730,7 +730,7 @@ class LR0Builder {
 					continue;
 				var entry = lex.entrys[l.value - this.maxValue]; // the entry Associated with lhs
 				if (entry.begin == seg) continue; // skip self.
-				mixing(lex, entry.begin, seg, l.value, l.pos);
+				mixing(lex, entry.begin, seg, l.value);
 				if (l.epsilon) {
 					var dst = b.exitpos(seg);
 					if (b.get(dst) != INVALID)
