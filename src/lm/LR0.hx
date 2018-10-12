@@ -183,7 +183,6 @@ class LR0Builder {
 	}
 
 	// final state => rule
-	static inline function fidToRule(lex:LexEngine, fid: Int):Int return lex.table.get(lex.table.length - 1 - fid);
 	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
 	inline function byState(s):Lhs return s2Lhs[s];
 
@@ -421,7 +420,7 @@ class LR0Builder {
 		}
 		// final states
 		for (i in lex.segs...lex.nstates) {
-			var n = fidToRule(lex, i);
+			var n = lex.table.exits(i);
 			this.s2Lhs[i] = byRule(n);
 		}
 	}
@@ -429,20 +428,20 @@ class LR0Builder {
 	function checking(lex: LexEngine) {
 		var table = lex.table;
 		var INVALID = lex.invalid;
-		// init exitN/NRule => final_state
-		var exits = new haxe.ds.Vector<Int>(lex.nrules);
+		// init exitN/NRule => final_state rules
+		var rules = new haxe.ds.Vector<Int>(lex.nrules);
 		for (n in 0...lex.nrules)
-			exits[n] = INVALID;
+			rules[n] = INVALID;
 		for (i in table.length-lex.perRB...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
-			// since: i = table.length - 1 - state;
+			// since: i = table.length - 1 - state; // table.exitpos
 			// so   : state = table.length - 1 - i;
-			exits[n] = table.length - 1 - i;
+			rules[n] = table.length - 1 - i;
 		}
 		// 1. Is switch case unreachable?
 		for (n in 0...lex.nrules)
-			if (exits[n] == INVALID)
+			if (rules[n] == INVALID)
 				Context.fatalError("Unreachable switch case", this.ruleToCase(n).pos);
 
 		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly or be epsilon.
@@ -450,7 +449,7 @@ class LR0Builder {
 			var entry = lex.entrys[index];
 			var base = entry.begin * lex.per;
 			var find = false;
-			if (table.get(table.length - 1 - entry.begin) != INVALID) // epsilon
+			if (table.exits(entry.begin) != INVALID) // epsilon
 				continue;
 			for (i in base ... base + this.maxValue) {
 				var c = table.get(i);
@@ -467,7 +466,7 @@ class LR0Builder {
 		for (lhs in this.lhsA) {
 			for (li in lhs.cases) {
 				if (li.guard != null) {
-					var final_state = exits[n];
+					var final_state = rules[n];
 					if (lex.table.get(lex.posRB() + final_state) == INVALID)
 						Context.fatalError("No switch case that can be rollback from here", li.guard.pos);
 				}
@@ -552,11 +551,10 @@ class LR0Builder {
 				if (entry.begin == seg) continue; // skip self.
 				mixing(lex, entry.begin, seg, l.value, l.pos);
 				if (l.epsilon) {
-					var dst = b.length - 1 - seg;
+					var dst = b.exitpos(seg);
 					if (b.get(dst) != INVALID)
 						Context.fatalError("epsilon conflict with " + l.name, l.pos);
-					var src = b.length - 1 - entry.begin;
-					b.set(dst, b.get(src));
+					b.set(dst, b.exits(entry.begin));
 				}
 			}
 		}
@@ -565,7 +563,7 @@ class LR0Builder {
 
 	function rollback(lex: LexEngine) {
 		var table = lex.table;
-		inline function epsilon(seg) return table.get(table.length - 1 - seg);
+		inline function epsilon(seg) return table.exits(seg);
 		var alt = new haxe.ds.Vector<Bool>(lex.perRB);
 		for (i in 0...alt.length) alt[i] = false;
 		var INVALID = lex.invalid;

@@ -4,6 +4,17 @@ import lm.Charset;
 
 typedef PatternSet = Array<Pattern>;
 
+@:forward(length)
+abstract Table(haxe.ds.Vector<Int>) {
+	public function new(len) this = new haxe.ds.Vector<Int>(len);
+	@:arrayAccess public inline function get(i) return this.get(i);
+	@:arrayAccess public inline function set(i, v) return this.set(i, v);
+	public inline function trans(state, per, term) return this.get(state * per + term);
+	// Whether a state can exit. if a non-final state can exit, then it must be epsilon.
+	public inline function exits(state) return this.get( exitpos(state) );
+	public inline function exitpos(state) return this.length - 1 - state;
+}
+
 class LexEngine {
 
 	public static inline var U8MAX = 0xFF;
@@ -36,7 +47,7 @@ class LexEngine {
 	/**
 	 format: [seg0,seg1,......,segN, rollback,rollback_len,exits]
 	*/
-	public var table(default, null): haxe.ds.Vector<Int>;
+	public var table(default, null): Table;
 
 	/**
 	 state_counter
@@ -220,11 +231,11 @@ class LexEngine {
 	function makeTables() {
 		var INVALID = this.invalid;
 		var bytes = (segsEx * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
-		var tbls = new haxe.ds.Vector<Int>(bytes);
+		var tbls = new Table(bytes);
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
 		for (s in this.lstates) {
-			tbls.set(bytes - 1 - s.id, first(0, INVALID, s.prev_nrules, s.finals)); // Reverse write checking table
+			tbls.set(tbls.exitpos(s.id), first(0, INVALID, s.prev_nrules, s.finals)); // Reverse write checking table
 			if (s.id < segsEx)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
@@ -232,7 +243,7 @@ class LexEngine {
 	}
 
 	function rollback() {
-		inline function epsilon(seg) return this.table.get(this.table.length - 1 - seg);
+		inline function epsilon(seg) return this.table.exits(seg);
 		var INVALID = this.invalid;
 		var rollpos = posRB();
 		var rlenpos = posRBL();
@@ -256,12 +267,13 @@ class LexEngine {
 		}
 	}
 
+	// this function should be moved to LR0..
 	function doPrecedence(assoc: lm.LR0.OpAssoc, maxValue: Int) { // parsePrecedence
 		inline function segStart(i) return i * this.per;
 		var INVALID = this.invalid;
 		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
 		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
-		function parse(table: haxe.ds.Vector<Int>, begin, max) {
+		function parse(table: Table, begin, max) {
 			for (i in begin...max) {
 				var start = segStart(i);
 				for (op in assoc) {
@@ -331,7 +343,7 @@ class LexEngine {
 		}
 
 		// need a tmp table for analysis
-		var tmp = new haxe.ds.Vector<Int>( segStart(this.segs) );
+		var tmp = new Table( segStart(this.segs) );
 		for (i in 0...tmp.length) tmp.set(i, INVALID);
 
 		for (s in this.lstates) {
@@ -455,7 +467,7 @@ class LexEngine {
 		out.flush();
 	}
 	#end
-	static function makeTrans(tbls: haxe.ds.Vector<Int>, start: Int, trans: Array<Char>, targets: Array<Int>) {
+	static function makeTrans(tbls: Table, start: Int, trans: Array<Char>, targets: Array<Int>) {
 		for (c in trans) {
 			var i = c.min + start;
 			var max = c.max + start;
