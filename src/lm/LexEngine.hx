@@ -67,7 +67,7 @@ class LexEngine {
 
 	public var invalid(default, null): Int;
 
-	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lr0:{assoc:lm.LR0.OpAssoc, max:Int}) {
+	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lrb: lm.LR0.LR0Builder) {
 		this.entrys = [];
 		this.parts = new Map();
 		this.per = cmax + 1;
@@ -137,16 +137,15 @@ class LexEngine {
 					s.targets[i] -= diff;
 			if (s.id > segs) s.id -= diff;
 		}
-		if (lr0 != null) {
+		if (lrb != null) {
 			this.states = Lambda.array(this.lstates);
 			this.states.sort(State.onSort);
-			if (lr0.assoc.length > 0)
-				doPrecedence(lr0.assoc, lr0.max);
+			lrb.doPrecedence(this);
 		}
 		// DFA -> Tables
 		this.makeTables();
 		// rollback detection, only for lexer, LR0 has its own way to rollback
-		if (lr0 == null) this.rollback();
+		if (lrb == null) this.rollback();
 
 		this.lstates = null;
 	}
@@ -264,172 +263,6 @@ class LexEngine {
 				if (exit == INVALID) continue;
 				loop(exit, seg, smax, 1);
 			}
-		}
-	}
-
-	// this function should be moved to LR0..
-	function doPrecedence(assoc: lm.LR0.OpAssoc, maxValue: Int) { // parsePrecedence
-		inline function segStart(i) return i * this.per;
-		var INVALID = this.invalid;
-		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
-		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
-		function parse(table: Table, begin, max) {
-			for (i in begin...max) {
-				var start = segStart(i);
-				for (op in assoc) {
-					var nxt = table.get(start + op.value);
-					if (nxt >= this.segs) continue;
-					var fi = segStart(nxt);
-					for (p in (fi + maxValue)...(fi + this.per)) { // only non-terminal
-						var fid = table.get(p);
-						if (fid == INVALID || fid < this.segs) continue;
-						// now check which stage can jump to "i"
-						var hit = p - fi;
-						for (j in begin...max) {
-							if (table.get(segStart(j) + hit) == i) {
-								var col = lvlMap.get(i);
-								if (col == null) {
-									col = [];
-									lvlMap.set(i, col);
-								}
-								var ex = fidMap.get(fid);
-								if (ex == null) {
-									ex = [];
-									fidMap.set(fid, ex);
-								}
-								var x = {lvl: i, hit: hit, nxt: nxt, fid: fid, prio: op.prio, value: op.value, left: op.left};
-								col.push(x);
-								ex.push(x);
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-		function swap(dst, src) {
-			if (dst == src) return;
-			var x = this.states[dst]; // x.id == dst
-			var y = this.states[src]; // y.id == src;
-			// swap targets
-			for (s in this.states) {
-				for (i in 0...s.targets.length) {
-					var t = s.targets[i];
-					if (t == dst) {
-						s.targets[i] = src;
-					} else if (t == src) {
-						s.targets[i] = dst;
-					}
-				}
-			}
-			// swap states
-			x.id = src;
-			y.id = dst;
-			this.states[dst] = y;
-			this.states[src] = x;
-			// swap opAssocEx.
-			var a = fidMap.get(dst);
-			var b = fidMap.get(src);
-			if (a != null) {
-				for (op in a)
-					op.fid = src;
-				fidMap.set(src, a);
-			} else {
-				fidMap.remove(src);
-			}
-			for (op in b)
-				op.fid = dst;
-			fidMap.set(dst, b);
-		}
-
-		// need a tmp table for analysis
-		var tmp = new Table( segStart(this.segs) );
-		for (i in 0...tmp.length) tmp.set(i, INVALID);
-
-		for (s in this.lstates) {
-			if (s.id >= this.segs) continue;
-			makeTrans(tmp, segStart(s.id), this.trans[s.part], s.targets);
-		}
-		// analysis
-		for (e in entrys)
-			parse(tmp, e.begin, e.begin + e.segs);
-		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
-		for (a in fidMap) {
-			var prio = a[0].prio;
-			for (i in 1...a.length)
-				if (a[i].prio != prio)
-					throw "Operator Precedence Conflict";
-		}
-		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
-		for (lvl in lvlMap.keys()) {
-			var a = lvlMap.get(lvl);
-			var prio = a[0].prio;
-			var find = false;
-			for (i in 1...a.length)
-				if (prio != a[i].prio || a[i].left == false) {
-					find = true;
-					break;
-				}
-			if (!find) lvlMap.remove(lvl);
-		}
-		// highest(maximum) precedence in lvl
-		var larMap = new Map<Int, {left:Int, right: Int}>();
-		for (a in lvlMap) {
-			var lar = {left: -1, right: -1};
-			larMap.set(a[0].lvl, lar);
-			for (op in a) {
-				if (op.left) {
-					if (op.prio > lar.left) lar.left = op.prio;
-				} else {
-					if (op.prio > lar.right) lar.right = op.prio;
-				}
-			}
-		}
-		// (for reduce the size of the table)
-		var dst = this.segs;
-		var hight = 0;
-		var count = 0;
-		var dupMap = new Map<Int, Bool>();
-		for (a in lvlMap) {
-			var lar = larMap.get(a[0].lvl);
-			for (op in a) {
-				if (dupMap.exists(op.fid)) continue;
-				count ++;
-				if (op.left && lar.left > lar.right && op.prio == lar.left) {
-					++ hight;
-				} else {
-					swap(dst++, op.fid);
-				}
-				dupMap.set(op.fid, true);
-			}
-		}
-		this.segsEx = segs + count - hight;
-		// write to s.targets and this.trans
-		for (fid in segs...segsEx) {
-			var s = this.states[fid];
-			var own = fidMap.get(fid)[0];
-			var tar = []; // targets
-			var tas = []; // trans
-			var i = 0;
-			var a = lvlMap.get(own.lvl);
-			for (op in a) {
-				if (own.left) {
-					if (op.prio > own.prio) {
-						tar[i] = op.nxt;
-						tas[i] = Char.c3(op.value, op.value, i);
-						++ i;
-					}
-				} else {
-					if (op.prio >= own.prio) {
-						tar[i] = op.nxt;
-						tas[i] = Char.c3(op.value, op.value, i);
-						++ i;
-					}
-				}
-			}
-			s.part = this.trans.length;
-			s.targets = tar;
-			this.trans.push(tas);
 		}
 	}
 
@@ -741,14 +574,4 @@ private class State {
 		prev_nrules = n;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
-}
-
-private typedef OpAssocExt = {
-	var lvl: Int;    // which state is op value found
-	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
-	var hit: Int;    // in nxt state, a hit value
-	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
-	var prio: Int;   // op precedence. The higher the value, the higher the priority
-	var value: Int;  // op value
-	var left: Bool;  // is left assoc?
 }

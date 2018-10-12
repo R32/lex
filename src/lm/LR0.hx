@@ -51,6 +51,18 @@ typedef Lhs = {    // one switch == one Lhs
 
 typedef LhsArray = Array<Lhs>;   // all switches.
 
+typedef OpAssoc = Array<{left: Bool, prio: Int, value: Int}>
+
+private typedef OpAssocExt = {
+	var lvl: Int;    // which state is op value found
+	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
+	var hit: Int;    // in nxt state, a hit value
+	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
+	var prio: Int;   // op precedence. The higher the value, the higher the priority
+	var value: Int;  // op value
+	var left: Bool;  // is left assoc?
+}
+
 class LR0Builder {
 
 	var termls: Array<Udt>;      // all Terminal
@@ -66,7 +78,7 @@ class LR0Builder {
 	var ct_stream: ComplexType;  //
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
-	var opAssoc: OpAssoc;
+	var assoc: OpAssoc;
 	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
 	var s2Lhs: haxe.ds.Vector<Lhs>;  // State belone which Lhs. available after lexData()
 	public function new(t_tok, t_lhs, es) {
@@ -119,13 +131,13 @@ class LR0Builder {
 				}
 			}
 		}
-		opAssoc = [];
+		assoc = [];
 		var rule = cls.meta.extract(":rule");
 		if (rule.length > 0) {
 			var obj = rule[0].params[0];
 			switch (obj.expr) {
 			case EObjectDecl(a):
-				extract(a, opAssoc);
+				extract(a, assoc);
 			default:
 			}
 		}
@@ -410,6 +422,175 @@ class LR0Builder {
 		}
 	}
 
+	// called by LexEngine, NOTICE: the lex.table is invalid atm.
+	@:allow(lm.LexEngine)
+	function doPrecedence(lex: LexEngine) {
+		if (assoc.length == 0) return;
+		inline function segStart(i) return i * lex.per;
+		var INVALID = lex.invalid;
+		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
+		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
+		function parse(table: Table, begin, max) {
+			for (i in begin...max) {
+				var start = segStart(i);
+				for (op in assoc) {
+					var nxt = table.get(start + op.value);
+					if (nxt >= lex.segs) continue;
+					var fi = segStart(nxt);
+					for (p in (fi + maxValue)...(fi + lex.per)) { // only non-terminal
+						var fid = table.get(p);
+						if (fid == INVALID || fid < lex.segs) continue;
+						// now check which stage can jump to "i"
+						var hit = p - fi;
+						for (j in begin...max) {
+							if (table.get(segStart(j) + hit) == i) {
+								var col = lvlMap.get(i);
+								if (col == null) {
+									col = [];
+									lvlMap.set(i, col);
+								}
+								var ex = fidMap.get(fid);
+								if (ex == null) {
+									ex = [];
+									fidMap.set(fid, ex);
+								}
+								var x = {lvl: i, hit: hit, nxt: nxt, fid: fid, prio: op.prio, value: op.value, left: op.left};
+								col.push(x);
+								ex.push(x);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		function swap(dst, src) {
+			if (dst == src) return;
+			var x = lex.states[dst]; // x.id == dst
+			var y = lex.states[src]; // y.id == src;
+			// swap targets
+			for (s in lex.states) {
+				for (i in 0...s.targets.length) {
+					var t = s.targets[i];
+					if (t == dst) {
+						s.targets[i] = src;
+					} else if (t == src) {
+						s.targets[i] = dst;
+					}
+				}
+			}
+			// swap states
+			x.id = src;
+			y.id = dst;
+			lex.states[dst] = y;
+			lex.states[src] = x;
+			// swap opAssocEx.
+			var a = fidMap.get(dst);
+			var b = fidMap.get(src);
+			if (a != null) {
+				for (op in a)
+					op.fid = src;
+				fidMap.set(src, a);
+			} else {
+				fidMap.remove(src);
+			}
+			for (op in b)
+				op.fid = dst;
+			fidMap.set(dst, b);
+		}
+
+		// need a tmp table for analysis
+		var tmp = new Table( segStart(lex.segs) );
+		for (i in 0...tmp.length)
+			tmp.set(i, INVALID);
+		for (s in lex.states) {
+			if (s.id >= lex.segs) continue;
+			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), lex.trans[s.part], s.targets);
+		}
+		// analysis
+		for (e in lex.entrys)
+			parse(tmp, e.begin, e.begin + e.segs);
+
+		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
+		for (a in fidMap) {
+			var prio = a[0].prio;
+			for (i in 1...a.length)
+				if (a[i].prio != prio)
+					throw "Operator Precedence Conflict";
+		}
+		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
+		for (lvl in lvlMap.keys()) {
+			var a = lvlMap.get(lvl);
+			var prio = a[0].prio;
+			var find = false;
+			for (i in 1...a.length)
+				if (prio != a[i].prio || a[i].left == false) {
+					find = true;
+					break;
+				}
+			if (!find) lvlMap.remove(lvl);
+		}
+		// highest(maximum) precedence in lvl
+		var larMap = new Map<Int, {left:Int, right: Int}>();
+		for (a in lvlMap) {
+			var lar = {left: -1, right: -1};
+			larMap.set(a[0].lvl, lar);
+			for (op in a) {
+				if (op.left) {
+					if (op.prio > lar.left) lar.left = op.prio;
+				} else {
+					if (op.prio > lar.right) lar.right = op.prio;
+				}
+			}
+		}
+		// (for reduce the size of the table)
+		var dst = lex.segs;
+		var hight = 0;
+		var count = 0;
+		var dupMap = new Map<Int, Bool>();
+		for (a in lvlMap) {
+			var lar = larMap.get(a[0].lvl);
+			for (op in a) {
+				if (dupMap.exists(op.fid)) continue;
+				count ++;
+				if (op.left && lar.left > lar.right && op.prio == lar.left) {
+					++ hight;
+				} else {
+					swap(dst++, op.fid);
+				}
+				dupMap.set(op.fid, true);
+			}
+		}
+		@:privateAccess lex.segsEx = lex.segs + count - hight;
+		// write to s.targets and this.trans
+		for (fid in lex.segs...lex.segsEx) {
+			var s = lex.states[fid];
+			var own = fidMap.get(fid)[0];
+			var tar = [];  // targets
+			var cset = []; // trans
+			var i = 0;
+			var a = lvlMap.get(own.lvl);
+			for (op in a) {
+				if (own.left) {
+					if (op.prio > own.prio) {
+						tar[i] = op.nxt;
+						cset[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				} else {
+					if (op.prio >= own.prio) {
+						tar[i] = op.nxt;
+						cset[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				}
+			}
+			s.part = lex.trans.length;
+			s.targets = tar;
+			lex.trans.push(cset);
+		}
+	}
+
 	function lexData(lex: LexEngine) {
 		this.s2Lhs = new haxe.ds.Vector<Lhs>(lex.nstates);
 		for (i in 0...lex.entrys.length) {
@@ -630,7 +811,7 @@ class LR0Builder {
 			return null;
 		lrb.transform(switches);
 		var pats = lrb.toPartern();
-		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, {assoc: lrb.opAssoc, max: lrb.maxValue});
+		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, lrb);
 		lrb.lexData(lex);
 
 		// modify lex.table as LR0
@@ -907,5 +1088,3 @@ class LR0Builder{}
 #end
 @:remove interface LR0<LEX, LHS> {
 }
-
-typedef OpAssoc= Array<{left: Bool, prio: Int, value: Int}>
