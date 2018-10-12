@@ -45,6 +45,7 @@ typedef Lhs = {    // one switch == one Lhs
 	value: Int,    // automatic increase from "maxValue"
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
+	cbegin: Int,   // cases begin
 	pos: Position,
 }
 
@@ -66,15 +67,15 @@ class LR0Builder {
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
 	var opAssoc: OpAssoc;
-	var exits: Array<Expr>;      // index => (lvalue << 8) | syms.length.
-
+	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
+	var s2Lhs: haxe.ds.Vector<Lhs>;  // State belone which Lhs. available after lexData()
 	public function new(t_tok, t_lhs, es) {
 		maxValue = 0;
 		termls = [];
 		termlsC_All = [];
 		lhsA = [];
 		preDefs = [];
-		exits = [];
+
 		udtMap = new Map();
 		lhsMap = new Map();
 		funMap = new Map();
@@ -181,15 +182,14 @@ class LR0Builder {
 		return t == null || t.t ? null : t.cset;
 	}
 
-	function indexCase(i: Int): SymbolSet {
-		var index = 0;
-		for (lhs in lhsA) {
-			for (li in lhs.cases) {
-				if (index == i) return li;
-				++ index;
-			}
-		}
-		throw "NotFound";
+	// final state => rule
+	static inline function fidToRule(lex:LexEngine, fid: Int):Int return lex.table.get(lex.table.length - 1 - fid);
+	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
+	inline function byState(s):Lhs return s2Lhs[s];
+
+	function ruleToCase(n: Int): SymbolSet {
+		var lhs = byRule(n);
+		return lhs.cases[n - lhs.cbegin];
 	}
 
 	function transform(swa: Array<SymSwitch>) {
@@ -205,8 +205,9 @@ class LR0Builder {
 			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
+		var cbegin = 0;
 		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], epsilon: false, pos: sw.pos};
+			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], cbegin: cbegin, epsilon: false, pos: sw.pos};
 			for (c in sw.cases) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
@@ -267,6 +268,7 @@ class LR0Builder {
 					Context.fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
+			cbegin += lhs.cases.length;
 			this.lhsA.push(lhs);
 		}
 		organize();
@@ -333,7 +335,7 @@ class LR0Builder {
 				toks[ti++] = tmp;
 			}
 		}
-		this.exits.resize(lcases);
+		this.n2Lhs = new haxe.ds.Vector<Int>(lcases);
 		// duplicate var checking. & transform expr
 		ti = 0;
 		for (lhs in lhsA) {
@@ -341,7 +343,7 @@ class LR0Builder {
 				var row = ["s" => true, "_q" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
-				this.exits[ti] = macro $v{lhs.value << 8 | len};
+				this.n2Lhs[ti] = lhs.value << 8 | len;
 				for (i in 0...len) {
 					var s = li.syms[i];
 					var dx = -(len - i);
@@ -409,10 +411,25 @@ class LR0Builder {
 		}
 	}
 
+	function lexData(lex: LexEngine) {
+		this.s2Lhs = new haxe.ds.Vector<Lhs>(lex.nstates);
+		for (i in 0...lex.entrys.length) {
+			var e = lex.entrys[i];
+			var l = this.lhsA[i];
+			for (i in e.begin...e.begin + e.segs)
+				this.s2Lhs[i] = l;
+		}
+		// final states
+		for (i in lex.segs...lex.nstates) {
+			var n = fidToRule(lex, i);
+			this.s2Lhs[i] = byRule(n);
+		}
+	}
+
 	function checking(lex: LexEngine) {
 		var table = lex.table;
 		var INVALID = lex.invalid;
-		// init exitN => final_state
+		// init exitN/NRule => final_state
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
 		for (n in 0...lex.nrules)
 			exits[n] = INVALID;
@@ -426,7 +443,7 @@ class LR0Builder {
 		// 1. Is switch case unreachable?
 		for (n in 0...lex.nrules)
 			if (exits[n] == INVALID)
-				Context.fatalError("Unreachable switch case", indexCase(n).pos);
+				Context.fatalError("Unreachable switch case", this.ruleToCase(n).pos);
 
 		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly or be epsilon.
 		for (index in 0...lex.entrys.length) {
@@ -616,6 +633,8 @@ class LR0Builder {
 		lrb.transform(switches);
 		var pats = lrb.toPartern();
 		var lex = new LexEngine(pats, lrb.maxValue + lrb.lhsA.length | 15, {assoc: lrb.opAssoc, max: lrb.maxValue});
+		lrb.lexData(lex);
+
 		// modify lex.table as LR0
 		lrb.modify(lex);
 
@@ -668,10 +687,10 @@ class LR0Builder {
 			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-
+		var lva = n2Lhs.map(n -> macro $v{n}).toArray();
 		var defs = macro class {
 			static var raw = $raw;
-			static var lva:Array<Int> = [$a{exits}];
+			static var lva:Array<Int> = [$a{lva}];
 			static inline var INVALID = $v{lex.invalid};
 			static inline var NRULES  = $v{lex.nrules};
 			static inline var NSEGS   = $v{lex.segs};
