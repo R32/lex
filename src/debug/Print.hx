@@ -3,7 +3,7 @@ package debug;
 import StringTools.rpad;
 import StringTools.lpad;
 import lm.LexEngine;
-import lm.LR0;
+import lm.Parser;
 
 @:access(lm)
 class Print {
@@ -32,18 +32,18 @@ class Print {
 	//	"expr" => "E",
 	];
 
-	static public function lr0Production(lrb: LR0Builder) {
-		var used = getUsed(lrb);
+	static public function production(par: lm.Parser) {
+		var used = getUsed(par);
 		var buf = new StringBuf();
 		var R = 0;
 		inline function LABEL() buf.add("  (R"+ (R++) +")");
 		inline function ARROW() buf.add(" -->");
 		inline function newLine() buf.add("\n");
-		var smax = Lambda.fold(lrb.lhsA, ( (l, n)-> l.name.length > n ? l.name.length : n ), 0);
+		var smax = Lambda.fold(par.lhsA, ( (l, n)-> l.name.length > n ? l.name.length : n ), 0);
 		smax += 2;
 		inline function LHS(n) buf.add(lpad(n, " ", smax));
 
-		for (lhs in lrb.lhsA) {
+		for (lhs in par.lhsA) {
 			var name = mapp.get(lhs.name);
 			if (name == null)
 				name = lhs.name.toUpperCase();
@@ -77,9 +77,9 @@ class Print {
 		return buf.toString();
 	}
 
-	static public function lr0Table(lrb: LR0Builder, lex: LexEngine) {
+	static public function parTable(par: lm.Parser, lex: LexEngine) {
 		// all used terminal
-		var used = getUsed(lrb);
+		var used = getUsed(par);
 		var col:Array<{name:String, value:Int}> = [];
 		var smax = 0;
 		for (i in used.keys()) {
@@ -138,7 +138,7 @@ class Print {
 		nxtLine();
 		// body
 		for (j in 0...lex.entrys.length) {
-			var l = lrb.lhsA[j];
+			var l = par.lhsA[j];
 			var name = mapp.get(l.name);
 			if (name == null)
 				name = l.name.toUpperCase();
@@ -164,10 +164,10 @@ class Print {
 		return buf.toString();
 	}
 
-	static function getUsed(lrb: LR0Builder) {
+	static function getUsed(par: lm.Parser) {
 		var used = new Map<Int, String>();
 		function s_token(i) {
-			var t = Lambda.find(lrb.termls, t -> t.value == i);
+			var t = Lambda.find(par.termls, t -> t.value == i);
 			var name = t != null ? t.name : "null";
 			var r = mapp.get(name);
 			return r == null ? name.toLowerCase() : r;
@@ -183,7 +183,7 @@ class Print {
 				used.set(syms.cset[0].min, r == null ? name.toUpperCase() : r);
 			}
 		}
-		for (lhs in lrb.lhsA) {
+		for (lhs in par.lhsA) {
 			for (cc in lhs.cases) {
 				for (s in cc.syms) {
 					set(s, used);
