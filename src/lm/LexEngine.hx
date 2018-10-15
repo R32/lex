@@ -21,8 +21,7 @@ class LexEngine {
 	public static inline var U16MAX = 0xFFFF;
 
 	var uid(default, null): Int;
-	var finals: Array<Node>;
-	var finals_tmp: Array<Bool>;
+	var finals: Array<Bool>;
 	var h: Map<String, Int>;
 	var parts: Map<String, Int>;
 	var final_counter: Int;
@@ -79,7 +78,6 @@ class LexEngine {
 		this.part_counter = 0;
 		this.nrules = 0;
 		this.finals = [];
-		this.finals_tmp = [];
 		var prev = 0;
 		var nodes = [];
 		for (pats in a) {
@@ -87,15 +85,13 @@ class LexEngine {
 			var len = pats.length;
 			nodes.resize(len);
 			finals.resize(len);
-			finals_tmp.resize(len);
 			this.uid = len;
 			// Pattern -> NFA(nodes + finals)
 			for (i in 0...len) {
 				var f = new Node(i);
 				var n = initNode(pats[i], f);
 				nodes[i] = n;
-				finals[i] = f;
-				finals_tmp[i] = false;
+				finals[i] = false;
 			}
 			// NFA -> DFA
 			compile(addNodes([], nodes), true);
@@ -107,7 +103,6 @@ class LexEngine {
 		}
 		this.h = null;
 		this.finals = null;
-		this.finals_tmp = null;
 		var i = 0;
 		// get trans
 		this.trans = [];
@@ -219,7 +214,7 @@ class LexEngine {
 		for (i in 0...len)
 			targets[i] = compile(ta[i].ns, false);
 
-		var f = finals_tmp.copy();
+		var f = this.finals.copy();
 		for (n in nodes)
 			if (n.id < f.length) f[n.id] = true;
 

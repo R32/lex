@@ -8,8 +8,8 @@ using haxe.macro.Tools;
 
 private typedef Group = {
 	name: String,
-	rules: Array<Expr>,
-	cases: Array<Expr>,
+	rules: Array<Expr>,  // String Pattern
+	cases: Array<Expr>,  // The expression associated with the Pattern
 }
 
 class LexBuilder {
@@ -256,11 +256,12 @@ class LexBuilder {
 			exits[n] = table.length - 1 - i;
 		}
 		function indexPattern(i) {
-			var index = 0;
 			for (g in groups) {
-				for (r in g.rules) {
-					if (index == i) return r;
-					++ index;
+				var len = g.rules.length;
+				if (i >= len) {
+					i -= len;
+				} else {
+					return g.rules[i];
 				}
 			}
 			throw "NotFound";
