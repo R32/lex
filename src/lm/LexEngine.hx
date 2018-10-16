@@ -21,7 +21,7 @@ class LexEngine {
 	public static inline var U16MAX = 0xFFFF;
 
 	var uid(default, null): Int;
-	var finals: Array<Bool>;
+	var finals: Int;
 	var h: Map<String, Int>;
 	var parts: Map<String, Int>;
 	var final_counter: Int;
@@ -77,21 +77,19 @@ class LexEngine {
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.part_counter = 0;
 		this.nrules = 0;
-		this.finals = [];
 		var prev = 0;
 		var nodes = [];
 		for (pats in a) {
 			this.h = new Map();
 			var len = pats.length;
 			nodes.resize(len);
-			finals.resize(len);
+			this.finals = len;
 			this.uid = len;
-			// Pattern -> NFA(nodes + finals)
+			// Pattern -> NFA(nodes)
 			for (i in 0...len) {
 				var f = new Node(i);
 				var n = initNode(pats[i], f);
 				nodes[i] = n;
-				finals[i] = false;
 			}
 			// NFA -> DFA
 			compile(addNodes([], nodes), true);
@@ -102,7 +100,6 @@ class LexEngine {
 			nrules += len;
 		}
 		this.h = null;
-		this.finals = null;
 		var i = 0;
 		// get trans
 		this.trans = [];
@@ -214,11 +211,15 @@ class LexEngine {
 		for (i in 0...len)
 			targets[i] = compile(ta[i].ns, false);
 
-		var f = this.finals.copy();
-		for (n in nodes)
-			if (n.id < f.length) f[n.id] = true;
-
-		lstates.push(new State(id, pid, targets, f, nrules));
+		var f = -1;
+		var i = nodes.length;
+		while (--i >= 0) {
+			if (nodes[i].id < this.finals) {
+				f = this.nrules + nodes[i].id;
+				break;
+			}
+		}
+		lstates.push(new State(id, pid, targets, f));
 		return id;
 	}
 
@@ -229,7 +230,7 @@ class LexEngine {
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
 		for (s in this.lstates) {
-			tbls.set(tbls.exitpos(s.id), first(0, INVALID, s.prev_nrules, s.finals)); // Reverse write checking table
+			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID); // Reverse write checking table
 			if (s.id < segsEx)
 				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
 		}
@@ -305,15 +306,6 @@ class LexEngine {
 				++ i;
 			}
 		}
-	}
-
-	static function first(i: Int, fill: Int, start, a: Array<Bool>) {
-		var len = a.length;
-		while (i < len) {
-			if (a[i]) return start + i;
-			++ i;
-		}
-		return fill;
 	}
 
 	static function addNode(nodes: Array<Node>, n: Node) {
@@ -559,14 +551,12 @@ private class State {
 	public var id: Int;
 	public var part: Int;
 	public var targets: Array<Int>;
-	public var finals: Array<Bool>;
-	public var prev_nrules: Int;  // How many rules are there in the previous PatternSet
-	public function new(i, p, t, f, n) {
+	public var finalID: Int;
+	public function new(i, p, t, f) {
 		id = i;
 		part = p;
 		targets = t;
-		finals = f;
-		prev_nrules = n;
+		finalID = f;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
 }
