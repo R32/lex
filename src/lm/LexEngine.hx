@@ -23,15 +23,11 @@ class LexEngine {
 	var uid(default, null): Int;
 	var finals: Int;
 	var h: Map<String, Int>;
-	var parts: Map<String, Int>;
 	var final_counter: Int;
-	var part_counter: Int;
-	var lparts: List<Array<Charset>>;
 	var lstates: List<State>;
 
-	// Associated with "trans" for LR0Builder
+	// for LR0Builder
 	public var states(default, null): Array<State>;
-	public var trans(default, null): Array<Array<Char>>;
 
 	/**
 	 the segment size. default is 256(Char.MAX + 1)
@@ -68,14 +64,11 @@ class LexEngine {
 
 	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lrb: lm.LR0.LR0Builder) {
 		this.entrys = [];
-		this.parts = new Map();
 		this.per = cmax + 1;
-		this.lparts = new List();
 		this.lstates = new List();
 		this.segs = 0;  // state_counter
 		this.invalid = U16MAX;
 		this.final_counter = U16MAX - 1; // compress it later.
-		this.part_counter = 0;
 		this.nrules = 0;
 		var prev = 0;
 		var nodes = [];
@@ -100,27 +93,13 @@ class LexEngine {
 			nrules += len;
 		}
 		this.h = null;
-		var i = 0;
-		// get trans
-		this.trans = [];
-		this.trans.resize(lparts.length);
-		for (part in lparts) {
-			var seg: Array<Char> = [];
-			for (j in 0...part.length) {
-				var chars: Charset = part[j];
-				for (c in chars) {
-					seg.push(Char.c3(c.min, c.max, j));
-				}
-			}
-			this.trans[i++] = seg;
-		}
-		this.parts = null;
-		this.lparts = null;
+
 		// init some properties
 		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
 		this.perRB = 1 + ((nstates - 1) | 15);
+
 		// compress finalState
 		var diff = final_counter + 1 - segs;
 		for (s in lstates) {
@@ -177,17 +156,6 @@ class LexEngine {
 		}
 	}
 
-	function getPart(p: Array<Charset>): Int {
-		var sid = p.map(chars -> chars.join("+")).join(",");
-		var id = parts.get(sid);
-		if (id == null) {
-			id = part_counter++;
-			lparts.add(p); // add to tail
-			parts.set(sid, id);
-		}
-		return id;
-	}
-
 	function compile(nodes: Array<Node>, first: Bool): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
 		var id = h.get(sid);
@@ -202,10 +170,10 @@ class LexEngine {
 		}
 		h.set(sid, id);
 
-		var part: Array<Charset> = []; part.resize(len);
+		var trans: Array<Char> = [];
 		for (i in 0...len)
-			part[i] = ta[i].chars;
-		var pid = this.getPart(part);
+			for (c in ta[i].chars)
+				trans.push(Char.c3(c.min, c.max, i));
 
 		var targets = []; targets.resize(len);
 		for (i in 0...len)
@@ -219,7 +187,7 @@ class LexEngine {
 				break;
 			}
 		}
-		lstates.push(new State(id, pid, targets, f));
+		lstates.push(new State(id, trans, targets, f));
 		return id;
 	}
 
@@ -232,7 +200,7 @@ class LexEngine {
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID); // Reverse write checking table
 			if (s.id < segsEx)
-				makeTrans(tbls, s.id * per, trans[s.part], s.targets);
+				makeTrans(tbls, s.id * per, s.trans, s.targets);
 		}
 		this.table = tbls;
 	}
@@ -549,13 +517,13 @@ private class Node {
 }
 private class State {
 	public var id: Int;
-	public var part: Int;
+	public var trans: Array<Char>;
 	public var targets: Array<Int>;
 	public var finalID: Int;
-	public function new(i, p, t, f) {
+	public function new(i, ts, tar, f) {
 		id = i;
-		part = p;
-		targets = t;
+		trans = ts;
+		targets = tar;
 		finalID = f;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;

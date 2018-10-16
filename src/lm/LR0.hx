@@ -107,7 +107,7 @@ class LR0Builder extends lm.Parser {
 			tmp.set(i, INVALID);
 		for (s in lex.states) {
 			if (s.id >= lex.segs) continue;
-			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), lex.trans[s.part], s.targets);
+			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
 		}
 		// analysis
 		for (e in lex.entrys)
@@ -187,9 +187,8 @@ class LR0Builder extends lm.Parser {
 					}
 				}
 			}
-			s.part = lex.trans.length;
+			s.trans = cset;
 			s.targets = tar;
-			lex.trans.push(cset);
 		}
 	}
 
@@ -263,7 +262,7 @@ class LR0Builder extends lm.Parser {
 		var state = lex.states[src];
 		var targets = state.targets;
 		var dstStart = dst * lex.per;
-		for (c in lex.trans[state.part]) {
+		for (c in state.trans) {
 			var i = c.min;
 			var max = c.max;
 			var s = targets[c.ext];
