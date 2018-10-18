@@ -498,11 +498,11 @@ private class NAChars {
 			var a = s1.chars[i];
 			var b = s2.chars[i];
 			if (a.min != b.min)
-				return b.min - a.min;
+				return a.min - b.min;
 			if (a.max != b.max)
-				return b.max - a.max;
+				return a.max - b.max;
 		}
-		return b - a;
+		return a - b;
 	}
 }
 private class Node {
