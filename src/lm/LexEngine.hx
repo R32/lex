@@ -474,7 +474,7 @@ enum Pattern {
 	Next(p1: Pattern, p2: Pattern);
 }
 
-private class NChars {
+class NChars {
 	public var chars: Charset;
 	public var n: Node;
 	public function new(cs, n) {
@@ -483,7 +483,8 @@ private class NChars {
 	}
 	public static function onSort(a: NChars, b: NChars) return a.n.id - b.n.id;
 }
-private class NAChars {
+
+class NAChars {
 	public var chars: Charset;
 	public var ns: Array<Node>;
 	public function new(cs, ns) {
@@ -505,7 +506,7 @@ private class NAChars {
 		return a - b;
 	}
 }
-private class Node {
+class Node {
 	public var id: Int;
 	public var trans: Array<NChars>;
 	public var epsilon: Array<Node>;
@@ -515,7 +516,7 @@ private class Node {
 		epsilon = [];
 	}
 }
-private class State {
+class State {
 	public var id: Int;
 	public var trans: Array<Char>;
 	public var targets: Array<Int>;

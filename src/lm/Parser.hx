@@ -46,6 +46,7 @@ typedef Lhs = {    // one switch == one Lhs
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
 	cbegin: Int,   // cases begin
+	lsubs: Array<Int>, // left subs
 	pos: Position,
 }
 
@@ -237,7 +238,7 @@ class Parser {
 		}
 		var cbegin = 0;
 		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], cbegin: cbegin, epsilon: false, pos: sw.pos};
+			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], cbegin: cbegin, epsilon: false, lsubs: [], pos: sw.pos};
 			for (c in sw.cases) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
@@ -265,6 +266,8 @@ class Parser {
 								Context.fatalError("Undefined non-terminal: " + nt, e.pos);
 							if (el.length == 1 && nt == sw.name)
 								Context.fatalError("Infinite recursion", e.pos);
+							if (nt != sw.name && el[0] == e)
+								lhs.lsubs.push(udt.value);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]

@@ -211,6 +211,86 @@ class Print {
 		return buf.toString();
 	}
 
+	static public function slrTable(slr: lm.SLR.SLRBuilder) {
+		// all used terminal
+		var used = getUsed(slr);
+		var col:Array<{name:String, value:Int}> = [];
+		var smax = 0;
+		for (i in used.keys()) {
+			var name = used.get(i);
+			if (smax < name.length) smax = name.length;
+			col.push({name: name, value: i});
+		}
+		smax += 2; // | 10 |
+		if (smax < 9) smax = 9;
+		col.sort( (a, b) -> a.value - b.value);
+
+		var buf = new StringBuf();
+		inline function add(s) buf.add( sPad(s, smax) );
+		inline function sp() buf.add("|");
+		inline function nxtLine() buf.add("\n");
+		var lineWidth = 1 + (smax + 1) * (col.length + 3);
+		inline function horLine() buf.add(sRepeat(lineWidth, "-"));
+
+		var raw = slr.table;
+		var rollpos = slr.posRB();
+		var rlenpos = slr.posRBL();
+		var INVALID = slr.invalid;
+		function s_epsilon(fid: Int) {
+			var s = slr.table.get(slr.table.length - 1 - fid);
+			add(s == INVALID ? "NULL" : "R" + s);
+		}
+		function s_rollback(i: Int) {
+			var s = slr.table.get(rollpos + i);
+			add(s == INVALID ? "NULL" : "R" + s + "+L" + slr.table.get(rlenpos + i));
+		}
+		function s_row(i: Int, begin: Int, name: String) {
+			horLine(); ( if (i == begin) buf.add(" " + name) ); nxtLine();
+			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
+			var base = i * slr.per;
+			for (v in col) {
+				var shift = raw.get(base + v.value);
+				if (shift != INVALID) {
+					if (shift < slr.segs) {
+						add("" + shift);
+					} else {
+						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
+					}
+				} else {
+					add("");
+				}
+				sp();
+			}
+			nxtLine();
+		}
+		// header
+		horLine(); nxtLine();
+		sp(); add("(S)"); sp(); add("(RB)"); sp(); add("(EP)"); sp();
+		for (v in col) {
+			add(v.name); sp();
+		}
+		nxtLine();
+		// body
+		for (i in 0...slr.segs) {
+			s_row(i, -1, "");
+		}
+		if (slr.segs < slr.segsEx) {
+			horLine(); nxtLine();
+		}
+		for (i in slr.segs...slr.segsEx) {
+			s_row(i, slr.segs, "Operator Precedence");
+		}
+		// end line
+		horLine(); nxtLine();
+		// final states
+		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
+		for (i in slr.segsEx...slr.nstates) {
+			sp(); add(i + ""); sp(); s_rollback(i); sp();
+			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
+		}
+		return buf.toString();
+	}
+
 	static function getUsed(par: lm.Parser) {
 		var used = new Map<Int, String>();
 		function s_token(i) {
