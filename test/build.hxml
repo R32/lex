@@ -1,15 +1,4 @@
--dce full
--cp ../src
--D analyzer-optimize
+-lib lex
 -D old-error-format
 -main LexTest
--lib hxparse
---each
--D nodejs
--js bin/test.js
-
---next
--hl bin/test.hl
-
---next
 --interp

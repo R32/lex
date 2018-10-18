@@ -2,6 +2,7 @@ package debug;
 
 import StringTools.rpad;
 import StringTools.lpad;
+import lm.Charset;
 import lm.LexEngine;
 import lm.Parser;
 
@@ -31,6 +32,52 @@ class Print {
 	//	"main" => "S",
 	//	"expr" => "E",
 	];
+
+	static public function s_partern(p: Pattern): String {
+		return switch (p) {
+		case Empty:
+			"";
+		case Match(c):
+			s_charset(c);
+		case Star(a):
+			s_partern(a) + "*";
+		case Plus(a):
+			s_partern(a) + "+";
+		case Choice(a, Empty):
+			s_partern(a) + "?";
+		case Choice(a, b):
+			s_partern(a) + "|" + s_partern(b);
+		case Next(a, b):
+			s_partern(a) + s_partern(b);
+		}
+	}
+
+	static public function s_charset(cs: Charset): String {
+		function unescape(c) {
+			return switch(c) {
+			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code:
+				"\\" + String.fromCharCode(c);
+			default:
+				if (c > 0x20 && c < 0x7F)
+					String.fromCharCode(c);
+				else
+					"\\x" + StringTools.hex(c, 2);
+			}
+		}
+		var s = "";
+		for (c in cs) {
+			if (c.min == c.max) {
+				s += unescape(c.min);
+			} else {
+				s += '${unescape(c.min)}-${unescape(c.max)}';
+			}
+		}
+		return if (cs.length > 1) {
+			"[" + s + "]";
+		} else {
+			s;
+		}
+	}
 
 	static public function production(par: lm.Parser) {
 		var used = getUsed(par);
