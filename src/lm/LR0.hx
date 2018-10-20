@@ -39,7 +39,7 @@ class LR0Builder extends lm.Parser {
 					var nxt = table.get(start + op.value);
 					if (nxt >= lex.segs) continue;
 					var fi = segStart(nxt);
-					for (p in (fi + maxValue)...(fi + lex.per)) { // only non-terminal
+					for (p in (fi + maxValue)...(fi + maxValue + lhsA.length)) { // only non-terminal
 						var fid = table.get(p);
 						if (fid == INVALID || fid < lex.segs) continue;
 						// now check which stage can jump to "i"
@@ -109,7 +109,7 @@ class LR0Builder extends lm.Parser {
 			if (s.id >= lex.segs) continue;
 			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
 		}
-		// analysis
+		// parse
 		for (e in lex.entrys)
 			parse(tmp, e.begin, e.begin + e.segs);
 
@@ -133,7 +133,7 @@ class LR0Builder extends lm.Parser {
 			if (!find) lvlMap.remove(lvl);
 		}
 		// highest(maximum) precedence in lvl
-		var larMap = new Map<Int, {left:Int, right: Int}>();
+		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(lex.perRB);
 		for (a in lvlMap) {
 			var lar = {left: -1, right: -1};
 			larMap.set(a[0].lvl, lar);
@@ -147,23 +147,23 @@ class LR0Builder extends lm.Parser {
 		}
 		// (for reduce the size of the table)
 		var dst = lex.segs;
-		var hight = 0;
+		var skiped = 0;
 		var count = 0;
-		var dupMap = new Map<Int, Bool>();
+		var dupMap = new haxe.ds.Vector<Bool>(lex.perRB);
 		for (a in lvlMap) {
 			var lar = larMap.get(a[0].lvl);
 			for (op in a) {
-				if (dupMap.exists(op.fid)) continue;
+				if (dupMap.get(op.fid)) continue;
 				count ++;
 				if (op.left && lar.left > lar.right && op.prio == lar.left) {
-					++ hight;
+					++ skiped;
 				} else {
 					swap(dst++, op.fid);
 				}
 				dupMap.set(op.fid, true);
 			}
 		}
-		@:privateAccess lex.segsEx = lex.segs + count - hight;
+		@:privateAccess lex.segsEx = lex.segs + count - skiped;
 		// write to s.targets and this.trans
 		for (fid in lex.segs...lex.segsEx) {
 			var s = lex.states[fid];
