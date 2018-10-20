@@ -9,6 +9,7 @@ class LexTest {
 		subs.LexRollback.main();
 		// parser
 		subs.Guard.main();
+		subs.GuardEpsilon.main();
 		subs.SimpleExpr.main();
 	}
 

@@ -418,9 +418,9 @@ class Parser {
 					}
 				} else {
 					macro @:pos(li.expr.pos) @:mergeBlock {
-						$reduce;
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
+							$reduce;
 							@:mergeBlock $e{li.expr}
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
