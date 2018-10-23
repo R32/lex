@@ -38,6 +38,7 @@ class SLRBuilder extends lm.Parser {
 	var nrules: Int;
 	var nstates: Int;
 	var invalid: Int;
+	var entrys: Array<{begin:Int, segs:Int, nrules:Int}>;
 	var na: Array<Array<Node>>; // assoc with lhsA
 
 	public inline function posRB() return this.segsEx * this.per;
@@ -49,6 +50,7 @@ class SLRBuilder extends lm.Parser {
 		this.lstates = new List();
 		this.segs = 0;  // state_counter
 		this.invalid = U16MAX;
+		this.entrys = [];
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.nrules = 0;
 	}
@@ -72,14 +74,17 @@ class SLRBuilder extends lm.Parser {
 			}
 			na.push(nodes);
 		}
+		// TODO: independence @:indep
+
+		// main entry
 		var init = LexEngine.addNodes([], this.na[0]);
 		compile(init);
-		// init some properties
+
+		// properties
 		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
 		this.perRB = 1 + ((nstates - 1) | 15);
-
 		// compress finalState
 		var diff = final_counter + 1 - segs;
 		for (s in lstates) {
@@ -96,6 +101,8 @@ class SLRBuilder extends lm.Parser {
 		// make talbe
 		this.makeTable();
 		this.rollback();
+
+		this.checking();
 	}
 
 	function makeTable() {
@@ -225,11 +232,6 @@ class SLRBuilder extends lm.Parser {
 		}
 	}
 
-	function doPrecedence() {
-		if (assoc.length == 0) return;
-		// TODO: copy it from LR0
-	}
-
 	function rollback() {
 		inline function epsilon(seg) return table.exits(seg);
 		var alt = new haxe.ds.Vector<Bool>(this.perRB);
@@ -262,6 +264,238 @@ class SLRBuilder extends lm.Parser {
 		}
 	}
 
+	function write(out: haxe.io.Output, split = false) {
+		var left = posRB();
+		var rest = this.table.length - left;
+		if (!split) out.writeByte('"'.code);
+		var prefix = this.invalid == U8MAX ? "\\x" : "\\u";
+		var padd = this.invalid == U8MAX ? 2 : 4;
+		for (i in 0...left) {
+			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
+			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(table.get(i), padd).toLowerCase() );
+		}
+		for (i in 0...rest) {
+			if (split && i % 16 == 0) out.writeString("\n");
+			if (split && i % this.perRB == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(table.get(left + i), padd).toLowerCase() );
+		}
+		if (!split) out.writeByte('"'.code);
+		out.flush();
+	}
+
+	function doPrecedence() {
+		if (assoc.length == 0) return;
+		inline function segStart(i) return i * this.per;
+		var INVALID = this.invalid;
+		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
+		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
+		function parse(tmp: Table, begin:Int, max:Int) {
+			for (i in begin...max) {
+				var start = segStart(i);
+				for (op in assoc) {
+					var nxt = tmp.get(start + op.value);
+					if (nxt >= this.segs) continue;
+					var fi = segStart(nxt);
+					for (p in (fi + maxValue)...(fi + maxValue + lhsA.length)) { // only non-terminal
+						var fid = tmp.get(p);
+						if (fid == INVALID || fid < this.segs) continue;
+						// now check which stage can jump to "i"
+						var hit = p - fi;
+						for (j in begin...max) {
+							if (tmp.get(segStart(j) + hit) == i) {
+								var col = lvlMap.get(i);
+								if (col == null) {
+									col = [];
+									lvlMap.set(i, col);
+								}
+								var ex = fidMap.get(fid);
+								if (ex == null) {
+									ex = [];
+									fidMap.set(fid, ex);
+								}
+								var x = {lvl: i, hit: hit, nxt: nxt, fid: fid, prio: op.prio, value: op.value, left: op.left};
+								col.push(x);
+								ex.push(x);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		function swap(dst, src) {
+			if (dst == src) return;
+			var x = this.states[dst]; // x.id == dst
+			var y = this.states[src]; // y.id == src;
+			// swap targets
+			for (s in this.states) {
+				for (i in 0...s.targets.length) {
+					var t = s.targets[i];
+					if (t == dst) {
+						s.targets[i] = src;
+					} else if (t == src) {
+						s.targets[i] = dst;
+					}
+				}
+			}
+			// swap states
+			x.id = src;
+			y.id = dst;
+			this.states[dst] = y;
+			this.states[src] = x;
+			// swap opAssocEx.
+			var a = fidMap.get(dst);
+			var b = fidMap.get(src);
+			if (a != null) {
+				for (op in a)
+					op.fid = src;
+				fidMap.set(src, a);
+			} else {
+				fidMap.remove(src);
+			}
+			for (op in b)
+				op.fid = dst;
+			fidMap.set(dst, b);
+		}
+
+		// need a tmp table for analysis
+		var tmp = new Table( segStart(this.segs) );
+		for (i in 0...tmp.length)
+			tmp.set(i, INVALID);
+		for (s in this.states) {
+			if (s.id >= this.segs) continue;
+			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
+		}
+		// parse
+		for (i in 0...this.segs)
+			parse(tmp, 0, this.segs);
+
+		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
+		for (a in fidMap) {
+			var prio = a[0].prio;
+			for (i in 1...a.length)
+				if (a[i].prio != prio)
+					throw "Operator Precedence Conflict";
+		}
+		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
+		for (lvl in lvlMap.keys()) {
+			var a = lvlMap.get(lvl);
+			var prio = a[0].prio;
+			var find = false;
+			for (i in 1...a.length)
+				if (prio != a[i].prio || a[i].left == false) {
+					find = true;
+					break;
+				}
+			if (!find) lvlMap.remove(lvl);
+		}
+		// highest(maximum) precedence in lvl
+		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(this.perRB);
+		for (a in lvlMap) {
+			var lar = {left: -1, right: -1};
+			larMap.set(a[0].lvl, lar);
+			for (op in a) {
+				if (op.left) {
+					if (op.prio > lar.left) lar.left = op.prio;
+				} else {
+					if (op.prio > lar.right) lar.right = op.prio;
+				}
+			}
+		}
+		// (for reduce the size of the table)
+		var dst = this.segs;
+		var skiped = 0;
+		var count = 0;
+		var dupMap = new haxe.ds.Vector<Bool>(this.perRB);
+		for (a in lvlMap) {
+			var lar = larMap.get(a[0].lvl);
+			for (op in a) {
+				if (dupMap.get(op.fid)) continue;
+				count ++;
+				if (op.left && lar.left > lar.right && op.prio == lar.left) {
+					++ skiped;
+				} else {
+					swap(dst++, op.fid);
+				}
+				dupMap.set(op.fid, true);
+			}
+		}
+		this.segsEx = this.segs + count - skiped;
+		// write to s.targets and this.trans
+		for (fid in this.segs...this.segsEx) {
+			var s = this.states[fid];
+			var own = fidMap.get(fid)[0];
+			var tar = [];  // targets
+			var cset = []; // trans
+			var i = 0;
+			var a = lvlMap.get(own.lvl);
+			for (op in a) {
+				if (own.left) {
+					if (op.prio > own.prio) {
+						tar[i] = op.nxt;
+						cset[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				} else {
+					if (op.prio >= own.prio) {
+						tar[i] = op.nxt;
+						cset[i] = Char.c3(op.value, op.value, i);
+						++ i;
+					}
+				}
+			}
+			s.trans = cset;
+			s.targets = tar;
+		}
+	}
+
+	function checking() {
+		var INVALID = this.invalid;
+		// init exitN/NRule => final_state rules
+		var rules = new haxe.ds.Vector<Int>(this.nrules);
+		for (n in 0...this.nrules)
+			rules[n] = INVALID;
+		for (i in table.length-this.perRB...table.length) {
+			var n = table.get(i);
+			if (n == INVALID) continue;
+			// since: i = table.length - 1 - state; // table.exitpos
+			// so   : state = table.length - 1 - i;
+			rules[n] = table.length - 1 - i;
+		}
+		// 1. Is switch case unreachable?
+		for (n in 0...this.nrules)
+			if (rules[n] == INVALID)
+				Context.fatalError("Unreachable switch case", this.ruleToCase(n).pos);
+		// 2. each state
+		for (i in 0...this.segs) {
+			if (table.exits(i) != INVALID) continue; // epsilon
+			var base = i * this.per;
+			var find = false;
+			for (p in base ... base + this.maxValue) {
+				var c = table.get(p);
+				if (c != INVALID) {
+					find = true;
+					break;
+				}
+			}
+			if (!find) throw("Missing terminator in S" + i);
+		}
+		// 3. switch guard
+		var n = 0;
+		for (lhs in this.lhsA) {
+			for (li in lhs.cases) {
+				if (li.guard != null) {
+					var final_state = rules[n];
+					if (this.table.get(this.posRB() + final_state) == INVALID)
+						Context.fatalError("No switch case that can be rollback from here", li.guard.pos);
+				}
+				++ n;
+			}
+		}
+		// more?
+	}
+
 	public static function build() {
 		var allFields = new Map<String, Field>();
 		var slr = new SLRBuilder("lm.SLR", allFields);
@@ -274,8 +508,8 @@ class SLRBuilder extends lm.Parser {
 		f.writeString("\nProduction:\n");
 		f.writeString(debug.Print.production(slr));
 		f.writeString(debug.Print.slrTable(slr));
-		//f.writeString("\n\nRAW:\n");
-		//this.write(f, true);
+		f.writeString("\n\nRAW:\n");
+		slr.write(f, true);
 		f.close();
 		#end
 		return [];
