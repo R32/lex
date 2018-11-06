@@ -308,14 +308,6 @@ class Parser {
 	}
 
 	function organize() {
-		// the "entry" must place  "EOF " at the end
-		var entry = lhsA[0];
-		for (li in entry.cases) {
-			var last = li.syms.length > 0 ? li.syms[li.syms.length - 1] : null;
-			if (last == null || last.name == null || last.name != this.sEof)
-				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", li.pos);
-		}
-
 		// find max and second largest
 		var lsecond = 0, lmax = 0, lcases = 0;
 		for (lhs in lhsA) {
@@ -381,8 +373,6 @@ class Parser {
 							a.push( macro var $stok: $ct_stream_tok = @:privateAccess s.offset($v{dx}) );
 					}
 					// checking...
-					if (s.t == false && s.name == entry.name)
-						Context.fatalError("the entry LHS(\"" + s.name +"\") is not allowed on the right side", s.pos);
 					if (s.ex == null)
 						continue;
 					if (row.exists(s.ex))
