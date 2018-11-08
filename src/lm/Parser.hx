@@ -26,13 +26,6 @@ typedef Symbol = { // from switch cases
 	pos: Position,
 }
 
-typedef SymSwitch = {
-	name: String,        // Associated var name
-	value: Int,          // Automatic growth
-	cases: Array<Case>,
-	pos: Position,
-}
-
 typedef SymbolSet = {
 	expr: Expr,
 	guard: Null<Expr>,
@@ -43,10 +36,10 @@ typedef SymbolSet = {
 typedef Lhs = {    // one switch == one Lhs
 	name: String,  // associated var name(non-terminals name)
 	value: Int,    // automatic increase from "maxValue"
+	side: Bool,    // if @:side
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
-	cbegin: Int,   // cases begin
-	lsubs: Array<Int>, // left subs
+	lsubs: Array<Int>, // left subs, Array<Lhs::value>
 	pos: Position,
 }
 
@@ -117,7 +110,7 @@ class Parser {
 		//
 		readTerms(t_terms);
 		readPrecedence(cls);
-		transform( filter(rest) );
+		transform(rest);
 	}
 
 	function readPrecedence(cls:ClassType) {
@@ -218,16 +211,21 @@ class Parser {
 	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
 
 	function ruleToCase(n: Int): SymbolSet {
-		var lhs = byRule(n);
-		return lhs.cases[n - lhs.cbegin];
+		for (lhs in lhsA) {
+			var len = lhs.cases.length;
+			if (n < len) return lhs.cases[n];
+			n -= len;
+		}
+		throw "NotFound";
 	}
 
-	function transform(swa: Array<SymSwitch>) {
-		if (swa.length == 0) return;
-		for (sw in swa) { // init udtMap first..
-			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
+	function transform(out) {
+		var cases:Array<Array<Case>> = preProcess(out);
+		if (cases.length == 0) return;
+		for (lhs in lhsA) { // init udtMap first..
+			this.udtMap.set(lhs.name, {t: false, name: lhs.name, value: lhs.value, cset: CSet.single(lhs.value), pos: lhs.pos});
 		}
-		inline function setEpsilon(lhs, pos) {
+		function setEpsilon(lhs, pos) {
 			if (lhs.epsilon) Context.fatalError('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
@@ -236,10 +234,8 @@ class Parser {
 			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
-		var cbegin = 0;
-		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], cbegin: cbegin, epsilon: false, lsubs: [], pos: sw.pos};
-			for (c in sw.cases) {
+		for (lhs in this.lhsA) {
+			for (c in cases[lhs.value - this.maxValue]) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
@@ -264,9 +260,9 @@ class Parser {
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
 								Context.fatalError("Undefined non-terminal: " + nt, e.pos);
-							if (el.length == 1 && nt == sw.name)
+							if (el.length == 1 && nt == lhs.name)
 								Context.fatalError("Infinite recursion", e.pos);
-							if (nt != sw.name && el[0] == e)
+							if (nt != lhs.name && el[0] == e)
 								lhs.lsubs.push(udt.value);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
@@ -301,8 +297,6 @@ class Parser {
 					Context.fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
-			cbegin += lhs.cases.length;
-			this.lhsA.push(lhs);
 		}
 		organize();
 	}
@@ -443,7 +437,7 @@ class Parser {
 		return ret;
 	}
 
-	function filter(rest: Map<String, Field>): Array<SymSwitch> {
+	function preProcess(out: Map<String, Field>): Array<Array<Case>> {
 		var lvalue = this.maxValue;
 		var fields: Array<Field> = Context.getBuildFields();
 		var ret = [];
@@ -459,7 +453,16 @@ class Parser {
 						firstCharChecking(f.name, LOWER, f.pos);
 						if ( ct != null && !Context.unify(ct.toType(), this.ct_lhs.toType()) )
 							Context.fatalError("All types of lhs must be uniform.", f.pos);
-						ret.push({name: f.name, value: lvalue++, cases: cl, pos: f.pos});
+						ret.push(cl);
+						this.lhsA.push({
+							name: f.name,
+							value: lvalue++,
+							side: Lambda.exists(f.meta, e-> e.name == ":side"),
+							epsilon: false,
+							cases: [],
+							lsubs: [],
+							pos: f.pos,
+						});
 						continue;
 					case _:
 					}
@@ -489,9 +492,9 @@ class Parser {
 				default:
 				}
 			}
-			if (rest.exists(f.name))
+			if (out.exists(f.name))
 				Context.fatalError("Duplicate field: " + f.name, f.pos);
-			rest.set(f.name, f);
+			out.set(f.name, f);
 		}
 		return ret;
 	}
