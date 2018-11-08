@@ -27,7 +27,7 @@ typedef Symbol = { // from switch cases
 }
 
 typedef SymbolSet = {
-	expr: Expr,
+	action: Expr,
 	guard: Null<Expr>,
 	syms: Array<Symbol>,
 	pos: Position, // case pos
@@ -240,7 +240,7 @@ class Parser {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.fatalError('This case is unused', c.values[0].pos);
-					var g: SymbolSet = {expr: c.expr, guard: c.guard, syms: [], pos: pos};
+					var g: SymbolSet = {action: c.expr, guard: c.guard, syms: [], pos: pos};
 					for (e in el) {
 						switch (e.expr) {
 						case EConst(CIdent(i)):
@@ -290,7 +290,7 @@ class Parser {
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({expr: c.expr, guard: null, syms: [], pos: pos});
+					lhs.cases.push({action: c.expr, guard: null, syms: [], pos: pos});
 				case [e]:
 					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
@@ -341,9 +341,9 @@ class Parser {
 			for (li in lhs.cases) {
 				tmp = [];
 				tmp.resize(li.syms.length);
-				if (li.expr == null)
+				if (li.action == null)
 					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
-				li.expr.iter(loop);
+				li.action.iter(loop);
 				toks[ti++] = tmp;
 			}
 		}
@@ -396,19 +396,19 @@ class Parser {
 				}
 				var reduce = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
-					li.expr = macro @:pos(li.expr.pos) return $e{li.expr};
-				li.expr = if (li.guard == null) {
-					macro @:pos(li.expr.pos) @:mergeBlock {
+					li.action = macro @:pos(li.action.pos) return $e{li.action};
+				li.action = if (li.guard == null) {
+					macro @:pos(li.action.pos) @:mergeBlock {
 						$reduce;
 						@:mergeBlock $b{a};
-						@:mergeBlock $e{li.expr}
+						@:mergeBlock $e{li.action}
 					}
 				} else {
-					macro @:pos(li.expr.pos) @:mergeBlock {
+					macro @:pos(li.action.pos) @:mergeBlock {
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
 							$reduce;
-							@:mergeBlock $e{li.expr}
+							@:mergeBlock $e{li.action}
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
 							@:privateAccess s.rollback( rollL(_1), $v{maxValue} );
