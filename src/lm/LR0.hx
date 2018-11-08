@@ -446,7 +446,7 @@ class LR0Builder extends lm.Parser {
 					dx = 0;         // reset dx after rollback
 					while (true) {
 						var value:$ct_lhs = gotos(q, stream);
-						t = stream.offset( -1); // last token
+						t = stream.offset( -1); // reduced token
 						if (t.term == exp) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
@@ -458,7 +458,8 @@ class LR0Builder extends lm.Parser {
 						if (prev < NSEGSEX) break;
 						if (prev == INVALID) {
 							if (exp == -1)
-								return stream.cached[keep].val;
+								return value;
+							// assert(exp == -1)
 							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
 						}
 						q = exits(prev);

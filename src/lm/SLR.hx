@@ -103,6 +103,7 @@ class SLRBuilder extends lm.Parser {
 		this.rollback();
 
 		this.checking();
+		this.generate();
 	}
 
 	function makeTable() {
@@ -479,7 +480,7 @@ class SLRBuilder extends lm.Parser {
 					break;
 				}
 			}
-			if (!find) throw("Missing terminator in S" + i);
+			if (!find) throw("Missing terminator in STATE: " + i);
 		}
 		// 3. switch guard
 		var n = 0;
@@ -494,6 +495,10 @@ class SLRBuilder extends lm.Parser {
 			}
 		}
 		// more?
+	}
+
+	// TODO: copy generate
+	function generate() {
 	}
 
 	public static function build() {
