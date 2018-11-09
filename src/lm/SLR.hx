@@ -25,7 +25,6 @@ class SLRBuilder extends lm.Parser {
 	public static inline var U16MAX = 0xFFFF;
 
 	var uid(default, null): Int;
-	var finals: Int;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -38,47 +37,58 @@ class SLRBuilder extends lm.Parser {
 	var nrules: Int;
 	var nstates: Int;
 	var invalid: Int;
-	var entrys: Array<{begin:Int, segs:Int, nrules:Int}>;
+	var entrys: Array<{name: String, begin:Int, width:Int}>;
 	var na: Array<Array<Node>>; // assoc with lhsA
 
 	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
+	inline function isFinal(id) return id < this.nrules;
 
 	function new(s_it, rest) {
 		super(s_it, rest);
 		this.h = new Map();
 		this.lstates = new List();
-		this.segs = 0;  // state_counter
+		this.segs = 0;      // state_counter
 		this.invalid = U16MAX;
 		this.entrys = [];
+		this.na = [];
 		this.final_counter = U16MAX - 1; // compress it later.
-		this.nrules = 0;
+		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
+		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
+		this.uid = nrules;  // so all the finalsID must be less then nrules.
 	}
 
 	function make() {
 		var a = this.toPartern();
-		var lcases = Lambda.fold(a, (p, n) -> p.length + n, 0);
-		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
-		this.uid = lcases;
-		this.finals = lcases;
+		// Pattern -> NFA(nodes)
 		var i = 0;
-		na = [];
 		for (pats in a) {
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
-				var f = new Node(i);
+				var f = new Node(i++);
 				var n = initNode(pats[j], f);
 				nodes[j] = n;
-				++ i;
 			}
 			na.push(nodes);
 		}
-		// TODO: independence @:indep
-
+		// NFA -> DFA
+		var begin = 0;
+		inline function addEntry(name) {
+			this.entrys.push({name: name, begin: begin, width: this.segs - begin});
+			begin = this.segs;
+		}
 		// main entry
-		var init = LexEngine.addNodes([], this.na[0]);
-		compile(init);
+		compile( LexEngine.addNodes([], this.na[0]) );
+		addEntry(lhsA[0].name);
+		// side entrys
+		for (i in 1...this.lhsA.length) {
+			var lhs = this.lhsA[i];
+			if (!lhs.side) continue;
+			this.h = new Map(); // reset
+			compile( LexEngine.addNodes([], this.na[i]) );
+			addEntry(lhs.name);
+		}
 
 		// properties
 		this.segsEx = this.segs;
@@ -98,7 +108,7 @@ class SLRBuilder extends lm.Parser {
 		this.states.sort(State.onSort);
 		this.doPrecedence();
 
-		// make talbe
+		// DFA -> Tables
 		this.makeTable();
 		this.rollback();
 
@@ -136,13 +146,13 @@ class SLRBuilder extends lm.Parser {
 		for (n in nodes) {
 			for (nc in n.trans) {
 				for (c in nc.chars) {
-					var isLast = nc.n.id < this.finals;
+					var atLast = isFinal(nc.n.id);
 					var self = c.min;
-					if (self >= maxValue) {  // if non-terms
+					if ( isNonTerm(self) ) {
 						var i = self - maxValue;
 						if (alt[i]) continue;
 						var ex = null;
-						if (!isLast) {
+						if (!atLast) {
 							LexEngine.addNodes(nodes, this.na[i]);
 						} else {
 							noSelf(nodes, this.na[i], self);
@@ -152,7 +162,7 @@ class SLRBuilder extends lm.Parser {
 						for (s in lhsA[i].lsubs) {
 							var j = s - maxValue;
 							if (alt[j]) continue;
-							if (!isLast) {
+							if (!atLast) {
 								LexEngine.addNodes(nodes, this.na[j]);
 							} else {
 								noSelf(nodes, this.na[j], self);
@@ -192,8 +202,8 @@ class SLRBuilder extends lm.Parser {
 		var f = -1;
 		var i = nodes.length;
 		while (--i >= 0) {
-			if (nodes[i].id < this.finals) {
-				f = this.nrules + nodes[i].id;
+			if (isFinal(nodes[i].id)) {
+				f = nodes[i].id;
 				break;
 			}
 		}
@@ -246,7 +256,7 @@ class SLRBuilder extends lm.Parser {
 			var base = seg * this.per;
 			for (lv in 0...this.per) {
 				var nxt = table.get(lv + base);
-				if (nxt == INVALID || alt[nxt] || lv >= maxValue) continue;
+				if (nxt == INVALID || alt[nxt] || isNonTerm(lv)) continue;
 				table.set(rollpos + nxt, exit);
 				table.set(rlenpos + nxt, length);
 				if (epsilon(nxt) == INVALID)
@@ -504,7 +514,7 @@ class SLRBuilder extends lm.Parser {
 	public static function build() {
 		var allFields = new Map<String, Field>();
 		var slr = new SLRBuilder("lm.SLR", allFields);
-		if (slr.lhsA.length == 0)
+		if (slr.isEmpty())
 			return null;
 		slr.make();
 

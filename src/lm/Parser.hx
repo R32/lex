@@ -65,6 +65,10 @@ class Parser {
 	var assoc: OpAssoc;
 	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
 
+	public inline function isEmpty() return this.lhsA.length == 0;
+	public inline function isNonTerm(v) return v >= this.maxValue;
+	public inline function isTerm(v) return v < this.maxValue;
+
 	public function new(s_it: String, rest: Map<String, Field>) {
 		var cls = Context.getLocalClass().get();
 		var t_terms:Type = null;
