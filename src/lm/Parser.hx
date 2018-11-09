@@ -43,12 +43,10 @@ typedef Lhs = {    // one switch == one Lhs
 	pos: Position,
 }
 
-typedef LhsArray = Array<Lhs>;   // all switches.
-
 typedef OpAssoc = Array<{left: Bool, prio: Int, value: Int}>
 
 /**
- datas
+ parser datas
 */
 class Parser {
 
@@ -56,7 +54,7 @@ class Parser {
 	var termlsC_All: Charset;    // Terminal Universal Set.
 	var udtMap: Map<String,Udt>; // User Defined Terminal + Non-Terminal
 	var maxValue: Int;           // if value >= maxValue then it must be a non-terminal
-	var lhsA: LhsArray;
+	var lhsA: Array<Lhs>;
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_terms: ComplexType;   // token completeType
@@ -207,7 +205,6 @@ class Parser {
 		return t == null || t.t ? null : t.cset;
 	}
 
-	// final state => rule
 	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
 
 	function ruleToCase(n: Int): SymbolSet {
@@ -352,7 +349,7 @@ class Parser {
 		ti = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var row = ["s" => true, "_q" => true]; // reserve "s" as stream
+				var row = ["s" => true, "_q" => true]; // reserve "s" as stream, "_q" for reduction
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				this.n2Lhs[ti] = lhs.value << 8 | len;
@@ -394,12 +391,12 @@ class Parser {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				var reduce = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
+				var reduceEp = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
 					li.action = macro @:pos(li.action.pos) return $e{li.action};
 				li.action = if (li.guard == null) {
 					macro @:pos(li.action.pos) @:mergeBlock {
-						$reduce;
+						$reduceEp;
 						@:mergeBlock $b{a};
 						@:mergeBlock $e{li.action}
 					}
@@ -407,7 +404,7 @@ class Parser {
 					macro @:pos(li.action.pos) @:mergeBlock {
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
-							$reduce;
+							$reduceEp;
 							@:mergeBlock $e{li.action}
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
