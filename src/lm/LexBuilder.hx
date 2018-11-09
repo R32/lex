@@ -77,9 +77,6 @@ class LexBuilder {
 		}
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
-		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
-		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true; // if platform doesn't support ucs2 then force bytes.
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var rules = groups.map( g -> g.rules.map(function(r){
@@ -96,18 +93,22 @@ class LexBuilder {
 		f.close();
 		#end
 		reachable(lex, groups);
+
 		// generate
+		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
+		if (lex.isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true; // if platform doesn't support ucs2 then force bytes.
 		var getU: Expr = null;
 		var raw: Expr = null;
 		if (force_bytes) {
-			var bytes = lex.bytesTable();
+			var bytes = lex.table.toByte(lex.isBit16());
 			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
 			Context.addResource(resname, bytes);
 			#if hl
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUI16(i << 1) : macro raw.get(i);
+			getU = lex.isBit16() ? macro raw.getUI16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
 			#else
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+			getU = lex.isBit16() ? macro raw.getUInt16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname});
 			#end
 		} else {
@@ -244,7 +245,6 @@ class LexBuilder {
 	}
 
 	static function reachable(lex: lm.LexEngine, groups: Array<Group>) {
-		// copy from LR0Builder.checking
 		var table = lex.table;
 		var INVALID = lex.invalid;
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);

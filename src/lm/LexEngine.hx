@@ -4,17 +4,6 @@ import lm.Charset;
 
 typedef PatternSet = Array<Pattern>;
 
-@:forward(length)
-abstract Table(haxe.ds.Vector<Int>) {
-	public function new(len) this = new haxe.ds.Vector<Int>(len);
-	@:arrayAccess public inline function get(i) return this.get(i);
-	@:arrayAccess public inline function set(i, v) return this.set(i, v);
-	public inline function trans(state, per, term) return this.get(state * per + term);
-	// Whether a state can exit. if a non-final state can exit, then it must be epsilon.
-	public inline function exits(state) return this.get( exitpos(state) );
-	public inline function exitpos(state) return this.length - 1 - state;
-}
-
 class LexEngine {
 
 	public static inline var U8MAX = 0xFF;
@@ -25,9 +14,6 @@ class LexEngine {
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
-
-	// for LR0Builder
-	public var states(default, null): Array<State>;
 
 	/**
 	 the segment size. default is 256(Char.MAX + 1)
@@ -62,7 +48,7 @@ class LexEngine {
 
 	public var invalid(default, null): Int;
 
-	public function new(a: Array<PatternSet>, cmax = Char.MAX, ?lrb: lm.LR0.LR0Builder) {
+	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
 		this.entrys = [];
 		this.per = cmax + 1;
 		this.lstates = new List();
@@ -85,7 +71,7 @@ class LexEngine {
 				nodes[i] = n;
 			}
 			// NFA -> DFA
-			compile(addNodes([], nodes), true);
+			compile(addNodes([], nodes));
 			if (final_counter < segs)
 				throw "Too many states";
 			entrys.push({begin: prev, segs: segs - prev, nrules: len});
@@ -94,7 +80,7 @@ class LexEngine {
 		}
 		this.h = null;
 
-		// init some properties
+		// properties
 		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
@@ -108,22 +94,17 @@ class LexEngine {
 					s.targets[i] -= diff;
 			if (s.id > segs) s.id -= diff;
 		}
-		if (lrb != null) {
-			this.states = Lambda.array(this.lstates);
-			this.states.sort(State.onSort);
-			lrb.doPrecedence(this);
-		}
 		// DFA -> Tables
 		this.makeTables();
-		// rollback detection, only for lexer, LR0 has its own way to rollback
-		if (lrb == null) this.rollback();
-
+		// rollback detection
+		this.rollback();
 		this.lstates = null;
 	}
 
+	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
-
+	public inline function isBit16() return this.invalid == U16MAX;
 	inline function node() return new Node(uid++);
 
 	function initNode(p: Pattern, f: Node) {
@@ -156,14 +137,14 @@ class LexEngine {
 		}
 	}
 
-	function compile(nodes: Array<Node>, first: Bool): Int {
+	function compile(nodes: Array<Node>): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
 		var id = h.get(sid);
 		if (id != null)
 			return id;
 		var ta: Array<NAChars> = getTransitions(nodes);
 		var len = ta.length;
-		id = if (!first && len == 0) {
+		id = if (len == 0) {
 			final_counter--; // final state.
 		} else {
 			segs++;
@@ -177,7 +158,7 @@ class LexEngine {
 
 		var targets = []; targets.resize(len);
 		for (i in 0...len)
-			targets[i] = compile(ta[i].ns, false);
+			targets[i] = compile(ta[i].ns);
 
 		var f = -1;
 		var i = nodes.length;
@@ -230,40 +211,6 @@ class LexEngine {
 		}
 	}
 
-	public function bytesTable(): haxe.io.Bytes {
-		if (invalid == U8MAX) {
-			var b = haxe.io.Bytes.alloc(table.length);
-			for (i in 0...table.length)
-				b.set(i, table[i]);
-			return b;
-		} else {
-			var b = haxe.io.Bytes.alloc(table.length << 1);
-			for (i in 0...table.length)
-				b.setUInt16(i << 1, table[i]);
-			return b;
-		}
-	}
-	#if sys
-	public function write(out: haxe.io.Output, split = false) {
-		var left = posRB();
-		var rest = this.table.length - left;
-		if (!split) out.writeByte('"'.code);
-		var prefix = this.invalid == U8MAX ? "\\x" : "\\u";
-		var padd = this.invalid == U8MAX ? 2 : 4;
-		for (i in 0...left) {
-			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
-			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(i), padd).toLowerCase() );
-		}
-		for (i in 0...rest) {
-			if (split && i % 16 == 0) out.writeString("\n");
-			if (split && i % this.perRB == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(left + i), padd).toLowerCase() );
-		}
-		if (!split) out.writeByte('"'.code);
-		out.flush();
-	}
-	#end
 	static function makeTrans(tbls: Table, start: Int, trans: Array<Char>, targets: Array<Int>) {
 		for (c in trans) {
 			var i = c.min + start;
@@ -474,7 +421,7 @@ enum Pattern {
 	Next(p1: Pattern, p2: Pattern);
 }
 
-private class NChars {
+class NChars {
 	public var chars: Charset;
 	public var n: Node;
 	public function new(cs, n) {
@@ -483,7 +430,8 @@ private class NChars {
 	}
 	public static function onSort(a: NChars, b: NChars) return a.n.id - b.n.id;
 }
-private class NAChars {
+
+class NAChars {
 	public var chars: Charset;
 	public var ns: Array<Node>;
 	public function new(cs, ns) {
@@ -505,7 +453,7 @@ private class NAChars {
 		return a - b;
 	}
 }
-private class Node {
+class Node {
 	public var id: Int;
 	public var trans: Array<NChars>;
 	public var epsilon: Array<Node>;
@@ -515,7 +463,7 @@ private class Node {
 		epsilon = [];
 	}
 }
-private class State {
+class State {
 	public var id: Int;
 	public var trans: Array<Char>;
 	public var targets: Array<Int>;
@@ -527,4 +475,47 @@ private class State {
 		finalID = f;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;
+}
+
+@:forward(length)
+abstract Table(haxe.ds.Vector<Int>) {
+	public function new(len) this = new haxe.ds.Vector<Int>(len);
+	@:arrayAccess public inline function get(i) return this.get(i);
+	@:arrayAccess public inline function set(i, v) return this.set(i, v);
+	public inline function trans(state, per, term) return this.get(state * per + term);
+	// Whether a state can exit. if a non-final state can exit, then it must be epsilon.
+	public inline function exits(state) return this.get( exitpos(state) );
+	public inline function exitpos(state) return this.length - 1 - state;
+
+	public function toByte(bit16: Bool): haxe.io.Bytes {
+		if (!bit16) {
+			var b = haxe.io.Bytes.alloc(this.length);
+			for (i in 0...this.length)
+				b.set(i, this[i]);
+			return b;
+		} else {
+			var b = haxe.io.Bytes.alloc(this.length << 1);
+			for (i in 0...this.length)
+				b.setUInt16(i << 1, this[i]);
+			return b;
+		}
+	}
+	public function write(left:Int, per:Int, perRB:Int, bit16:Bool, out:haxe.io.Output, split:Bool) {
+		if (!split) out.writeByte('"'.code);
+		var prefix = bit16 ? "\\u" : "\\x";
+		var padd = bit16 ? 4: 2;
+		for (i in 0...left) {
+			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
+			if (split && i > 0 && i % per == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(this.get(i), padd).toLowerCase() );
+		}
+		var rest = this.length - left;
+		for (i in 0...rest) {
+			if (split && i % 16 == 0) out.writeString("\n");
+			if (split && i % perRB == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(this.get(left + i), padd).toLowerCase() );
+		}
+		if (!split) out.writeByte('"'.code);
+		out.flush();
+	}
 }

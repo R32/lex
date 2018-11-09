@@ -13,7 +13,7 @@ using haxe.macro.Tools;
 typedef Udt = {    // user defined token
 	t: Bool,       // terminal or not
 	name: String,  // ident
-	value: Int,    // must be `enum abstract (Int)`
+	value: Int,
 	cset: Charset, // CSet.single(value)
 	pos: Position, // haxe.macro.Position
 }
@@ -26,15 +26,8 @@ typedef Symbol = { // from switch cases
 	pos: Position,
 }
 
-typedef SymSwitch = {
-	name: String,        // Associated var name
-	value: Int,          // Automatic growth
-	cases: Array<Case>,
-	pos: Position,
-}
-
 typedef SymbolSet = {
-	expr: Expr,
+	action: Expr,
 	guard: Null<Expr>,
 	syms: Array<Symbol>,
 	pos: Position, // case pos
@@ -43,18 +36,17 @@ typedef SymbolSet = {
 typedef Lhs = {    // one switch == one Lhs
 	name: String,  // associated var name(non-terminals name)
 	value: Int,    // automatic increase from "maxValue"
+	side: Bool,    // if @:side
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
-	cbegin: Int,   // cases begin
+	lsubs: Array<Int>, // left subs, Array<Lhs::value>
 	pos: Position,
 }
-
-typedef LhsArray = Array<Lhs>;   // all switches.
 
 typedef OpAssoc = Array<{left: Bool, prio: Int, value: Int}>
 
 /**
- datas
+ parser datas
 */
 class Parser {
 
@@ -62,7 +54,7 @@ class Parser {
 	var termlsC_All: Charset;    // Terminal Universal Set.
 	var udtMap: Map<String,Udt>; // User Defined Terminal + Non-Terminal
 	var maxValue: Int;           // if value >= maxValue then it must be a non-terminal
-	var lhsA: LhsArray;
+	var lhsA: Array<Lhs>;
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_terms: ComplexType;   // token completeType
@@ -72,6 +64,10 @@ class Parser {
 	var preDefs: Array<Expr>;    // for function cases()
 	var assoc: OpAssoc;
 	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
+
+	public inline function isEmpty() return this.lhsA.length == 0;
+	public inline function isNonTerm(v) return v >= this.maxValue;
+	public inline function isTerm(v) return v < this.maxValue;
 
 	public function new(s_it: String, rest: Map<String, Field>) {
 		var cls = Context.getLocalClass().get();
@@ -98,7 +94,7 @@ class Parser {
 			}
 		}
 		if (t_terms == null || !Context.unify(t_terms, Context.getType("Int")))
-			Context.fatalError("Wrong generic Type for lm.LR0<?>", cls.pos);
+			Context.fatalError("Wrong generic Type for "+ s_it + "<?>", cls.pos);
 		maxValue = 0;
 		termls = [];
 		termlsC_All = [];
@@ -116,7 +112,7 @@ class Parser {
 		//
 		readTerms(t_terms);
 		readPrecedence(cls);
-		transform( filter(rest) );
+		transform(rest);
 	}
 
 	function readPrecedence(cls:ClassType) {
@@ -213,20 +209,26 @@ class Parser {
 		return t == null || t.t ? null : t.cset;
 	}
 
-	// final state => rule
 	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
 
 	function ruleToCase(n: Int): SymbolSet {
-		var lhs = byRule(n);
-		return lhs.cases[n - lhs.cbegin];
+		for (lhs in lhsA) {
+			var len = lhs.cases.length;
+			if (n < len) return lhs.cases[n];
+			n -= len;
+		}
+		throw "NotFound";
 	}
 
-	function transform(swa: Array<SymSwitch>) {
-		if (swa.length == 0) return;
-		for (sw in swa) { // init udtMap first..
-			this.udtMap.set(sw.name, {t: false, name: sw.name, value: sw.value, cset: CSet.single(sw.value), pos: sw.pos});
+	function transform(out) {
+		var cases:Array<Array<Case>> = preProcess(out);
+		if (cases.length == 0) return;
+		for (lhs in lhsA) { // init udtMap first..
+			if (this.udtMap.exists(lhs.name))
+				Context.fatalError("Duplicate LHS: " + lhs.name, lhs.pos);
+			this.udtMap.set(lhs.name, {t: false, name: lhs.name, value: lhs.value, cset: CSet.single(lhs.value), pos: lhs.pos});
 		}
-		inline function setEpsilon(lhs, pos) {
+		function setEpsilon(lhs, pos) {
 			if (lhs.epsilon) Context.fatalError('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
@@ -235,15 +237,13 @@ class Parser {
 			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
-		var cbegin = 0;
-		for (sw in swa) {
-			var lhs: Lhs = { name: sw.name, value: sw.value, cases: [], cbegin: cbegin, epsilon: false, pos: sw.pos};
-			for (c in sw.cases) {
+		for (lhs in this.lhsA) {
+			for (c in cases[lhs.value - this.maxValue]) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.fatalError('This case is unused', c.values[0].pos);
-					var g: SymbolSet = {expr: c.expr, guard: c.guard, syms: [], pos: pos};
+					var g: SymbolSet = {action: c.expr, guard: c.guard, syms: [], pos: pos};
 					for (e in el) {
 						switch (e.expr) {
 						case EConst(CIdent(i)):
@@ -263,8 +263,10 @@ class Parser {
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
 								Context.fatalError("Undefined non-terminal: " + nt, e.pos);
-							if (el.length == 1 && nt == sw.name)
+							if (el.length == 1 && nt == lhs.name)
 								Context.fatalError("Infinite recursion", e.pos);
+							if (nt != lhs.name && el[0] == e)
+								lhs.lsubs.push(udt.value);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
@@ -291,28 +293,18 @@ class Parser {
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({expr: c.expr, guard: null, syms: [], pos: pos});
+					lhs.cases.push({action: c.expr, guard: null, syms: [], pos: pos});
 				case [e]:
 					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
 					Context.fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
-			cbegin += lhs.cases.length;
-			this.lhsA.push(lhs);
 		}
 		organize();
 	}
 
 	function organize() {
-		// the "entry" must place  "EOF " at the end
-		var entry = lhsA[0];
-		for (li in entry.cases) {
-			var last = li.syms.length > 0 ? li.syms[li.syms.length - 1] : null;
-			if (last == null || last.name == null || last.name != this.sEof)
-				Context.fatalError("for entry you must place *"+ this.sEof +"* at the end", li.pos);
-		}
-
 		// find max and second largest
 		var lsecond = 0, lmax = 0, lcases = 0;
 		for (lhs in lhsA) {
@@ -352,9 +344,9 @@ class Parser {
 			for (li in lhs.cases) {
 				tmp = [];
 				tmp.resize(li.syms.length);
-				if (li.expr == null)
+				if (li.action == null)
 					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
-				li.expr.iter(loop);
+				li.action.iter(loop);
 				toks[ti++] = tmp;
 			}
 		}
@@ -363,7 +355,7 @@ class Parser {
 		ti = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var row = ["s" => true, "_q" => true]; // reserve "s" as stream
+				var row = ["s" => true, "_q" => true]; // reserve "s" as stream, "_q" for reduction
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				this.n2Lhs[ti] = lhs.value << 8 | len;
@@ -378,8 +370,6 @@ class Parser {
 							a.push( macro var $stok: $ct_stream_tok = @:privateAccess s.offset($v{dx}) );
 					}
 					// checking...
-					if (s.t == false && s.name == entry.name)
-						Context.fatalError("the entry LHS(\"" + s.name +"\") is not allowed on the right side", s.pos);
 					if (s.ex == null)
 						continue;
 					if (row.exists(s.ex))
@@ -407,21 +397,21 @@ class Parser {
 						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
 					}
 				}
-				var reduce = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
+				var reduceEp = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
-					li.expr = macro @:pos(li.expr.pos) return $e{li.expr};
-				li.expr = if (li.guard == null) {
-					macro @:pos(li.expr.pos) @:mergeBlock {
-						$reduce;
+					li.action = macro @:pos(li.action.pos) return $e{li.action};
+				li.action = if (li.guard == null) {
+					macro @:pos(li.action.pos) @:mergeBlock {
+						$reduceEp;
 						@:mergeBlock $b{a};
-						@:mergeBlock $e{li.expr}
+						@:mergeBlock $e{li.action}
 					}
 				} else {
-					macro @:pos(li.expr.pos) @:mergeBlock {
+					macro @:pos(li.action.pos) @:mergeBlock {
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
-							$reduce;
-							@:mergeBlock $e{li.expr}
+							$reduceEp;
+							@:mergeBlock $e{li.action}
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
 							@:privateAccess s.rollback( rollL(_1), $v{maxValue} );
@@ -450,7 +440,7 @@ class Parser {
 		return ret;
 	}
 
-	function filter(rest: Map<String, Field>): Array<SymSwitch> {
+	function preProcess(out: Map<String, Field>): Array<Array<Case>> {
 		var lvalue = this.maxValue;
 		var fields: Array<Field> = Context.getBuildFields();
 		var ret = [];
@@ -466,7 +456,16 @@ class Parser {
 						firstCharChecking(f.name, LOWER, f.pos);
 						if ( ct != null && !Context.unify(ct.toType(), this.ct_lhs.toType()) )
 							Context.fatalError("All types of lhs must be uniform.", f.pos);
-						ret.push({name: f.name, value: lvalue++, cases: cl, pos: f.pos});
+						ret.push(cl);
+						this.lhsA.push({
+							name: f.name,
+							value: lvalue++,
+							side: Lambda.exists(f.meta, e-> e.name == ":side"),
+							epsilon: false,
+							cases: [],
+							lsubs: [],
+							pos: f.pos,
+						});
 						continue;
 					case _:
 					}
@@ -496,9 +495,9 @@ class Parser {
 				default:
 				}
 			}
-			if (rest.exists(f.name))
+			if (out.exists(f.name))
 				Context.fatalError("Duplicate field: " + f.name, f.pos);
-			rest.set(f.name, f);
+			out.set(f.name, f);
 		}
 		return ret;
 	}

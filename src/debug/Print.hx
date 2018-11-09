@@ -124,9 +124,9 @@ class Print {
 		return buf.toString();
 	}
 
-	static public function parTable(par: lm.Parser, lex: LexEngine) {
+	static public function lr0Table(lrb: lm.LR0.LR0Builder) {
 		// all used terminal
-		var used = getUsed(par);
+		var used = getUsed(lrb);
 		var col:Array<{name:String, value:Int}> = [];
 		var smax = 0;
 		for (i in used.keys()) {
@@ -145,26 +145,26 @@ class Print {
 		var lineWidth = 1 + (smax + 1) * (col.length + 3);
 		inline function horLine() buf.add(sRepeat(lineWidth, "-"));
 
-		var raw = lex.table;
-		var rollpos = lex.posRB();
-		var rlenpos = lex.posRBL();
-		var INVALID = lex.invalid;
+		var raw = lrb.table;
+		var rollpos = lrb.posRB();
+		var rlenpos = lrb.posRBL();
+		var INVALID = lrb.invalid;
 		function s_epsilon(fid: Int) {
-			var s = lex.table.get(lex.table.length - 1 - fid);
+			var s = lrb.table.get(lrb.table.length - 1 - fid);
 			add(s == INVALID ? "NULL" : "R" + s);
 		}
 		function s_rollback(i: Int) {
-			var s = lex.table.get(rollpos + i);
-			add(s == INVALID ? "NULL" : "R" + s + "+L" + lex.table.get(rlenpos + i));
+			var s = lrb.table.get(rollpos + i);
+			add(s == INVALID ? "NULL" : "R" + s + "+L" + lrb.table.get(rlenpos + i));
 		}
 		function s_row(i: Int, begin: Int, name: String) {
 			horLine(); ( if (i == begin) buf.add(" " + name) ); nxtLine();
 			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
-			var base = i * lex.per;
+			var base = i * lrb.per;
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != INVALID) {
-					if (shift < lex.segs) {
+					if (shift < lrb.segs) {
 						add("" + shift);
 					} else {
 						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
@@ -184,27 +184,23 @@ class Print {
 		}
 		nxtLine();
 		// body
-		for (j in 0...lex.entrys.length) {
-			var l = par.lhsA[j];
-			var name = mapp.get(l.name);
+		for (en in lrb.entrys) {
+			var lhs = lrb.lhsA[en.index];
+			var name = mapp.get(lhs.name);
 			if (name == null)
-				name = l.name.toUpperCase();
-			var e = lex.entrys[j];
-			for (i in e.begin...e.begin + e.segs)
-				s_row(i, e.begin, name);
+				name = lhs.name.toUpperCase();
+			for (i in en.begin...en.begin + en.width)
+				s_row(i, en.begin, name);
 			horLine(); nxtLine();
 		}
-		if (lex.segsEx > lex.segs) {
-			horLine(); nxtLine();
-		}
-		for (i in lex.segs...lex.segsEx) {
-			s_row(i, lex.segs, "Operator Precedence");
+		for (i in lrb.segs...lrb.segsEx) {
+			s_row(i, lrb.segs, "(Operator Precedence)");
 		}
 		// end line
 		horLine(); nxtLine();
 		// final states
 		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
-		for (i in lex.segsEx...lex.nstates) {
+		for (i in lrb.segsEx...lrb.nstates) {
 			sp(); add(i + ""); sp(); s_rollback(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		}

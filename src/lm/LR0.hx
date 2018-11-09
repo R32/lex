@@ -18,34 +18,295 @@ private typedef OpAssocExt = {
 	var left: Bool;  // is left assoc?
 }
 
+@:access(lm.LexEngine)
 class LR0Builder extends lm.Parser {
 
-	var s2Lhs: haxe.ds.Vector<Lhs>;  // State belone which Lhs. available after lexData()
+	public static inline var U8MAX = 0xFF;
+	public static inline var U16MAX = 0xFFFF;
 
-	inline function byState(s):Lhs return s2Lhs[s];
+	var uid(default, null): Int;
+	var h: Map<String, Int>;
+	var final_counter: Int;
+	var lstates: List<State>;
+	var states: Array<State>;
+	var per: Int;
+	var perRB: Int;
+	var table: Table;
+	var segs: Int;
+	var segsEx: Int;
+	var nrules: Int;
+	var nstates: Int;
+	var invalid: Int;
+	var entrys: Array<{index:Int, begin:Int, width:Int}>;
+	var na: Array<Array<Node>>; // assoc with lhsA
 
-	// called by LexEngine, NOTICE: the lex.table is invalid atm.
-	@:allow(lm.LexEngine)
-	function doPrecedence(lex: LexEngine) {
+	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
+	public inline function posRB() return this.segsEx * this.per;
+	public inline function posRBL() return posRB() + this.perRB;
+	inline function isBit16() return this.invalid == U16MAX;
+	inline function isFinal(id) return id < this.nrules;
+
+	function new(s_it, rest) {
+		super(s_it, rest);
+		this.h = new Map();
+		this.lstates = new List();
+		this.segs = 0;      // state_counter
+		this.invalid = U16MAX;
+		this.entrys = [];
+		this.na = [];
+		this.final_counter = U16MAX - 1; // compress it later.
+		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
+		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
+		this.uid = nrules;  // so all the finalsID must be less then nrules.
+	}
+
+	function make() {
+		var a = this.toPartern();
+		// Pattern -> NFA(nodes)
+		var i = 0;
+		for (pats in a) {
+			var len = pats.length;
+			var nodes = [];
+			for (j in 0...len) {
+				var f = new Node(i++);
+				var n = initNode(pats[j], f);
+				nodes[j] = n;
+			}
+			na.push(nodes);
+		}
+		// NFA -> DFA
+		var begin = 0;
+		function addEntry(i) {
+			this.entrys.push({index: i, begin: begin, width: this.segs - begin});
+			if (begin == this.segs)
+				Context.fatalError("Empty: " + lhsA[i].name, lhsA[i].pos);
+			begin = this.segs;
+		}
+		// main entry
+		compile( LexEngine.addNodes([], this.na[0]) );
+		addEntry(0);
+		// side entrys
+		for (i in 1...this.lhsA.length) {
+			if (this.lhsA[i].side == false) continue;
+			this.h = new Map(); // reset
+			compile( LexEngine.addNodes([], this.na[i]) );
+			addEntry(i);
+		}
+
+		// properties
+		this.segsEx = this.segs;
+		this.nstates = lstates.length;
+		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
+		this.perRB = 1 + ((nstates - 1) | 15);
+		// compress finalState
+		var diff = final_counter + 1 - segs;
+		for (s in lstates) {
+			for (i in 0...s.targets.length)
+				if (s.targets[i] > segs)
+					s.targets[i] -= diff;
+			if (s.id > segs) s.id -= diff;
+		}
+
+		this.states = Lambda.array(lstates);
+		this.states.sort(State.onSort);
+		this.doPrecedence();
+
+		// DFA -> Tables
+		this.makeTable();
+		this.rollback();
+
+		this.checking();
+		#if lex_lr0table
+		var f = sys.io.File.write("lr0-table.txt");
+		f.writeString("\nProduction:\n");
+		f.writeString(debug.Print.production(this));
+		f.writeString(debug.Print.lr0Table(this));
+		f.writeString("\n\nRAW:\n");
+		this.write(f, true);
+		f.close();
+		#end
+		return this.generate();
+	}
+
+	function makeTable() {
+		var INVALID = this.invalid;
+		var bytes = (segsEx * per) + (3 * perRB);
+		var tbls = new Table(bytes);
+		for (i in 0...bytes) tbls.set(i, INVALID);
+
+		for (s in this.lstates) {
+			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID);
+			if (s.id < segsEx)
+				LexEngine.makeTrans(tbls, s.id * per, s.trans, s.targets);
+		}
+		this.table = tbls;
+	}
+
+	function closure(nodes: Array<Node>) {
+		function noSelf(dst: Array<Node>, src: Array<Node>, self: Int) {
+			function isSelf (n: Node) {
+				for (nc in n.trans)
+					for (c in nc.chars)
+						return c.min == self;
+				return false;
+			}
+			for (n in src)
+				if (!isSelf(n))
+					LexEngine.addNode(dst, n);
+		}
+		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
+		for (n in nodes) {
+			for (nc in n.trans) {
+				for (c in nc.chars) {
+					var atLast = isFinal(nc.n.id);
+					var self = c.min;
+					if ( isNonTerm(self) ) {
+						var i = self - maxValue;
+						if (alt[i]) continue;
+						var ex = null;
+						if (!atLast) {
+							LexEngine.addNodes(nodes, this.na[i]);
+						} else {
+							noSelf(nodes, this.na[i], self);
+						}
+						alt[i] = true;
+						// left subs.
+						for (s in lhsA[i].lsubs) {
+							var j = s - maxValue;
+							if (alt[j]) continue;
+							if (!atLast) {
+								LexEngine.addNodes(nodes, this.na[j]);
+							} else {
+								noSelf(nodes, this.na[j], self);
+							}
+							alt[j] = true;
+						}
+					}
+				}
+			}
+		}
+		return nodes;
+	}
+
+	function compile(nodes: Array<Node>): Int {
+		var sid = nodes.map( n -> n.id ).join("+");
+		var id = h.get(sid);
+		if (id != null)
+			return id;
+		var ta: Array<NAChars> = LexEngine.getTransitions( closure(nodes) );
+		var len = ta.length;
+		id = if (len == 0) {
+			final_counter--; // final state.
+		} else {
+			segs++;
+		}
+		h.set(sid, id);
+
+		var trans: Array<Char> = [];
+		for (i in 0...len)
+			for (c in ta[i].chars)
+				trans.push(Char.c3(c.min, c.max, i));
+
+		var targets = []; targets.resize(len);
+		for (i in 0...len)
+			targets[i] = compile(ta[i].ns);
+
+		var f = -1;
+		var i = nodes.length;
+		while (--i >= 0) {
+			if (isFinal(nodes[i].id)) {
+				f = nodes[i].id;
+				break;
+			}
+		}
+		lstates.push(new State(id, trans, targets, f));
+		return id;
+	}
+
+	inline function node() return new Node(uid++);
+
+	function initNode(p: Pattern, f: Node) {
+		return switch (p) {
+		case Empty:
+			f;
+		case Match(c):
+			var n = node();
+			n.trans.push(new NChars(c, f));
+			n;
+		case Star(p):
+			var n = node();
+			var an = initNode(p, n);
+			n.epsilon.push(an);
+			n.epsilon.push(f);
+			n;
+		case Plus(p):
+			var n = node();
+			var an = initNode(p, n);
+			n.epsilon.push(an);
+			n.epsilon.push(f);
+			an;
+		case Choice(a, b):
+			var n = node();
+			n.epsilon.push(initNode(a, f));
+			n.epsilon.push(initNode(b, f));
+			n;
+		case Next(a, b):
+			initNode( a, initNode(b, f) );
+		}
+	}
+
+	function rollback() {
+		inline function epsilon(seg) return table.exits(seg);
+		var alt = new haxe.ds.Vector<Bool>(this.perRB);
+		for (i in 0...alt.length) alt[i] = false;
+		var INVALID = this.invalid;
+		var rollpos = this.posRB();
+		var rlenpos = this.posRBL();
+		var que = new List<{exit: Int, nxt: Int, len: Int}>(); // FIFO
+		function loop(exit, seg, length) {
+			alt[seg] = true;
+			var base = seg * this.per;
+			for (lv in 0...this.per) {
+				var nxt = table.get(lv + base);
+				if (nxt == INVALID || alt[nxt] || isNonTerm(lv)) continue;
+				table.set(rollpos + nxt, exit);
+				table.set(rlenpos + nxt, length);
+				if (epsilon(nxt) == INVALID)
+					que.add({exit: exit, nxt: nxt, len: length + 1});
+			}
+		}
+		for (seg in 0...this.segs) {
+			var exit = epsilon(seg);
+			if (exit == INVALID) continue;
+			loop(exit, seg, 1);
+		}
+		while (true) {
+			var q = que.pop();
+			if (q == null) break;
+			loop(q.exit, q.nxt, q.len);
+		}
+	}
+
+	function doPrecedence() {
 		if (assoc.length == 0) return;
-		inline function segStart(i) return i * lex.per;
-		var INVALID = lex.invalid;
+		inline function segStart(i) return i * this.per;
+		var INVALID = this.invalid;
 		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
 		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
-		function parse(table: Table, begin, max) {
+		function parse(tmp: Table, begin:Int, max:Int) {
 			for (i in begin...max) {
 				var start = segStart(i);
 				for (op in assoc) {
-					var nxt = table.get(start + op.value);
-					if (nxt >= lex.segs) continue;
+					var nxt = tmp.get(start + op.value);
+					if (nxt >= this.segs) continue;
 					var fi = segStart(nxt);
 					for (p in (fi + maxValue)...(fi + maxValue + lhsA.length)) { // only non-terminal
-						var fid = table.get(p);
-						if (fid == INVALID || fid < lex.segs) continue;
+						var fid = tmp.get(p);
+						if (fid == INVALID || fid < this.segs) continue;
 						// now check which stage can jump to "i"
 						var hit = p - fi;
 						for (j in begin...max) {
-							if (table.get(segStart(j) + hit) == i) {
+							if (tmp.get(segStart(j) + hit) == i) {
 								var col = lvlMap.get(i);
 								if (col == null) {
 									col = [];
@@ -68,10 +329,10 @@ class LR0Builder extends lm.Parser {
 		}
 		function swap(dst, src) {
 			if (dst == src) return;
-			var x = lex.states[dst]; // x.id == dst
-			var y = lex.states[src]; // y.id == src;
+			var x = this.states[dst]; // x.id == dst
+			var y = this.states[src]; // y.id == src;
 			// swap targets
-			for (s in lex.states) {
+			for (s in this.states) {
 				for (i in 0...s.targets.length) {
 					var t = s.targets[i];
 					if (t == dst) {
@@ -84,8 +345,8 @@ class LR0Builder extends lm.Parser {
 			// swap states
 			x.id = src;
 			y.id = dst;
-			lex.states[dst] = y;
-			lex.states[src] = x;
+			this.states[dst] = y;
+			this.states[src] = x;
 			// swap opAssocEx.
 			var a = fidMap.get(dst);
 			var b = fidMap.get(src);
@@ -102,16 +363,16 @@ class LR0Builder extends lm.Parser {
 		}
 
 		// need a tmp table for analysis
-		var tmp = new Table( segStart(lex.segs) );
+		var tmp = new Table( segStart(this.segs) );
 		for (i in 0...tmp.length)
 			tmp.set(i, INVALID);
-		for (s in lex.states) {
-			if (s.id >= lex.segs) continue;
+		for (s in this.states) {
+			if (s.id >= this.segs) continue;
 			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
 		}
 		// parse
-		for (e in lex.entrys)
-			parse(tmp, e.begin, e.begin + e.segs);
+		for (i in 0...this.segs)
+			parse(tmp, 0, this.segs);
 
 		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
 		for (a in fidMap) {
@@ -133,7 +394,7 @@ class LR0Builder extends lm.Parser {
 			if (!find) lvlMap.remove(lvl);
 		}
 		// highest(maximum) precedence in lvl
-		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(lex.perRB);
+		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(this.perRB);
 		for (a in lvlMap) {
 			var lar = {left: -1, right: -1};
 			larMap.set(a[0].lvl, lar);
@@ -146,10 +407,10 @@ class LR0Builder extends lm.Parser {
 			}
 		}
 		// (for reduce the size of the table)
-		var dst = lex.segs;
+		var dst = this.segs;
 		var skiped = 0;
 		var count = 0;
-		var dupMap = new haxe.ds.Vector<Bool>(lex.perRB);
+		var dupMap = new haxe.ds.Vector<Bool>(this.perRB);
 		for (a in lvlMap) {
 			var lar = larMap.get(a[0].lvl);
 			for (op in a) {
@@ -163,10 +424,10 @@ class LR0Builder extends lm.Parser {
 				dupMap.set(op.fid, true);
 			}
 		}
-		@:privateAccess lex.segsEx = lex.segs + count - skiped;
+		this.segsEx = this.segs + count - skiped;
 		// write to s.targets and this.trans
-		for (fid in lex.segs...lex.segsEx) {
-			var s = lex.states[fid];
+		for (fid in this.segs...this.segsEx) {
+			var s = this.states[fid];
 			var own = fidMap.get(fid)[0];
 			var tar = [];  // targets
 			var cset = []; // trans
@@ -192,29 +453,13 @@ class LR0Builder extends lm.Parser {
 		}
 	}
 
-	function lexData(lex: LexEngine) {
-		this.s2Lhs = new haxe.ds.Vector<Lhs>(lex.nstates);
-		for (i in 0...lex.entrys.length) {
-			var e = lex.entrys[i];
-			var l = this.lhsA[i];
-			for (i in e.begin...e.begin + e.segs)
-				this.s2Lhs[i] = l;
-		}
-		// final states
-		for (i in lex.segs...lex.nstates) {
-			var n = lex.table.exits(i);
-			this.s2Lhs[i] = byRule(n);
-		}
-	}
-
-	function checking(lex: LexEngine) {
-		var table = lex.table;
-		var INVALID = lex.invalid;
+	function checking() {
+		var INVALID = this.invalid;
 		// init exitN/NRule => final_state rules
-		var rules = new haxe.ds.Vector<Int>(lex.nrules);
-		for (n in 0...lex.nrules)
+		var rules = new haxe.ds.Vector<Int>(this.nrules);
+		for (n in 0...this.nrules)
 			rules[n] = INVALID;
-		for (i in table.length-lex.perRB...table.length) {
+		for (i in table.length-this.perRB...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
 			// since: i = table.length - 1 - state; // table.exitpos
@@ -222,34 +467,35 @@ class LR0Builder extends lm.Parser {
 			rules[n] = table.length - 1 - i;
 		}
 		// 1. Is switch case unreachable?
-		for (n in 0...lex.nrules)
-			if (rules[n] == INVALID)
-				Context.fatalError("Unreachable switch case", this.ruleToCase(n).pos);
-
-		// 2. A non-terminator(lhs) must be able to derive at least one terminator directly or indirectly or be epsilon.
-		for (index in 0...lex.entrys.length) {
-			var entry = lex.entrys[index];
-			var base = entry.begin * lex.per;
+		for (n in 0...this.nrules)
+			if (rules[n] == INVALID) {
+				var msg = "Unreachable switch case";
+				var lhs = byRule(n);
+				if (!lhs.side)
+					msg += ' OR missing @:side on "' + lhs.name + '"';
+				Context.fatalError(msg, this.ruleToCase(n).pos);
+			}
+		// 2. each state
+		for (i in 0...this.segs) {
+			if (table.exits(i) != INVALID) continue; // epsilon
+			var base = i * this.per;
 			var find = false;
-			if (table.exits(entry.begin) != INVALID) // epsilon
-				continue;
-			for (i in base ... base + this.maxValue) {
-				var c = table.get(i);
+			for (p in base ... base + this.maxValue) {
+				var c = table.get(p);
 				if (c != INVALID) {
 					find = true;
 					break;
 				}
 			}
-			if (!find) Context.fatalError("There must be at least one terminator.", lhsA[index].pos);
+			if (!find) throw("Missing terminator in STATE: " + i);
 		}
-
 		// 3. switch guard
 		var n = 0;
 		for (lhs in this.lhsA) {
 			for (li in lhs.cases) {
 				if (li.guard != null) {
 					var final_state = rules[n];
-					if (lex.table.get(lex.posRB() + final_state) == INVALID)
+					if (this.table.get(this.posRB() + final_state) == INVALID)
 						Context.fatalError("No switch case that can be rollback from here", li.guard.pos);
 				}
 				++ n;
@@ -258,153 +504,51 @@ class LR0Builder extends lm.Parser {
 		// more?
 	}
 
-	function mixing(lex: LexEngine, src: Int, dst: Int, lvalue: Int) {
-		var state = lex.states[src];
-		var targets = state.targets;
-		var dstStart = dst * lex.per;
-		for (c in state.trans) {
-			var i = c.min;
-			var max = c.max;
-			var s = targets[c.ext];
-			while ( i <= max ) {
-				var dst_nxt = lex.table.get(dstStart + i);
-				if (i == lvalue) {
-					var src_nxt = lex.table.get(src * lex.per + lvalue);
-					if (dst_nxt < lex.segs && src_nxt < lex.segs) {
-						mixing(lex, src_nxt, dst_nxt, -1);
-					}
-				} else {
-					if (dst_nxt != lex.invalid) {
-						if (s != dst_nxt)
-							Context.fatalError("rewrite conflict: " + Lambda.find(udtMap, u -> u.value == i).name, byState(src).pos);
-					} else {
-						lex.table.set(dstStart + i, s);
-					}
-				}
-				++ i;
-			}
-		}
-	}
-
-	function modify(lex: LexEngine) {
-		var b = lex.table;
-		var INVALID = lex.invalid;
-		var per = lex.per;
-		// sort
-		var h = lhsA.copy();
-		h.sort(function(L1, L2) {
-			var I1 = L1.value - this.maxValue;
-			var I2 = L2.value - this.maxValue;
-			var S1 = lex.entrys[I1].begin;
-			var S2 = lex.entrys[I2].begin;
-			var E1 = b.get(S2 * per + L1.value);
-			var E2 = b.get(S1 * per + L2.value);
-			if (E1 != INVALID) {
-				if (E2 != INVALID)
-					Context.fatalError("conflict: " + I1 + " <-> " + I2, L1.pos);
-				return 1;
-			}
-			if (E2 != INVALID)
-				return -1;
-			return L1.value - L2.value;
-		});
-		for (seg in 0...lex.segs) {
-			var base = seg * per;
-			for (l in h) {
-				if (b.get(base + l.value) == INVALID)
-					continue;
-				var entry = lex.entrys[l.value - this.maxValue]; // the entry Associated with lhs
-				if (entry.begin == seg) continue; // skip self.
-				mixing(lex, entry.begin, seg, l.value);
-				if (l.epsilon) {
-					var dst = b.exitpos(seg);
-					if (b.get(dst) != INVALID)
-						Context.fatalError("epsilon conflict with " + l.name, l.pos);
-					b.set(dst, b.exits(entry.begin));
-				}
-			}
-		}
-		rollback(lex);
-	}
-
-	function rollback(lex: LexEngine) {
-		var table = lex.table;
-		inline function epsilon(seg) return table.exits(seg);
-		var alt = new haxe.ds.Vector<Bool>(lex.perRB);
-		for (i in 0...alt.length) alt[i] = false;
-		var INVALID = lex.invalid;
-		var rollpos = lex.posRB();
-		var rlenpos = lex.posRBL();
-		var que = new List<{exit: Int, nxt: Int, len: Int}>(); // FIFO
-		function loop(exit, seg, length) {
-			alt[seg] = true;
-			var base = seg * lex.per;
-			for (lv in 0...lex.per) {
-				var nxt = table.get(lv + base);
-				if (nxt == INVALID || alt[nxt] || lv >= maxValue) continue;
-				table.set(rollpos + nxt, exit);
-				table.set(rlenpos + nxt, length);
-				if (epsilon(nxt) == INVALID)
-					que.add({exit: exit, nxt: nxt, len: length + 1});
-			}
-		}
-		for (seg in 0...lex.segs) {
-			var exit = epsilon(seg);
-			if (exit == INVALID) continue;
-			loop(exit, seg, 1);
-		}
-		while (true) {
-			var x = que.pop();
-			if (x == null) break;
-			loop(x.exit, x.nxt, x.len);
-		}
-	}
-
-	function generate(lex: lm.LexEngine) {
+	function generate(): Array<Field> {
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true;
+		if (isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true;
+
 		var getU:Expr = null;
 		var raw:Expr = null;
 		if (force_bytes) {
-			var bytes = lex.bytesTable();
+			var bytes = this.table.toByte(isBit16());
 			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
 			Context.addResource(resname, bytes);
-			#if hl
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUI16(i << 1) : macro raw.get(i);
+		#if hl
+			getU = isBit16() ? macro raw.getUI16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
-			#else
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+		#else
+			getU = isBit16() ? macro raw.getUInt16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname});
-			#end
+		#end
 		} else {
 			var out = haxe.macro.Compiler.getOutput() + ".lr0-table";
 			var dir = haxe.io.Path.directory(out);
 			if (!sys.FileSystem.exists(dir))
 				sys.FileSystem.createDirectory(dir);
 			var f = sys.io.File.write(out);
-			lex.write(f);
+			this.write(f);
 			f.close();
 			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var lva = n2Lhs.map(n -> macro $v{n}).toArray();
+		var lva = this.n2Lhs.map(n -> macro $v{n}).toArray();
 		var defs = macro class {
 			static var raw = $raw;
 			static var lva:Array<Int> = [$a{lva}];
-			static inline var INVALID = $v{lex.invalid};
-			static inline var NRULES  = $v{lex.nrules};
-			static inline var NSEGS   = $v{lex.segs};
-			static inline var NSEGSEX = $v{lex.segsEx};
+			static inline var INVALID = $v{this.invalid};
+			static inline var NRULES  = $v{this.nrules};
+			static inline var NSEGSEX = $v{this.segsEx};
 			static inline function getU(i:Int):Int return $getU;
-			static inline function trans(s:Int, c:Int):Int return getU($v{lex.per} * s + c);
-			static inline function exits(s:Int):Int return getU($v{lex.table.length - 1} - s);
-			static inline function rollB(s:Int):Int return getU(s + $v{lex.posRB()});
-			static inline function rollL(s:Int):Int return getU(s + $v{lex.posRBL()});
+			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
+			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU(s + $v{this.posRB()});
+			static inline function rollL(s:Int):Int return getU(s + $v{this.posRBL()});
 			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = new lm.Stream<$ct_lhs>(lex, $v{lex.entrys[0].begin});
+				this.stream = new lm.Stream<$ct_lhs>(lex, 0);
 			}
 			@:access(lm.Stream, lm.Tok)
 			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
@@ -417,7 +561,7 @@ class LR0Builder extends lm.Parser {
 						t = stream.next();
 						state = trans(prev, t.term);
 						t.state = state;
-						if (state >= NSEGS)
+						if (state >= NSEGSEX)
 							break;
 						prev = state;
 					}
@@ -431,14 +575,7 @@ class LR0Builder extends lm.Parser {
 					} else {
 						q = rollB(state);
 						if (q < NRULES) {
-							var dy = dx + rollL(state);
-							t = stream.offset(-1 - dy);
-							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
-								stream.pos -= dx;
-								exp = 0;
-								break;
-							}
-							stream.rollback(dy, $v{maxValue});
+							stream.rollback(dx + rollL(state), $v{maxValue});
 						} else {
 							break;  // throw error.
 						}
@@ -446,7 +583,7 @@ class LR0Builder extends lm.Parser {
 					dx = 0;         // reset dx after rollback
 					while (true) {
 						var value:$ct_lhs = gotos(q, stream);
-						t = stream.offset( -1); // last token
+						t = stream.offset( -1); // reduced token
 						if (t.term == exp) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
@@ -458,7 +595,8 @@ class LR0Builder extends lm.Parser {
 						if (prev < NSEGSEX) break;
 						if (prev == INVALID) {
 							if (exp == -1)
-								return stream.cached[keep].val;
+								return value;
+							// assert(exp == -1)
 							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
 						}
 						q = exits(prev);
@@ -483,10 +621,10 @@ class LR0Builder extends lm.Parser {
 			}
 		}
 		// build switch
-		var exprs = Lambda.flatten( lhsA.map(l -> l.cases) ).map( s -> s.expr );
+		var actions = Lambda.flatten( lhsA.map(l -> l.cases) ).map( s -> s.action );
 		var here = Context.currentPos();
-		var defCase = exprs.pop();
-		var liCase = Lambda.mapi( exprs, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var defCase = actions.pop();
+		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
 		var eSwitch = {expr: ESwitch(macro (_q), liCase, defCase), pos: here};
 		defs.fields.push({
 			name: "cases",
@@ -504,30 +642,30 @@ class LR0Builder extends lm.Parser {
 			pos: here,
 		});
 
-		// main entry => member inline
-		var entry = lex.entrys[0];
-		var lhs = lhsA[0];
+		// main entry
+		var en = this.entrys[0];
+		var lhs = lhsA[en.index];
 		defs.fields.push({
 			name: lhs.name,
 			access: [APublic, AInline],
 			kind: FFun({
 				args: [],
 				ret: ct_lhs,
-				expr: macro return _entry(stream, $v{entry.begin}, $v{lhs.value})
+				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
 			}),
 			pos: lhs.pos,
 		});
-		// other entrys => static inline
-		for (i in 1...lex.entrys.length) {
-			var entry = lex.entrys[i];
-			var lhs = lhsA[i];
+		// other entrys =>
+		for (i in 1...this.entrys.length) {
+			var en = this.entrys[i];
+			var lhs = lhsA[en.index];
 			defs.fields.push({
 				name: lhs.name,
 				access: [AStatic, AInline],
 				kind: FFun({
 					args: [{name: "s", type: ct_stream}],
 					ret: ct_lhs,
-					expr: macro return _side(s, $v{entry.begin}, $v{lhs.value})
+					expr: macro return _side(s, $v{en.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});
@@ -535,34 +673,12 @@ class LR0Builder extends lm.Parser {
 		return defs.fields;
 	}
 
-	static public function build() {
-		// begin
-		var allFields = new haxe.ds.StringMap<Field>();
+	public static function build() {
+		var allFields = new Map<String, Field>();
 		var lrb = new LR0Builder("lm.LR0", allFields);
-		if (lrb.lhsA.length == 0)
+		if (lrb.isEmpty())
 			return null;
-		var lex = new LexEngine(lrb.toPartern(), lrb.maxValue + lrb.lhsA.length | 15, lrb);
-		lrb.lexData(lex);
-
-		// modify lex.table
-		lrb.modify(lex);
-
-	#if lex_lr0table
-		var f = sys.io.File.write("lr0-table.txt");
-		f.writeString("\nProduction:\n");
-		f.writeString(debug.Print.production(lrb));
-		f.writeString(debug.Print.parTable(lrb, lex));
-		f.writeString("\n\nRAW:\n");
-		lex.write(f, true);
-		f.close();
-	#end
-
-		// checking
-		lrb.checking(lex);
-
-		// generate
-		var defs = lrb.generate(lex);
-
+		var defs = lrb.make();
 		// combine
 		var ret = [];
 		for (f in defs)
@@ -572,9 +688,8 @@ class LR0Builder extends lm.Parser {
 		return ret;
 	}
 }
-
 #else
-class LR0Builder{}
+extern class LR0Builder{}
 
 @:autoBuild(lm.LR0Builder.build())
 #end
