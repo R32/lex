@@ -271,14 +271,17 @@ class Print {
 		}
 		nxtLine();
 		// body
-		for (i in 0...slr.segs) {
-			s_row(i, -1, "");
-		}
-		if (slr.segs < slr.segsEx) {
+		for (en in slr.entrys) {
+			var lhs = slr.lhsA[en.index];
+			var name = mapp.get(lhs.name);
+			if (name == null)
+				name = lhs.name.toUpperCase();
+			for (i in en.begin...en.begin + en.width)
+				s_row(i, en.begin, name);
 			horLine(); nxtLine();
 		}
 		for (i in slr.segs...slr.segsEx) {
-			s_row(i, slr.segs, "Operator Precedence");
+			s_row(i, slr.segs, "(Operator Precedence)");
 		}
 		// end line
 		horLine(); nxtLine();

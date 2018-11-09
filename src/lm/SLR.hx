@@ -37,7 +37,7 @@ class SLRBuilder extends lm.Parser {
 	var nrules: Int;
 	var nstates: Int;
 	var invalid: Int;
-	var entrys: Array<{name: String, begin:Int, width:Int}>;
+	var entrys: Array<{index:Int, begin:Int, width:Int}>;
 	var na: Array<Array<Node>>; // assoc with lhsA
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
@@ -76,20 +76,21 @@ class SLRBuilder extends lm.Parser {
 		}
 		// NFA -> DFA
 		var begin = 0;
-		inline function addEntry(name) {
-			this.entrys.push({name: name, begin: begin, width: this.segs - begin});
+		function addEntry(i) {
+			this.entrys.push({index: i, begin: begin, width: this.segs - begin});
+			if (begin == this.segs)
+				Context.fatalError("Empty: " + lhsA[i].name, lhsA[i].pos);
 			begin = this.segs;
 		}
 		// main entry
 		compile( LexEngine.addNodes([], this.na[0]) );
-		addEntry(lhsA[0].name);
+		addEntry(0);
 		// side entrys
 		for (i in 1...this.lhsA.length) {
-			var lhs = this.lhsA[i];
-			if (!lhs.side) continue;
+			if (this.lhsA[i].side == false) continue;
 			this.h = new Map(); // reset
 			compile( LexEngine.addNodes([], this.na[i]) );
-			addEntry(lhs.name);
+			addEntry(i);
 		}
 
 		// properties
@@ -115,7 +116,16 @@ class SLRBuilder extends lm.Parser {
 		this.rollback();
 
 		this.checking();
-		this.generate();
+		#if lex_lr0table
+		var f = sys.io.File.write("slr-table.txt");
+		f.writeString("\nProduction:\n");
+		f.writeString(debug.Print.production(this));
+		f.writeString(debug.Print.slrTable(this));
+		f.writeString("\n\nRAW:\n");
+		this.write(f, true);
+		f.close();
+		#end
+		return this.generate();
 	}
 
 	function makeTable() {
@@ -458,8 +468,13 @@ class SLRBuilder extends lm.Parser {
 		}
 		// 1. Is switch case unreachable?
 		for (n in 0...this.nrules)
-			if (rules[n] == INVALID)
-				Context.fatalError("Unreachable switch case", this.ruleToCase(n).pos);
+			if (rules[n] == INVALID) {
+				var msg = "Unreachable switch case";
+				var lhs = byRule(n);
+				if (!lhs.side)
+					msg += ' OR missing @:side on "' + lhs.name + '"';
+				Context.fatalError(msg, this.ruleToCase(n).pos);
+			}
 		// 2. each state
 		for (i in 0...this.segs) {
 			if (table.exits(i) != INVALID) continue; // epsilon
@@ -489,8 +504,173 @@ class SLRBuilder extends lm.Parser {
 		// more?
 	}
 
-	// TODO: copy generate
-	function generate() {
+	function generate(): Array<Field> {
+		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
+		if (isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true;
+
+		var getU:Expr = null;
+		var raw:Expr = null;
+		if (force_bytes) {
+			var bytes = this.table.toByte(isBit16());
+			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
+			Context.addResource(resname, bytes);
+		#if hl
+			getU = isBit16() ? macro raw.getUI16(i << 1) : macro raw.get(i);
+			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
+		#else
+			getU = isBit16() ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+			raw = macro haxe.Resource.getBytes($v{resname});
+		#end
+		} else {
+			var out = haxe.macro.Compiler.getOutput() + ".lr0-table";
+			var dir = haxe.io.Path.directory(out);
+			if (!sys.FileSystem.exists(dir))
+				sys.FileSystem.createDirectory(dir);
+			var f = sys.io.File.write(out);
+			this.write(f);
+			f.close();
+			getU = macro StringTools.fastCodeAt(raw, i);
+			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
+		}
+		var lva = this.n2Lhs.map(n -> macro $v{n}).toArray();
+		var defs = macro class {
+			static var raw = $raw;
+			static var lva:Array<Int> = [$a{lva}];
+			static inline var INVALID = $v{this.invalid};
+			static inline var NRULES  = $v{this.nrules};
+			static inline var NSEGSEX = $v{this.segsEx};
+			static inline function getU(i:Int):Int return $getU;
+			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
+			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
+			static inline function rollB(s:Int):Int return getU(s + $v{this.posRB()});
+			static inline function rollL(s:Int):Int return getU(s + $v{this.posRBL()});
+			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
+			var stream: $ct_stream;
+			public function new(lex: lm.Lexer<Int>) {
+				this.stream = new lm.Stream<$ct_lhs>(lex, 0);
+			}
+			@:access(lm.Stream, lm.Tok)
+			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
+				var prev = state;
+				var t: lm.Stream.Tok<$ct_lhs> = null;
+				var dx = 0;
+				var keep = stream.pos; // used for _side.
+				while (true) {
+					while (true) {
+						t = stream.next();
+						state = trans(prev, t.term);
+						t.state = state;
+						if (state >= NSEGSEX)
+							break;
+						prev = state;
+					}
+					if (state == INVALID) {
+						state = prev;
+						dx = 1;
+					}
+					var q = exits(state);
+					if (q < NRULES) {
+						stream.pos -= dx;
+					} else {
+						q = rollB(state);
+						if (q < NRULES) {
+							stream.rollback(dx + rollL(state), $v{maxValue});
+						} else {
+							break;  // throw error.
+						}
+					}
+					dx = 0;         // reset dx after rollback
+					while (true) {
+						var value:$ct_lhs = gotos(q, stream);
+						t = stream.offset( -1); // reduced token
+						if (t.term == exp) {
+							-- stream.pos;      // discard the last token
+							stream.junk(1);
+							return value;
+						}
+						t.val = value;
+						t.state = trans(stream.offset( -2).state, t.term);
+						prev = t.state;
+						if (prev < NSEGSEX) break;
+						if (prev == INVALID) {
+							if (exp == -1)
+								return value;
+							// assert(exp == -1)
+							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
+						}
+						q = exits(prev);
+					}
+				}
+				if (exp == -1 && (stream.pos - dx) > keep)
+					return stream.cached[keep].val;
+				t = stream.offset( -1);
+				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"' + stream.errpos(t.pmin));
+			}
+			@:access(lm.Stream, lm.Tok)
+			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {
+				var keep = stream.pos;
+				var prev = stream.offset( -1);
+				var t = new lm.Stream.Tok<$ct_lhs>(lv, prev.pmax, prev.pmax);
+				t.state = state;
+				stream.shift(t);
+				var value = _entry(stream, state, -1); // -1 then until to match failed
+				stream.pos = keep;
+				stream.junk(2);
+				return value;
+			}
+		}
+		// build switch
+		var actions = Lambda.flatten( lhsA.map(l -> l.cases) ).map( s -> s.action );
+		var here = Context.currentPos();
+		var defCase = actions.pop();
+		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var eSwitch = {expr: ESwitch(macro (_q), liCase, defCase), pos: here};
+		defs.fields.push({
+			name: "cases",
+			access: [AStatic],
+			kind: FFun({
+				args: [{name: "_q", type: macro: Int}, {name: "s", type: ct_stream}],
+				ret: ct_lhs,
+				expr: macro {
+					@:mergeBlock $b{preDefs};
+					var _v = $eSwitch;
+					@:privateAccess s.reduce(lva[_q]);
+					return _v;
+				}
+			}),
+			pos: here,
+		});
+
+		// main entry
+		var en = this.entrys[0];
+		var lhs = lhsA[en.index];
+		defs.fields.push({
+			name: lhs.name,
+			access: [APublic, AInline],
+			kind: FFun({
+				args: [],
+				ret: ct_lhs,
+				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
+			}),
+			pos: lhs.pos,
+		});
+		// other entrys =>
+		for (i in 1...this.entrys.length) {
+			var en = this.entrys[i];
+			var lhs = lhsA[en.index];
+			defs.fields.push({
+				name: lhs.name,
+				access: [AStatic, AInline],
+				kind: FFun({
+					args: [{name: "s", type: ct_stream}],
+					ret: ct_lhs,
+					expr: macro return _side(s, $v{en.begin}, $v{lhs.value})
+				}),
+				pos: lhs.pos,
+			});
+		}
+		return defs.fields;
 	}
 
 	public static function build() {
@@ -498,18 +678,14 @@ class SLRBuilder extends lm.Parser {
 		var slr = new SLRBuilder("lm.SLR", allFields);
 		if (slr.isEmpty())
 			return null;
-		slr.make();
-
-		#if lex_lr0table
-		var f = sys.io.File.write("slr-table.txt");
-		f.writeString("\nProduction:\n");
-		f.writeString(debug.Print.production(slr));
-		f.writeString(debug.Print.slrTable(slr));
-		f.writeString("\n\nRAW:\n");
-		slr.write(f, true);
-		f.close();
-		#end
-		return [];
+		var defs = slr.make();
+		// combine
+		var ret = [];
+		for (f in defs)
+			if (!allFields.exists(f.name))
+				ret.push(f);
+		for (f in allFields) ret.push(f);
+		return ret;
 	}
 }
 #else
