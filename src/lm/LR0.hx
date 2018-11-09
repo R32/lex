@@ -19,7 +19,7 @@ private typedef OpAssocExt = {
 }
 
 @:access(lm.LexEngine)
-class SLRBuilder extends lm.Parser {
+class LR0Builder extends lm.Parser {
 
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;
@@ -117,10 +117,10 @@ class SLRBuilder extends lm.Parser {
 
 		this.checking();
 		#if lex_lr0table
-		var f = sys.io.File.write("slr-table.txt");
+		var f = sys.io.File.write("lr0-table.txt");
 		f.writeString("\nProduction:\n");
 		f.writeString(debug.Print.production(this));
-		f.writeString(debug.Print.slrTable(this));
+		f.writeString(debug.Print.lr0Table(this));
 		f.writeString("\n\nRAW:\n");
 		this.write(f, true);
 		f.close();
@@ -675,10 +675,10 @@ class SLRBuilder extends lm.Parser {
 
 	public static function build() {
 		var allFields = new Map<String, Field>();
-		var slr = new SLRBuilder("lm.SLR", allFields);
-		if (slr.isEmpty())
+		var lrb = new LR0Builder("lm.LR0", allFields);
+		if (lrb.isEmpty())
 			return null;
-		var defs = slr.make();
+		var defs = lrb.make();
 		// combine
 		var ret = [];
 		for (f in defs)
@@ -689,9 +689,9 @@ class SLRBuilder extends lm.Parser {
 	}
 }
 #else
-extern class SLRBuilder{}
+extern class LR0Builder{}
 
-@:autoBuild(lm.SLRBuilder.build())
+@:autoBuild(lm.LR0Builder.build())
 #end
-@:remove interface SLR<LEX, LHS> {
+@:remove interface LR0<LEX, LHS> {
 }

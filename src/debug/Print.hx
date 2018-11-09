@@ -124,9 +124,9 @@ class Print {
 		return buf.toString();
 	}
 
-	static public function slrTable(slr: lm.SLR.SLRBuilder) {
+	static public function lr0Table(lrb: lm.LR0.LR0Builder) {
 		// all used terminal
-		var used = getUsed(slr);
+		var used = getUsed(lrb);
 		var col:Array<{name:String, value:Int}> = [];
 		var smax = 0;
 		for (i in used.keys()) {
@@ -145,26 +145,26 @@ class Print {
 		var lineWidth = 1 + (smax + 1) * (col.length + 3);
 		inline function horLine() buf.add(sRepeat(lineWidth, "-"));
 
-		var raw = slr.table;
-		var rollpos = slr.posRB();
-		var rlenpos = slr.posRBL();
-		var INVALID = slr.invalid;
+		var raw = lrb.table;
+		var rollpos = lrb.posRB();
+		var rlenpos = lrb.posRBL();
+		var INVALID = lrb.invalid;
 		function s_epsilon(fid: Int) {
-			var s = slr.table.get(slr.table.length - 1 - fid);
+			var s = lrb.table.get(lrb.table.length - 1 - fid);
 			add(s == INVALID ? "NULL" : "R" + s);
 		}
 		function s_rollback(i: Int) {
-			var s = slr.table.get(rollpos + i);
-			add(s == INVALID ? "NULL" : "R" + s + "+L" + slr.table.get(rlenpos + i));
+			var s = lrb.table.get(rollpos + i);
+			add(s == INVALID ? "NULL" : "R" + s + "+L" + lrb.table.get(rlenpos + i));
 		}
 		function s_row(i: Int, begin: Int, name: String) {
 			horLine(); ( if (i == begin) buf.add(" " + name) ); nxtLine();
 			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
-			var base = i * slr.per;
+			var base = i * lrb.per;
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != INVALID) {
-					if (shift < slr.segs) {
+					if (shift < lrb.segs) {
 						add("" + shift);
 					} else {
 						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
@@ -184,8 +184,8 @@ class Print {
 		}
 		nxtLine();
 		// body
-		for (en in slr.entrys) {
-			var lhs = slr.lhsA[en.index];
+		for (en in lrb.entrys) {
+			var lhs = lrb.lhsA[en.index];
 			var name = mapp.get(lhs.name);
 			if (name == null)
 				name = lhs.name.toUpperCase();
@@ -193,14 +193,14 @@ class Print {
 				s_row(i, en.begin, name);
 			horLine(); nxtLine();
 		}
-		for (i in slr.segs...slr.segsEx) {
-			s_row(i, slr.segs, "(Operator Precedence)");
+		for (i in lrb.segs...lrb.segsEx) {
+			s_row(i, lrb.segs, "(Operator Precedence)");
 		}
 		// end line
 		horLine(); nxtLine();
 		// final states
 		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
-		for (i in slr.segsEx...slr.nstates) {
+		for (i in lrb.segsEx...lrb.nstates) {
 			sp(); add(i + ""); sp(); s_rollback(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		}

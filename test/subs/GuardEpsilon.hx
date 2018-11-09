@@ -28,7 +28,7 @@ private class Parser implements lm.LR0<Lexer, Int> {
 		case [e = expr, Eof]: e;
 		case [e1 = expr, e2 = expr, Eof]: e1 + e2;
 	}
-	static var expr = switch(s) {
+	@:side static var expr = switch(s) {
 		case [LParen, CIdent(id), RParen]: 1;
 		case [CIdent(id), LParen, a = args, RParen]: 1 + a;
 		case [CIdent(id)]: 100;
