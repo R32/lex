@@ -245,7 +245,6 @@ class LexBuilder {
 	}
 
 	static function reachable(lex: lm.LexEngine, groups: Array<Group>) {
-		// copy from LR0Builder.checking
 		var table = lex.table;
 		var INVALID = lex.invalid;
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);

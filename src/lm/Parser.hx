@@ -94,7 +94,7 @@ class Parser {
 			}
 		}
 		if (t_terms == null || !Context.unify(t_terms, Context.getType("Int")))
-			Context.fatalError("Wrong generic Type for lm.LR0<?>", cls.pos);
+			Context.fatalError("Wrong generic Type for "+ s_it + "<?>", cls.pos);
 		maxValue = 0;
 		termls = [];
 		termlsC_All = [];
