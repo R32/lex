@@ -13,7 +13,7 @@ using haxe.macro.Tools;
 typedef Udt = {    // user defined token
 	t: Bool,       // terminal or not
 	name: String,  // ident
-	value: Int,    // must be `enum abstract (Int)`
+	value: Int,
 	cset: Charset, // CSet.single(value)
 	pos: Position, // haxe.macro.Position
 }
@@ -220,6 +220,8 @@ class Parser {
 		var cases:Array<Array<Case>> = preProcess(out);
 		if (cases.length == 0) return;
 		for (lhs in lhsA) { // init udtMap first..
+			if (this.udtMap.exists(lhs.name))
+				Context.fatalError("Duplicate LHS: " + lhs.name, lhs.pos);
 			this.udtMap.set(lhs.name, {t: false, name: lhs.name, value: lhs.value, cset: CSet.single(lhs.value), pos: lhs.pos});
 		}
 		function setEpsilon(lhs, pos) {
