@@ -13,6 +13,38 @@ abstract Table(haxe.ds.Vector<Int>) {
 	// Whether a state can exit. if a non-final state can exit, then it must be epsilon.
 	public inline function exits(state) return this.get( exitpos(state) );
 	public inline function exitpos(state) return this.length - 1 - state;
+
+	public function toByte(bit16: Bool): haxe.io.Bytes {
+		if (!bit16) {
+			var b = haxe.io.Bytes.alloc(this.length);
+			for (i in 0...this.length)
+				b.set(i, this[i]);
+			return b;
+		} else {
+			var b = haxe.io.Bytes.alloc(this.length << 1);
+			for (i in 0...this.length)
+				b.setUInt16(i << 1, this[i]);
+			return b;
+		}
+	}
+	public function write(left:Int, per:Int, perRB:Int, bit16:Bool, out:haxe.io.Output, split:Bool) {
+		if (!split) out.writeByte('"'.code);
+		var prefix = bit16 ? "\\u" : "\\x";
+		var padd = bit16 ? 4: 2;
+		for (i in 0...left) {
+			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
+			if (split && i > 0 && i % per == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(this.get(i), padd).toLowerCase() );
+		}
+		var rest = this.length - left;
+		for (i in 0...rest) {
+			if (split && i % 16 == 0) out.writeString("\n");
+			if (split && i % perRB == 0) out.writeString("\n");
+			out.writeString( prefix + StringTools.hex(this.get(left + i), padd).toLowerCase() );
+		}
+		if (!split) out.writeByte('"'.code);
+		out.flush();
+	}
 }
 
 class LexEngine {
@@ -121,9 +153,10 @@ class LexEngine {
 		this.lstates = null;
 	}
 
+	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
-
+	public inline function isBit16() return this.invalid == U16MAX;
 	inline function node() return new Node(uid++);
 
 	function initNode(p: Pattern, f: Node) {
@@ -230,40 +263,6 @@ class LexEngine {
 		}
 	}
 
-	public function bytesTable(): haxe.io.Bytes {
-		if (invalid == U8MAX) {
-			var b = haxe.io.Bytes.alloc(table.length);
-			for (i in 0...table.length)
-				b.set(i, table[i]);
-			return b;
-		} else {
-			var b = haxe.io.Bytes.alloc(table.length << 1);
-			for (i in 0...table.length)
-				b.setUInt16(i << 1, table[i]);
-			return b;
-		}
-	}
-	#if sys
-	public function write(out: haxe.io.Output, split = false) {
-		var left = posRB();
-		var rest = this.table.length - left;
-		if (!split) out.writeByte('"'.code);
-		var prefix = this.invalid == U8MAX ? "\\x" : "\\u";
-		var padd = this.invalid == U8MAX ? 2 : 4;
-		for (i in 0...left) {
-			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
-			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(i), padd).toLowerCase() );
-		}
-		for (i in 0...rest) {
-			if (split && i % 16 == 0) out.writeString("\n");
-			if (split && i % this.perRB == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(left + i), padd).toLowerCase() );
-		}
-		if (!split) out.writeByte('"'.code);
-		out.flush();
-	}
-	#end
 	static function makeTrans(tbls: Table, start: Int, trans: Array<Char>, targets: Array<Int>) {
 		for (c in trans) {
 			var i = c.min + start;

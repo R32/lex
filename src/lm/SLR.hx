@@ -40,8 +40,10 @@ class SLRBuilder extends lm.Parser {
 	var entrys: Array<{name: String, begin:Int, width:Int}>;
 	var na: Array<Array<Node>>; // assoc with lhsA
 
+	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
+	inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(id) return id < this.nrules;
 
 	function new(s_it, rest) {
@@ -273,26 +275,6 @@ class SLRBuilder extends lm.Parser {
 			if (q == null) break;
 			loop(q.exit, q.nxt, q.len);
 		}
-	}
-
-	function write(out: haxe.io.Output, split = false) {
-		var left = posRB();
-		var rest = this.table.length - left;
-		if (!split) out.writeByte('"'.code);
-		var prefix = this.invalid == U8MAX ? "\\x" : "\\u";
-		var padd = this.invalid == U8MAX ? 2 : 4;
-		for (i in 0...left) {
-			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
-			if (split && i > 0 && i % this.per == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(i), padd).toLowerCase() );
-		}
-		for (i in 0...rest) {
-			if (split && i % 16 == 0) out.writeString("\n");
-			if (split && i % this.perRB == 0) out.writeString("\n");
-			out.writeString( prefix + StringTools.hex(table.get(left + i), padd).toLowerCase() );
-		}
-		if (!split) out.writeByte('"'.code);
-		out.flush();
 	}
 
 	function doPrecedence() {

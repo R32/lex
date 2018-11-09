@@ -363,18 +363,18 @@ class LR0Builder extends lm.Parser {
 	function generate(lex: lm.LexEngine) {
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		if (false == force_bytes && !Context.defined("utf16")) force_bytes = true;
+		if (lex.isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true;
 		var getU:Expr = null;
 		var raw:Expr = null;
 		if (force_bytes) {
-			var bytes = lex.bytesTable();
+			var bytes = lex.table.toByte(lex.isBit16());
 			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
 			Context.addResource(resname, bytes);
 			#if hl
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUI16(i << 1) : macro raw.get(i);
+			getU = lex.isBit16() ? macro raw.getUI16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname}).getData().bytes;
 			#else
-			getU = lex.invalid == LexEngine.U16MAX ? macro raw.getUInt16(i << 1) : macro raw.get(i);
+			getU = lex.isBit16() ? macro raw.getUInt16(i << 1) : macro raw.get(i);
 			raw = macro haxe.Resource.getBytes($v{resname});
 			#end
 		} else {
