@@ -38,7 +38,7 @@ class LR0Builder extends lm.Parser {
 	var nstates: Int;
 	var invalid: Int;
 	var entrys: Array<{index:Int, begin:Int, width:Int}>;
-	var na: Array<Array<Node>>; // assoc with lhsA
+	var nfas: Array<Array<Node>>; // assoc with lhsA
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segsEx * this.per;
@@ -53,7 +53,7 @@ class LR0Builder extends lm.Parser {
 		this.segs = 0;      // state_counter
 		this.invalid = U16MAX;
 		this.entrys = [];
-		this.na = [];
+		this.nfas = [];
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
 		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
@@ -61,10 +61,10 @@ class LR0Builder extends lm.Parser {
 	}
 
 	function make() {
-		var a = this.toPartern();
+		if ( isEmpty() ) return [];
 		// Pattern -> NFA(nodes)
 		var i = 0;
-		for (pats in a) {
+		for (pats in this.toPartern()) {
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
@@ -72,9 +72,8 @@ class LR0Builder extends lm.Parser {
 				var n = initNode(pats[j], f);
 				nodes[j] = n;
 			}
-			na.push(nodes);
+			nfas.push(nodes);
 		}
-		// NFA -> DFA
 		var begin = 0;
 		function addEntry(i) {
 			this.entrys.push({index: i, begin: begin, width: this.segs - begin});
@@ -82,14 +81,15 @@ class LR0Builder extends lm.Parser {
 				Context.fatalError("Empty: " + lhsA[i].name, lhsA[i].pos);
 			begin = this.segs;
 		}
+		// NFA -> DFA
 		// main entry
-		compile( LexEngine.addNodes([], this.na[0]) );
+		compile( LexEngine.addNodes([], this.nfas[0]) );
 		addEntry(0);
 		// side entrys
 		for (i in 1...this.lhsA.length) {
 			if (this.lhsA[i].side == false) continue;
 			this.h = new Map(); // reset
-			compile( LexEngine.addNodes([], this.na[i]) );
+			compile( LexEngine.addNodes([], this.nfas[i]) );
 			addEntry(i);
 		}
 
@@ -114,8 +114,6 @@ class LR0Builder extends lm.Parser {
 		// DFA -> Tables
 		this.makeTable();
 		this.rollback();
-
-		this.checking();
 		#if lex_lr0table
 		var f = sys.io.File.write("lr0-table.txt");
 		f.writeString("\nProduction:\n");
@@ -125,6 +123,7 @@ class LR0Builder extends lm.Parser {
 		this.write(f, true);
 		f.close();
 		#end
+		this.checking();
 		return this.generate();
 	}
 
@@ -165,9 +164,9 @@ class LR0Builder extends lm.Parser {
 						if (alt[i]) continue;
 						var ex = null;
 						if (!atLast) {
-							LexEngine.addNodes(nodes, this.na[i]);
+							LexEngine.addNodes(nodes, this.nfas[i]);
 						} else {
-							noSelf(nodes, this.na[i], self);
+							noSelf(nodes, this.nfas[i], self);
 						}
 						alt[i] = true;
 						// left subs.
@@ -175,9 +174,9 @@ class LR0Builder extends lm.Parser {
 							var j = s - maxValue;
 							if (alt[j]) continue;
 							if (!atLast) {
-								LexEngine.addNodes(nodes, this.na[j]);
+								LexEngine.addNodes(nodes, this.nfas[j]);
 							} else {
-								noSelf(nodes, this.na[j], self);
+								noSelf(nodes, this.nfas[j], self);
 							}
 							alt[j] = true;
 						}
@@ -676,8 +675,6 @@ class LR0Builder extends lm.Parser {
 	public static function build() {
 		var allFields = new Map<String, Field>();
 		var lrb = new LR0Builder("lm.LR0", allFields);
-		if (lrb.isEmpty())
-			return null;
 		var defs = lrb.make();
 		// combine
 		var ret = [];
