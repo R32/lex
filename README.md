@@ -9,22 +9,11 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Parser: **Rollback-Able LR(0)**. **rollback** is only valid until the reduction is completed. **WIP**
 
-  - [x] Operator Precedence. Only operators in the same position.
+  - [x] Operator Precedence. **Only for non-terminal**. and if you put tokens together with **different priorities**, you will get a conflict error.
 
-    > I don't know how yacc implements it, I used my own way. so there might be bugs
-    >
-    > In fact, this LR0 parser just modifies the table that LexEngine built. So as parser it's may also be unstable.
+  - [x] Guard, [example](test/subs/Guard.hx) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
-  - [x] `@:side`: Similar to ocamlyacc's `%start`, but all LHS types must be the same.
-
-    ```c
-    /* .mly for ocamlyacc */
-    %start main expr   /* multi entry point */
-    %type <int> main   /* "main" and "expr" can be different types */
-    %type <int> expr
-    ```
-
-    Reference [Usage](#usage) example:
+  - **`@:side`**: Reference [Usage](#usage) example:
 
     ```haxe
     // need to add "@:side" to "expr"
@@ -62,67 +51,26 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     @:side static var expr = switch(s)  // NOTE: @:side
     ```
 
-  - [x] Guard, If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
+  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position.
+
+    ```hx
+    _t1.pmax - _t1.pmin;
+    _t1.pstr();
+    ```
+
+  - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
 
     ```haxe
-    class Main {
-        static function main() {
-            var str = 'ab';
-            var lex = new Lexer(lms.ByteData.ofString(str));
-            var par = new Parser(lex);
-            trace(par.main());
-        }
+    // 1. same prefix(At least 2 characters).
+    switch(s) {
+    case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
     }
-    enum abstract Token(Int) to Int {
-        var Eof = 0;
-        var A;
-        var B;
-    }
-    @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
-        static var tok =  [
-            "a" => A,
-            "b" => B,
-        ];
-    }
-    class Parser implements lm.LR0<Lexer, Int> {
-        static var main = switch(s) {
-            case [e1 = expr, Eof]: e1;
-            case [e1 = expr, e2 = expr, Eof]: e1 + e2;
-        }
-        static var expr = switch(s) {
-            case [A, B] if (Math.random() > 0.5):  // if false then rollback to case [A]
-                trace("A: " + _t1.pstr() + ", B: " + _t2.pstr());
-                303;
-            case [A]:
-                trace("A: " + _t1.pstr());
-                101;
-            case [B]:
-                trace("B: " + _t1.pstr());
-                202;
-        }
+
+    // 2.
+    switch(s) {
+    case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
     }
     ```
-  Inside the actions, you could use `_t1~_tN` to access the position.
-
-  ```hx
-  _t1.pmax - _t1.pmin;
-  _t1.pstr();
-  ```
-
-  Since the Parser can only be used with `enum abstract(Int)`, So here are 2 ways to combine Tokens
-
-  ```haxe
-  // 1. same prefix(At least 2 characters).
-  switch(s) {
-  case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
-  }
-
-  // 2.
-  switch(s) {
-  case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
-  }
-  ```
-  NOTICE: If you put tokens together with **different priorities**, you will get a conflict error.
 
 ### CHANGES
 
@@ -156,7 +104,7 @@ It looks very messy here.
 
 * `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
 
-  > You need to modify the `mmap` field in `debug.Print`
+  > You may need to modify the `mmap` field in `debug.Print`
 
   ```
   Production:
