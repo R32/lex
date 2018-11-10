@@ -9,9 +9,9 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
 
 * [x] Parser: **Rollback-Able LR(0)**. **rollback** is only valid until the reduction is completed. **WIP**
 
-  - [x] Operator Precedence. **Only for non-terminal**. and if you put tokens together with **different priorities**, you will get a conflict error.
+  - [x] Operator Precedence. **Only for non-terminal**.
 
-  - [x] Guard, [example](test/subs/Guard.hx) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
+  - [x] Guard, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
   - **`@:side`**: Reference [Usage](#usage) example:
 
@@ -71,6 +71,8 @@ Build lightweight lexer/parser(LR0) state transition tables in macro(compile pha
     case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
     }
     ```
+
+	NOTE: if you put tokens together with **different priorities**, you will get a conflict error.
 
 ### CHANGES
 

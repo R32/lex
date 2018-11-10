@@ -1,5 +1,6 @@
 bin
 dump
+release
 .tmp
 *.js
 *.txt
