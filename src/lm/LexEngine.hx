@@ -35,11 +35,6 @@ class LexEngine {
 	*/
 	public var segs(default, null): Int;
 
-	/**
-	* If no valid opAssoc, then its value will be the same as segs;
-	*/
-	public var segsEx(default, null): Int;
-
 	public var nrules(default, null): Int;
 
 	public var nstates(default, null): Int;
@@ -81,7 +76,6 @@ class LexEngine {
 		this.h = null;
 
 		// properties
-		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
 		this.perRB = 1 + ((nstates - 1) | 15);
@@ -102,7 +96,7 @@ class LexEngine {
 	}
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
-	public inline function posRB() return this.segsEx * this.per;
+	public inline function posRB() return this.segs * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 	public inline function isBit16() return this.invalid == U16MAX;
 	inline function node() return new Node(uid++);
@@ -174,13 +168,13 @@ class LexEngine {
 
 	function makeTables() {
 		var INVALID = this.invalid;
-		var bytes = (segsEx * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
+		var bytes = (segs * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
 		var tbls = new Table(bytes);
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID); // Reverse write checking table
-			if (s.id < segsEx)
+			if (s.id < segs)
 				makeTrans(tbls, s.id * per, s.trans, s.targets);
 		}
 		this.table = tbls;
