@@ -38,7 +38,8 @@ class LR0Builder extends lm.Parser {
 	var nstates: Int;
 	var invalid: Int;
 	var entrys: Array<{index:Int, begin:Int, width:Int}>;
-	var nfas: Array<Array<Node>>; // assoc with lhsA
+	var nfas: haxe.ds.Vector<Array<Node>>; // assoc with lhsA
+	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segsEx * this.per;
@@ -53,7 +54,8 @@ class LR0Builder extends lm.Parser {
 		this.segs = 0;      // state_counter
 		this.invalid = U16MAX;
 		this.entrys = [];
-		this.nfas = [];
+		this.nfas = new haxe.ds.Vector(lhsA.length);
+		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
 		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
@@ -64,7 +66,9 @@ class LR0Builder extends lm.Parser {
 		if ( isEmpty() ) return [];
 		// Pattern -> NFA(nodes)
 		var i = 0;
-		for (pats in this.toPartern()) {
+		var a = this.toPartern();
+		for (p in 0...a.length) {
+			var pats = a[p];
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
@@ -72,7 +76,7 @@ class LR0Builder extends lm.Parser {
 				var n = initNode(pats[j], f);
 				nodes[j] = n;
 			}
-			nfas.push(nodes);
+			nfas[p] = nodes;
 		}
 		var begin = 0;
 		function addEntry(i) {
@@ -80,6 +84,7 @@ class LR0Builder extends lm.Parser {
 			if (begin == this.segs)
 				Context.fatalError("Empty: " + lhsA[i].name, lhsA[i].pos);
 			begin = this.segs;
+			this.used[i] = true;
 		}
 		// NFA -> DFA
 		// main entry
@@ -169,6 +174,7 @@ class LR0Builder extends lm.Parser {
 							noSelf(nodes, this.nfas[i], self);
 						}
 						alt[i] = true;
+						used[i] = true;
 						// left subs.
 						for (s in lhsA[i].lsubs) {
 							var j = s - maxValue;
@@ -179,6 +185,7 @@ class LR0Builder extends lm.Parser {
 								noSelf(nodes, this.nfas[j], self);
 							}
 							alt[j] = true;
+							used[j] = true;
 						}
 					}
 				}
@@ -468,8 +475,9 @@ class LR0Builder extends lm.Parser {
 		// 1. Is switch case unreachable?
 		for (n in 0...this.nrules)
 			if (rules[n] == INVALID) {
-				var msg = "Unreachable switch case";
 				var lhs = byRule(n);
+				if ( !this.used.get( lhsIndex(lhs) ) ) continue;
+				var msg = "Unreachable switch case";
 				if (!lhs.side)
 					msg += ' OR missing @:side on "' + lhs.name + '"';
 				Context.fatalError(msg, this.ruleToCase(n).pos);

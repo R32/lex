@@ -68,6 +68,7 @@ class Parser {
 	public inline function isEmpty() return this.lhsA.length == 0;
 	public inline function isNonTerm(v) return v >= this.maxValue;
 	public inline function isTerm(v) return v < this.maxValue;
+	public inline function lhsIndex(l:Lhs):Int return l.value - maxValue;
 
 	public function new(s_it: String, rest: Map<String, Field>) {
 		var cls = Context.getLocalClass().get();
