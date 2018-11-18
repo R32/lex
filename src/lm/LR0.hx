@@ -264,7 +264,6 @@ class LR0Builder extends lm.Parser {
 	function rollback() {
 		inline function epsilon(seg) return table.exits(seg);
 		var alt = new haxe.ds.Vector<Bool>(this.perRB);
-		for (i in 0...alt.length) alt[i] = false;
 		var INVALID = this.invalid;
 		var rollpos = this.posRB();
 		var rlenpos = this.posRBL();
@@ -281,10 +280,24 @@ class LR0Builder extends lm.Parser {
 					que.add({exit: exit, nxt: nxt, len: length + 1});
 			}
 		}
-		for (seg in 0...this.segs) {
-			var exit = epsilon(seg);
-			if (exit == INVALID) continue;
-			loop(exit, seg, 1);
+		function noNxt(seg) {
+			if (table.get(rollpos + seg) != INVALID) return;
+			var base = seg * this.per;
+			for (lv in 0...this.per) {
+				var nxt = table.get(lv + base);
+				if (nxt != INVALID)
+					alt[nxt] = true;
+			}
+		}
+		for (e in entrys) {
+			for (i in 0...alt.length) alt[i] = false; // reset
+			for (seg in e.begin...e.begin + e.width) {
+				var exit = epsilon(seg);
+				if (exit == INVALID)
+					noNxt(seg);
+				else
+					loop(exit, seg, 1);
+			}
 		}
 		while (true) {
 			var q = que.pop();
