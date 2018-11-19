@@ -8,8 +8,7 @@ using haxe.macro.Tools;
 
 private typedef Group = {
 	name: String,
-	rules: Array<Expr>,  // String Pattern
-	cases: Array<Expr>,  // The expression associated with the Pattern
+	rules: haxe.ds.Vector<{es: Expr, action: Expr}>,
 }
 
 class LexBuilder {
@@ -50,21 +49,22 @@ class LexBuilder {
 			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
 			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
-				case FVar(_, {expr: EArrayDecl(el)}):
-					var g:Group = {name: f.name, rules: [], cases: []};
-					for (e in el)
+				case FVar(_, {expr: EArrayDecl(el)}) if (el.length > 0):
+					var i = 0;
+					var len = el.length;
+					var g:Group = {name: f.name, rules: new haxe.ds.Vector(len)};
+					for (e in el) {
 						switch (e.expr) {
-						case EBinop(OpArrow, rule, e):
-							g.rules.push(rule);
-							g.cases.push(e);
+						case EBinop(OpArrow, s, e):
+							g.rules[i++] = {es: s, action: e};
 						default:
 							Context.fatalError("Expected pattern => function", e.pos);
 						}
-					if (g.rules.length > 0) {
-						if (Lambda.exists(groups, x->x.name == g.name))
-							Context.fatalError("Duplicate: " + g.name, f.pos);
-						groups.push(g);
 					}
+					for (x in groups)
+						if (x.name == g.name)
+							Context.fatalError("Duplicated: " + g.name, f.pos);
+					groups.push(g);
 					continue;
 				case FVar(_, {expr: EConst(CString(s))}):
 					idmap.set(f.name, s);
@@ -79,19 +79,23 @@ class LexBuilder {
 		meta.cmax = meta.cmax & 255 | 15;
 		// lexEngine
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
-		var rules = groups.map( g -> g.rules.map(function(r){
-			return try {
-				LexEngine.parse(exprString(r, idmap), c_all);
-			} catch(err: Dynamic) {
-				Context.fatalError(Std.string(err), r.pos);
-			}
-		}));
-		var lex = new LexEngine(rules, meta.cmax);
+		var apats = [];
+		for (g in groups) {
+			apats.push([ for (r in g.rules) {
+				try{
+					LexEngine.parse(exprString(r.es, idmap), c_all);
+				} catch(err: Dynamic) {
+					Context.fatalError(Std.string(err), r.es.pos);
+				}
+			}]);
+		}
+		var lex = new LexEngine(apats, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
 		lex.write(f, true);
 		f.close();
 		#end
+		// checking
 		reachable(lex, groups);
 
 		// generate
@@ -198,9 +202,9 @@ class LexBuilder {
 			});
 		}
 		// build switch
-		var cases = Lambda.flatten( groups.map(g -> g.cases) );
-		var defCase = cases.pop();
-		var liCase = Lambda.mapi( cases, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var actions = [for (g in groups) for (r in g.rules) r.action];
+		var defCase = actions.pop();
+		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
 		var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
 		defs.fields.push({
 			name: "cases",
@@ -255,13 +259,13 @@ class LexBuilder {
 			if (n == INVALID) continue;
 			exits[n] = table.length - 1 - i;
 		}
-		function indexPattern(i) {
+		function indexPattern(i):Expr {
 			for (g in groups) {
 				var len = g.rules.length;
 				if (i >= len) {
 					i -= len;
 				} else {
-					return g.rules[i];
+					return g.rules[i].es;
 				}
 			}
 			throw "NotFound";

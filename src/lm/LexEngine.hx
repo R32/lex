@@ -10,7 +10,6 @@ class LexEngine {
 	public static inline var U16MAX = 0xFFFF;
 
 	var uid(default, null): Int;
-	var finals: Int;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -37,48 +36,41 @@ class LexEngine {
 
 	public var nrules(default, null): Int;
 
-	public var nstates(default, null): Int;
-
-	public var entrys(default, null): Array<{begin:Int, segs:Int, nrules:Int}>;
+	public var entrys(default, null): Array<{begin:Int, width:Int}>;
 
 	public var invalid(default, null): Int;
 
 	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
 		this.entrys = [];
 		this.per = cmax + 1;
+		this.h = new Map();
 		this.lstates = new List();
 		this.segs = 0;  // state_counter
 		this.invalid = U16MAX;
 		this.final_counter = U16MAX - 1; // compress it later.
-		this.nrules = 0;
-		var prev = 0;
+		this.nrules = Lambda.fold(a, (p, n) -> p.length + n, 0);
+		this.uid = this.nrules;
 		var nodes = [];
+		var begin = 0;
+		var i = 0;
 		for (pats in a) {
-			this.h = new Map();
-			var len = pats.length;
-			nodes.resize(len);
-			this.finals = len;
-			this.uid = len;
+			nodes.resize(pats.length);
 			// Pattern -> NFA(nodes)
-			for (i in 0...len) {
-				var f = new Node(i);
-				var n = initNode(pats[i], f);
-				nodes[i] = n;
+			for (p in 0...pats.length) {
+				var f = new Node(i++);
+				var n = initNode(pats[p], f);
+				nodes[p] = n;
 			}
 			// NFA -> DFA
 			compile(addNodes([], nodes));
 			if (final_counter < segs)
 				throw "Too many states";
-			entrys.push({begin: prev, segs: segs - prev, nrules: len});
-			prev = segs;
-			nrules += len;
+			entrys.push({begin: begin, width: this.segs - begin});
+			begin = this.segs;
 		}
-		this.h = null;
-
 		// properties
-		this.nstates = lstates.length;
-		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
-		this.perRB = 1 + ((nstates - 1) | 15);
+		this.invalid = lstates.length < U8MAX ? U8MAX : U16MAX;
+		this.perRB = 1 + ((lstates.length - 1) | 15);
 
 		// compress finalState
 		var diff = final_counter + 1 - segs;
@@ -92,13 +84,13 @@ class LexEngine {
 		this.makeTables();
 		// rollback detection
 		this.rollback();
-		this.lstates = null;
 	}
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
 	public inline function posRB() return this.segs * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 	public inline function isBit16() return this.invalid == U16MAX;
+	inline function isFinal(id) return id < this.nrules;
 	inline function node() return new Node(uid++);
 
 	function initNode(p: Pattern, f: Node) {
@@ -157,8 +149,8 @@ class LexEngine {
 		var f = -1;
 		var i = nodes.length;
 		while (--i >= 0) {
-			if (nodes[i].id < this.finals) {
-				f = this.nrules + nodes[i].id;
+			if ( isFinal(nodes[i].id) ) {
+				f = nodes[i].id;
 				break;
 			}
 		}
@@ -196,7 +188,7 @@ class LexEngine {
 			}
 		}
 		for (e in this.entrys) {
-			var smax = e.begin + e.segs;
+			var smax = e.begin + e.width;
 			for (seg in e.begin...smax) {
 				var exit = epsilon(seg);
 				if (exit == INVALID) continue;
