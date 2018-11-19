@@ -571,7 +571,7 @@ class LR0Builder extends lm.Parser {
 				this.stream = new lm.Stream<$ct_lhs>(lex, 0);
 			}
 			@:access(lm.Stream, lm.Tok)
-			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lhs {
+			static function _entry(stream: $ct_stream, state:Int, exp:Int, until:Bool):$ct_lhs {
 				var prev = state;
 				var t: lm.Stream.Tok<$ct_lhs> = null;
 				var dx = 0;
@@ -599,6 +599,7 @@ class LR0Builder extends lm.Parser {
 							t = stream.offset( -1 - dy);
 							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
 								stream.pos -= dx; // pos of Unexpected token
+								until = false;     // force error
 								break;
 							}
 							stream.rollback(dy, $v{maxValue});
@@ -610,7 +611,7 @@ class LR0Builder extends lm.Parser {
 					while (true) {
 						var value:$ct_lhs = gotos(q, stream);
 						t = stream.offset( -1); // reduced token
-						if (t.term == exp) {
+						if (t.term == exp && !until) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
 							return value;
@@ -620,15 +621,14 @@ class LR0Builder extends lm.Parser {
 						prev = t.state;
 						if (prev < NSEGSEX) break;
 						if (prev == INVALID) {
-							if (exp == -1)
+							if (until && exp == t.term)
 								return value;
-							// assert(exp == -1)
 							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
 						}
 						q = exits(prev);
 					}
 				}
-				if (exp == -1 && stream.pos - dx == keep + 1)
+				if ( until && (stream.pos - dx == keep + 1) && (exp == stream.cached[keep].term) )
 					return stream.cached[keep].val;
 				t = stream.offset( -1);
 				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"' + stream.errpos(t.pmin));
@@ -640,7 +640,7 @@ class LR0Builder extends lm.Parser {
 				var t = new lm.Stream.Tok<$ct_lhs>(lv, prev.pmax, prev.pmax);
 				t.state = state;
 				stream.shift(t);
-				var value = _entry(stream, state, -1); // -1 then until to match failed
+				var value = _entry(stream, state, lv, true);
 				stream.pos = keep;
 				stream.junk(2);
 				return value;
@@ -677,7 +677,7 @@ class LR0Builder extends lm.Parser {
 			kind: FFun({
 				args: [],
 				ret: ct_lhs,
-				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
+				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value}, false)
 			}),
 			pos: lhs.pos,
 		});
