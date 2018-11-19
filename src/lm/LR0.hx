@@ -595,7 +595,13 @@ class LR0Builder extends lm.Parser {
 					} else {
 						q = rollB(state);
 						if (q < NRULES) {
-							stream.rollback(dx + rollL(state), $v{maxValue});
+							var dy = dx + rollL(state);
+							t = stream.offset( -1 - dy);
+							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
+								stream.pos -= dx; // pos of Unexpected token
+								break;
+							}
+							stream.rollback(dy, $v{maxValue});
 						} else {
 							break;  // throw error.
 						}
@@ -622,7 +628,7 @@ class LR0Builder extends lm.Parser {
 						q = exits(prev);
 					}
 				}
-				if (exp == -1 && (stream.pos - dx) > keep)
+				if (exp == -1 && stream.pos - dx == keep + 1)
 					return stream.cached[keep].val;
 				t = stream.offset( -1);
 				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"' + stream.errpos(t.pmin));
