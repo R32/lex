@@ -291,6 +291,7 @@ class LR0Builder extends lm.Parser {
 		}
 		for (e in entrys) {
 			for (i in 0...alt.length) alt[i] = false; // reset
+
 			for (seg in e.begin...e.begin + e.width) {
 				var exit = epsilon(seg);
 				if (exit == INVALID)
@@ -298,11 +299,12 @@ class LR0Builder extends lm.Parser {
 				else
 					loop(exit, seg, 1);
 			}
-		}
-		while (true) {
-			var q = que.pop();
-			if (q == null) break;
-			loop(q.exit, q.nxt, q.len);
+
+			while (true) {
+				var q = que.pop();
+				if (q == null) break;
+				loop(q.exit, q.nxt, q.len);
+			}
 		}
 	}
 
