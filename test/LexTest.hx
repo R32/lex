@@ -6,6 +6,7 @@ class LexTest {
 		subs.Sets.main();
 		// lexer
 		lexTest();
+		subs.LexVarIdent.main();
 		subs.LexRollback.main();
 		// parser
 		subs.Guard.main();

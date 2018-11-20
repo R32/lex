@@ -218,10 +218,9 @@ class LR0Builder extends lm.Parser {
 			targets[i] = compile(ta[i].ns);
 
 		var f = -1;
-		var i = nodes.length;
-		while (--i >= 0) {
-			if (isFinal(nodes[i].id)) {
-				f = nodes[i].id;
+		for (n in nodes) {
+			if ( isFinal(n.id) ) {
+				f = n.id;
 				break;
 			}
 		}
@@ -446,7 +445,7 @@ class LR0Builder extends lm.Parser {
 			}
 		}
 		this.segsEx = this.segs + count - skiped;
-		// write to s.targets and this.trans
+		// write to s.targets and s.trans
 		for (fid in this.segs...this.segsEx) {
 			var s = this.states[fid];
 			var own = fidMap.get(fid)[0];

@@ -54,8 +54,4 @@ private enum abstract Token(Int) to Int {
 	}
 
 	@:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
-
-	@:rule(CStr) static function unescape(input: lms.ByteData, t):String {
-		return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
-	}
 }

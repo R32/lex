@@ -147,10 +147,9 @@ class LexEngine {
 			targets[i] = compile(ta[i].ns);
 
 		var f = -1;
-		var i = nodes.length;
-		while (--i >= 0) {
-			if ( isFinal(nodes[i].id) ) {
-				f = nodes[i].id;
+		for (n in nodes) {
+			if ( isFinal(n.id) ) {
+				f = n.id;
 				break;
 			}
 		}
