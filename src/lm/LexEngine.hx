@@ -325,7 +325,7 @@ class LexEngine {
 			var c = b.get(i++);
 			switch (c) {
 			case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
-			case "x".code:
+			case "x".code, "X".code:
 				c = Std.parseInt("0x" + b.getString(i, 2));
 				i += 2;
 			default:

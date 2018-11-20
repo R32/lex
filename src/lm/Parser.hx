@@ -64,6 +64,7 @@ class Parser {
 	var preDefs: Array<Expr>;    // for function cases()
 	var assoc: OpAssoc;
 	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
+	var p2t: Map<String, String>;    // PatternString => TokenString for reflect
 
 	public inline function isEmpty() return this.lhsA.length == 0;
 	public inline function isNonTerm(v) return v >= this.maxValue;
@@ -85,6 +86,7 @@ class Parser {
 							eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
 								Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
+							p2t = LexBuilder.lmap.get(Utils.getClsFullName(lex));
 							break;
 						}
 					}
@@ -118,29 +120,30 @@ class Parser {
 
 	function readPrecedence(cls:ClassType) {
 		function extract(a: Array<ObjectField>, assoc: OpAssoc) {
-			var dup = new Map<String, Bool>();
+			var dup = new haxe.ds.Vector<Bool>(this.maxValue);
 			for (i in 0...a.length) {
 				var li = a[i].expr;
-				var left = if (a[i].field == "left") {
-					true;
-				} else if (a[i].field == "right") {
-					false;
-				} else {
-					continue;
-				}
+				var left = a[i].field == "left";
+				if (!left && a[i].field != "right")
+					continue; // skip
 				switch (li.expr) {
 				case EArrayDecl(a):
 					for (e in a) {
-						var term = null;
-						switch (e.expr) {
-						case EConst(CIdent(s)) if ((term = this.udtMap.get(s)) != null && term.t):
-							if (dup.exists(s))
-								Context.fatalError("Duplicate Token " + e.toString(), e.pos);
-							dup.set(s, true);
-							assoc.push( {left: left, prio: i, value: term.value} );
+						var term:Udt = switch (e.expr) {
+						case EConst(CIdent(i)):
+							this.udtMap.get(i);
+						case EConst(CString(p)):
+							var t = this.p2t.get(p); // reflect
+							t != null ? this.udtMap.get(t) : null;
 						case _:
-							Context.fatalError("UnSupported Token: " + e.toString(), e.pos);
+							null;
 						}
+						if (term == null || term.t == false)
+							Context.fatalError("UnSupported Token: " + e.toString(), e.pos);
+						if ( dup.get(term.value) )
+							Context.fatalError("Duplicate Token: " + term.name, e.pos);
+						dup.set(term.value, true);
+						assoc.push( {left: left, prio: i, value: term.value} );
 					}
 				default:
 					Context.fatalError("UnSupported Type",li.pos);
@@ -250,6 +253,14 @@ class Parser {
 						case EConst(CIdent(i)):
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
+
+						case EConst(CString(s)):
+							var i = this.p2t.get(s);
+							if (i == null)
+								Context.fatalError("No associated token: " + s, e.pos);
+							firstCharChecking(i, UPPER, e.pos);
+							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
+
 						// TODO: maybe it's not good..
 						case EParenthesis(macro $i{i}):
 							firstCharChecking(i, LOWER, e.pos);            // all termls but no Eof
@@ -273,13 +284,15 @@ class Parser {
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
 							var cset = CSet.C_EMPTY;
 							for (t in a) {
-								switch (t.expr) {
-								case EConst(CIdent(s)):
-									firstCharChecking(s, UPPER, t.pos);
-									cset = CSet.union(cset, getCSet(s, t.pos));
-								default:
-									Context.fatalError("Unsupported: " + t.toString(), t.pos);
+								var i = switch (t.expr) {
+								case EConst(CIdent(i)): i;
+								case EConst(CString(s)): this.p2t.get(s);
+								default: null;
 								}
+								if (i == null)
+									Context.fatalError("Unsupported: " + t.toString(), t.pos);
+								firstCharChecking(i, UPPER, t.pos);
+								cset = CSet.union(cset, getCSet(i, t.pos));
 							}
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);

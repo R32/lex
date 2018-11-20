@@ -12,6 +12,9 @@ private typedef Group = {
 }
 
 class LexBuilder {
+
+	static public var lmap: Map<String, Map<String, String>>; // LexName => [PatternString => TokenString]
+
 	static function getMeta(metas: Array<MetadataEntry>) {
 		var ret = {cmax: 255, eof: null};
 		if (metas.length > 0)
@@ -27,6 +30,9 @@ class LexBuilder {
 		return ret;
 	}
 	static public function build():Array<Field> {
+		if (lmap == null)
+			lmap = new Map();
+		var p2t = new Map(); // patternString => TokenString
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
@@ -37,6 +43,7 @@ class LexBuilder {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+				lmap.set(Utils.getClsFullName(cls), p2t); // store
 				break;
 			}
 		}
@@ -77,18 +84,29 @@ class LexBuilder {
 		}
 		if (groups.length == 0) return null;
 		meta.cmax = meta.cmax & 255 | 15;
-		// lexEngine
+
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var apats = [];
 		for (g in groups) {
-			apats.push([ for (r in g.rules) {
-				try{
-					LexEngine.parse(exprString(r.es, idmap), c_all);
+			var pats = [];
+			for (r in g.rules) {
+				// if "action" is just a simple Token then store it for "reflect"
+				switch(r.action.expr) {
+				case EConst(CIdent(v)):
+					var k = unescape(r.es, idmap);
+					p2t.set(k, v);
+				case _:
+				}
+				// String -> Pattern
+				try {
+					pats.push( LexEngine.parse(exprString(r.es, idmap), c_all) );
 				} catch(err: Dynamic) {
 					Context.fatalError(Std.string(err), r.es.pos);
 				}
-			}]);
+			}
+			apats.push(pats);
 		}
+		// lexEngine
 		var lex = new LexEngine(apats, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
@@ -273,6 +291,36 @@ class LexBuilder {
 		for (n in 0...lex.nrules)
 			if (exits[n] == INVALID)
 				Context.fatalError("UnReachable pattern", indexPattern(n).pos);
+	}
+
+	// assoc with lexEngine.parse
+	static function unescape(es: Expr, idmap:Map<String,String>) {
+		var s = exprString(es, idmap);
+		var i = 0;
+		var p = 0;
+		var len = s.length;
+		var buf = new StringBuf();
+		while (i < len) {
+			var c = StringTools.fastCodeAt(s, i++);
+			if (c == "\\".code) {
+				buf.addSub(s, p, i - p - 1);
+				c = StringTools.fastCodeAt(s, i++);
+				switch(c) {
+				case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
+					buf.addChar(c);
+				case "x".code, "X".code:
+					c = Std.parseInt("0x" + s.substr(i, 2));
+					buf.addChar(c);
+					i += 2;
+				case _:
+					Context.fatalError("Invalid hexadecimal escape sequence", es.pos);
+				}
+				p = i;
+			}
+		}
+		if (p < i)
+			buf.addSub(s, p, i - p);
+		return buf.toString();
 	}
 }
 #else
