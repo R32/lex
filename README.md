@@ -1,15 +1,15 @@
 Lex
 ------
 
-Build lightweight lexer/parser(LR0) state transition tables in macro(compile phase).
+Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
 ## status
 
-* [x] Lexer: Does not support unicode(The maximum char is 254)
+* [x] Lexer: **Stable** Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **Rollback-Able LR(0)**. **rollback** is only valid until the reduction is completed. **WIP**
+* [x] Parser: **UnStable WIP** `rollback-able LR(0)`
 
-  - [x] Operator Precedence. **Only for non-terminal**.
+  - [x] Operator Precedence. **Only for non-terminal**. `Need more tests`
 
   - [x] Guard, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
