@@ -624,7 +624,7 @@ class LR0Builder extends lm.Parser {
 						if (prev == INVALID) {
 							if (until && exp == t.term)
 								return value;
-							throw lm.Utils.error('Unexpected "' + stream.str(t) + '"' + stream.errpos(t.pmin));
+							throw stream.UnExpected(t);
 						}
 						q = exits(prev);
 					}
@@ -632,7 +632,7 @@ class LR0Builder extends lm.Parser {
 				if ( until && (stream.pos - dx == keep + 1) && (exp == stream.cached[keep].term) )
 					return stream.cached[keep].val;
 				t = stream.offset( -1);
-				throw lm.Utils.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"' + stream.errpos(t.pmin));
+				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
 			@:access(lm.Stream, lm.Tok)
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {

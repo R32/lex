@@ -17,18 +17,57 @@ class Print {
 		"CFloat"    => "float",
 		"CHex"    => "hex",
 		"OpPlus"  => "+",
-		"OpAdd"  => "+",
 		"OpMinus" => "-",
-		"OpSub" => "-",
 		"OpTimes" => "*",
-		"OpMul" => "*",
-		"OpDiv"   => "/",
-		"OpMod"   => "%",
-		"LParen"  => "(",
-		"RParen"  => ")",
-		"Semicolon" => ";",
 		"Percent"   => "%",
 
+		"Dot" => ".",
+		"Comma" => ",",
+		"Semicolon" => ";",
+		"LParen" => "(",
+		"RParen" => ")",
+		"LBrace" => "{",
+		"RBrace" => "}",
+		"LBracket" => "[",
+		"RBracket" => "]",
+
+		"OpMod" => "%",
+		"OpMul" => "*",
+		"OpDiv" => "/",
+		"OpAdd" => "+",
+		"OpSub" => "-",
+		"OpShl" => "<<",
+		"OpShr" => ">>",
+		"OpUShr" => ">>>",
+		"OpOr" =>  "|",
+		"OpAnd" => "&",
+		"OpXor" => "^",
+		"OpEq" => "==",
+		"OpNotEq" => "!=",
+		"OpGt" => ">",
+		"OpLt" => "<",
+		"OpGte" => ">=",
+		"OpLte" => "<=",
+		"OpInterval" => "...",
+		"OpBoolAnd" => "&&",
+		"OpBoolOr" => "||",
+		"OpAssign" => "=",
+		"OpAssignAdd" => "+=",
+		"OpAssignSub" => "-=",
+		"OpAssignMul" => "*=",
+		"OpAssignDiv" => "/=",
+		"OpAssignMod" => "%=",
+		"OpAssignShl" => "<<=",
+		"OpAssignShr" => ">>=",
+		"OpAssignUShr" => ">>>=",
+		"OpAssignOr" => "|=",
+		"OpAssignAnd" => "&=",
+		"OpAssignXor" => "^=",
+		"OpArrow" => "=>",
+		"OpNot" => "!",
+		"OpBits" => "~",
+		"OpIncrement" => "++",
+		"OpDecrement" => "--",
 	//	"main" => "S",
 	//	"expr" => "E",
 	];
@@ -102,17 +141,17 @@ class Print {
 				for (s in li.syms) {
 					buf.add(" ");
 					if (s.t) {
-						var r = "";
-						var ct = 0;
+						var r = [];
 						for (c in s.cset) {
 							for (i in c.min...c.max + 1) {
-								r += used.get(i);
-								++ ct;
+								r.push( used.get(i) );
 							}
 						}
-						if (ct > 1)
-							r = "[" + r +"]";
-						buf.add(r);
+						if (r.length == 1) {
+							buf.add( r[0] );
+						} else {
+							buf.add("[" + r.join(" ") + "]");
+						}
 					} else {
 						buf.add( used.get(s.cset[0].min) );
 					}

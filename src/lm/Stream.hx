@@ -81,8 +81,14 @@ class Stream<LHS> {
 		return " at line: " + line + ", char: " + char;
 	}
 
-	public inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
 	function stri(dx):String return str( offset(dx) );
+
+	public function error(msg:String, t: Tok<LHS>) return lm.Utils.error(msg + errpos(t.pmin));
+
+	public inline function UnExpected(t: Tok<LHS>) return error('Unexpected "' + str(t) + '"', t);
+
+	public inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
+
 	inline function offset(i: Int) return cached[pos + i];  // unsafe
 
 	function next() {
