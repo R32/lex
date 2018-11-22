@@ -391,8 +391,8 @@ class LR0Builder extends lm.Parser {
 			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
 		}
 		// parse
-		for (i in 0...this.segs)
-			parse(tmp, 0, this.segs);
+		for (e in this.entrys)
+			parse(tmp, e.begin, e.begin + e.width);
 
 		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
 		for (a in fidMap) {
@@ -401,6 +401,7 @@ class LR0Builder extends lm.Parser {
 				if (a[i].prio != prio)
 					throw "Operator Precedence Conflict";
 		}
+
 		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
 		for (lvl in lvlMap.keys()) {
 			var a = lvlMap.get(lvl);
@@ -413,6 +414,7 @@ class LR0Builder extends lm.Parser {
 				}
 			if (!find) lvlMap.remove(lvl);
 		}
+
 		// highest(maximum) precedence in lvl
 		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(this.perRB);
 		for (a in lvlMap) {
@@ -444,7 +446,9 @@ class LR0Builder extends lm.Parser {
 				dupMap.set(op.fid, true);
 			}
 		}
+		//
 		this.segsEx = this.segs + count - skiped;
+
 		// write to s.targets and s.trans
 		for (fid in this.segs...this.segsEx) {
 			var s = this.states[fid];
@@ -453,6 +457,8 @@ class LR0Builder extends lm.Parser {
 			var cset = []; // trans
 			var i = 0;
 			var a = lvlMap.get(own.lvl);
+			if (a.length > this.cmax) // the max char
+				throw "Something is Wrong!";
 			for (op in a) {
 				if (own.left) {
 					if (op.prio > own.prio) {

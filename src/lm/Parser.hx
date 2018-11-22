@@ -56,6 +56,7 @@ class Parser {
 	var maxValue: Int;           // if value >= maxValue then it must be a non-terminal
 	var lhsA: Array<Lhs>;
 	var sEof: String;            // by @:rule from Lexer
+	var cmax: Int;               // char max. default is 255. by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_terms: ComplexType;   // token completeType
 	var ct_lhs: ComplexType;     // unify all type of lhsA.
@@ -75,7 +76,6 @@ class Parser {
 		var cls = Context.getLocalClass().get();
 		var t_terms:Type = null;
 		var t_lhs: Type = null;
-		var eof: Expr = null;
 		for (it in cls.interfaces) {
 			if (it.t.toString() == s_it) {
 				switch(it.params[0]) {
@@ -83,9 +83,14 @@ class Parser {
 					for (it in lex.interfaces) {
 						if (it.t.toString() == "lm.Lexer") {
 							t_terms = it.params[0];
-							eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
+							var eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
 								Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
+							this.sEof = eof.toString();
+
+							var c: Null<Int> = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).cmax;
+							this.cmax = c == null ? 255 : c;
+
 							p2t = LexBuilder.lmap.get(Utils.getClsFullName(lex));
 							break;
 						}
@@ -107,7 +112,6 @@ class Parser {
 		udtMap = new Map();
 		funMap = new Map();
 
-		sEof = eof.toString();
 		ct_terms = Context.toComplexType(t_terms);
 		ct_lhs = Context.toComplexType(t_lhs);
 		ct_stream = macro :lm.Stream<$ct_lhs>;
