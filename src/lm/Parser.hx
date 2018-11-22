@@ -40,6 +40,7 @@ typedef Lhs = {    // one switch == one Lhs
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
 	lsubs: Array<Int>, // left subs, Array<Lhs::value>
+	ctype: ComplexType,
 	pos: Position,
 }
 
@@ -58,9 +59,10 @@ class Parser {
 	var sEof: String;            // by @:rule from Lexer
 	var cmax: Int;               // char max. default is 255. by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
-	var ct_terms: ComplexType;   // token completeType
-	var ct_lhs: ComplexType;     // unify all type of lhsA.
-	var ct_stream: ComplexType;  //
+	var ct_terms: ComplexType;   // the ctype of tokens
+	var ct_ldef: ComplexType;    // the default ctype of LHS(if not specified)
+	var ct_lval: ComplexType;    // if "ct_lhs" can no be unified with any "LHS.ctype" then its value is ":Dynamic"
+	var ct_stream: ComplexType;  // :lm.Stream<ct_lval>
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
 	var assoc: OpAssoc;
@@ -113,10 +115,9 @@ class Parser {
 		funMap = new Map();
 
 		ct_terms = Context.toComplexType(t_terms);
-		ct_lhs = Context.toComplexType(t_lhs);
-		ct_stream = macro :lm.Stream<$ct_lhs>;
-		ct_stream_tok = macro :lm.Stream.Tok<$ct_lhs>;
-		//
+		ct_ldef = Context.toComplexType(t_lhs);
+		ct_lval = ct_ldef;
+
 		readTerms(t_terms);
 		readPrecedence(cls);
 		transform(rest);
@@ -363,7 +364,7 @@ class Parser {
 				tmp = [];
 				tmp.resize(li.syms.length);
 				if (li.action == null)
-					Context.fatalError("Need return *" + ct_lhs.toString() + "*", li.pos);
+					Context.fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
 				li.action.iter(loop);
 				toks[ti++] = tmp;
 			}
@@ -412,8 +413,18 @@ class Parser {
 							}
 						}
 					} else if (name != "_") {
-						a.push( macro var $name: $ct_lhs = cast @:privateAccess s.offset($v{dx}).val );
+						var lvalue = s.cset[0].min; // NON-TERML
+						var ct = lhsA[lvalue - maxValue].ctype;
+						a.push( macro @:pos(li.action.pos) var $name = @:privateAccess (s.offset($v{dx}).val: $ct) );
 					}
+				}
+				switch(li.action.expr) {
+				case EBlock(a) if (a.length > 0):
+					var ct = lhs.ctype;
+					var j = a.length - 1;
+					a[j] = macro @:pos(a[j].pos) ($e{a[j]}: $ct);  // Type safe and accurate error postion
+					li.action = {expr: EBlock(a), pos: li.action.pos};
+				case _:
 				}
 				var reduceEp = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
 				if (len == 0) // if epsilon then return directly
@@ -422,14 +433,14 @@ class Parser {
 					macro @:pos(li.action.pos) @:mergeBlock {
 						$reduceEp;
 						@:mergeBlock $b{a};
-						@:mergeBlock $e{li.action}
+						@:mergeBlock $e{li.action};
 					}
 				} else {
 					macro @:pos(li.action.pos) @:mergeBlock {
 						@:mergeBlock $b{a};
 						if ($e{li.guard}) {
 							$reduceEp;
-							@:mergeBlock $e{li.action}
+							@:mergeBlock $e{li.action};
 						} else {
 							var _1 = @:privateAccess s.offset( -1).state;
 							@:privateAccess s.rollback( rollL(_1), $v{maxValue} );
@@ -437,6 +448,7 @@ class Parser {
 						}
 					}
 				} // end if else
+
 				++ ti;
 			}
 		}
@@ -460,7 +472,9 @@ class Parser {
 
 	function preProcess(out: Map<String, Field>): Array<Array<Case>> {
 		var lvalue = this.maxValue;
+		var t_lhs = this.ct_ldef.toType();
 		var fields: Array<Field> = Context.getBuildFields();
+		var flazy = new List<{f: Field, fun: Function}>();
 		var ret = [];
 		for (f in fields) {
 			if (f.access.indexOf(AStatic) > -1) {
@@ -472,8 +486,8 @@ class Parser {
 						if (edef != null)
 							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
 						firstCharChecking(f.name, LOWER, f.pos);
-						if ( ct != null && !Context.unify(ct.toType(), this.ct_lhs.toType()) )
-							Context.fatalError("All types of lhs must be uniform.", f.pos);
+						if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), t_lhs) )
+							this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
 						ret.push(cl);
 						this.lhsA.push({
 							name: f.name,
@@ -482,40 +496,59 @@ class Parser {
 							epsilon: false,
 							cases: [],
 							lsubs: [],
+							ctype: ct == null ? this.ct_ldef : ct,
 							pos: f.pos,
 						});
 						continue;
 					case _:
 					}
 				case FFun(fun):
-					var ofstr = Lambda.find(f.meta, m->m.name == ":rule");
-					if (ofstr != null && ofstr.params.length > 0) {
-						var p0 = ofstr.params[0];
-						switch(p0.expr){
-						case EConst(CIdent(s)) | EConst(CString(s)):
-							funMap.set(s, {name: f.name, ct: fun.ret, args: fun.args.length});
-						default:
-							Context.fatalError("UnSupperted value for @:rule: " + p0.toString(), p0.pos);
-						}
-						if (fun.args.length == 2 && fun.args[1].type == null) { // improved for display
-							fun.args[1].type = ct_stream_tok;
-						}
-					} else {
-						for (arg in fun.args) {
-							if (arg.type != null) continue;
-							switch(arg.name) {
-							case "t": arg.type = ct_stream_tok;
-							case "s": arg.type = ct_stream;
-							default:
-							}
-						}
-					}
+					flazy.add({f: f, fun: fun});
 				default:
 				}
 			}
 			if (out.exists(f.name))
 				Context.fatalError("Duplicate field: " + f.name, f.pos);
 			out.set(f.name, f);
+		}
+		// Waiting for "ct_lval" available
+		this.ct_stream = macro :lm.Stream<$ct_lval>;
+		this.ct_stream_tok = macro :lm.Stream.Tok<$ct_lval>;
+
+		for (x in flazy) {
+			var f = x.f;
+			var fun = x.fun;
+			var ofstr = Lambda.find(f.meta, m->m.name == ":rule");
+			if (ofstr != null && ofstr.params.length > 0) {
+				var len = fun.args.length;
+				var t = ofstr.params[0];
+				switch(t.expr){
+				case EConst(CIdent(s)) | EConst(CString(s)):
+					this.funMap.set(s, {name: f.name, ct: fun.ret, args: len});
+				default:
+					Context.fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
+				}
+				switch(len) {
+				case 1:
+					if (fun.args[0].type == null)
+						fun.args[0].type = macro :String;
+				case 2:
+					if (fun.args[0].type == null)
+						fun.args[0].type = macro :lms.ByteData;
+					if (fun.args[1].type == null)
+						fun.args[1].type = ct_stream_tok;
+				default:
+				}
+			}
+			// auto convert the type of args(If not specified)
+			for (arg in fun.args) {
+				if (arg.type != null) continue;
+				switch(arg.name) {
+				case "t": arg.type = ct_stream_tok;
+				case "s": arg.type = ct_stream;
+				default:
+				}
+			}
 		}
 		return ret;
 	}

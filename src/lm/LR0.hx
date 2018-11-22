@@ -575,12 +575,12 @@ class LR0Builder extends lm.Parser {
 			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = new lm.Stream<$ct_lhs>(lex, 0);
+				this.stream = new lm.Stream<$ct_lval>(lex, 0);
 			}
 			@:access(lm.Stream, lm.Tok)
-			static function _entry(stream: $ct_stream, state:Int, exp:Int, until:Bool):$ct_lhs {
+			static function _entry(stream: $ct_stream, state:Int, exp:Int, until:Bool):$ct_lval {
 				var prev = state;
-				var t: lm.Stream.Tok<$ct_lhs> = null;
+				var t: lm.Stream.Tok<$ct_lval> = null;
 				var dx = 0;
 				var keep = stream.pos; // used for _side.
 				while (true) {
@@ -616,7 +616,7 @@ class LR0Builder extends lm.Parser {
 					}
 					dx = 0;         // reset dx after rollback
 					while (true) {
-						var value:$ct_lhs = gotos(q, stream);
+						var value:$ct_lval = gotos(q, stream);
 						t = stream.offset( -1); // reduced token
 						if (t.term == exp && !until) {
 							-- stream.pos;      // discard the last token
@@ -641,10 +641,10 @@ class LR0Builder extends lm.Parser {
 				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
 			@:access(lm.Stream, lm.Tok)
-			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lhs {
+			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lval {
 				var keep = stream.pos;
 				var prev = stream.offset( -1);
-				var t = new lm.Stream.Tok<$ct_lhs>(lv, prev.pmax, prev.pmax);
+				var t = new lm.Stream.Tok<$ct_lval>(lv, prev.pmax, prev.pmax);
 				t.state = state;
 				stream.shift(t);
 				var value = _entry(stream, state, lv, true);
@@ -664,10 +664,10 @@ class LR0Builder extends lm.Parser {
 			access: [AStatic],
 			kind: FFun({
 				args: [{name: "_q", type: macro: Int}, {name: "s", type: ct_stream}],
-				ret: ct_lhs,
+				ret: ct_lval,
 				expr: macro {
 					@:mergeBlock $b{preDefs};
-					var _v = $eSwitch;
+					var _v:$ct_lval = $eSwitch;
 					@:privateAccess s.reduce(lva[_q]);
 					return _v;
 				}
@@ -683,7 +683,7 @@ class LR0Builder extends lm.Parser {
 			access: [APublic, AInline],
 			kind: FFun({
 				args: [],
-				ret: ct_lhs,
+				ret: lhs.ctype,
 				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value}, false)
 			}),
 			pos: lhs.pos,
@@ -697,7 +697,7 @@ class LR0Builder extends lm.Parser {
 				access: [AStatic, AInline],
 				kind: FFun({
 					args: [{name: "s", type: ct_stream}],
-					ret: ct_lhs,
+					ret: lhs.ctype,
 					expr: macro return _side(s, $v{en.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
