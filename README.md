@@ -72,7 +72,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
     }
     ```
 
-	NOTE: if you put tokens together with **different priorities**, you will get a conflict error.
+    NOTE: if you put tokens together with **different priorities**, you will get a conflict error.
 
   - **Terml Reflect**: You can use string literals instead of simple terminators in stream match.
 
@@ -157,7 +157,7 @@ It looks very messy here.
   -------------------------------------------------------------------------------------------------
   |   3   | NULL  | NULL  |       |       |   4   |   4   |   5   |   6   |       |R4,S10 |       |
   -------------------------------------------------------------------------------------------------
-  |   4   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       | R1,S8 |
+  |   4   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |   8   |
   -------------------------------------------------------------------------------------------------
   |   5   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |R2,S12 |
   -------------------------------------------------------------------------------------------------
@@ -291,7 +291,7 @@ haxe -dce full -D analyzer-optimize -D nodejs -lib lex -main Demo -js demo.js
 (function () { "use strict";
 var Demo = function() { };
 Demo.main = function() {
-    console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 - 2 * (3 + 4) + 5 * 6")).stream,0,9) == 17);
+    console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 - 2 * (3 + 4) + 5 * 6")).stream,0,9,false) == 17);
 };
 var lm_Lexer = function() { };
 var Lexer = function(s) {
@@ -376,7 +376,7 @@ Lexer.prototype = {
 var Parser = function(lex) {
     this.stream = new lm_Stream(lex,0);
 };
-Parser._entry = function(stream,state,exp) {
+Parser._entry = function(stream,state,exp,until) {
     var prev = state;
     var t = null;
     var dx = 0;
@@ -401,7 +401,14 @@ Parser._entry = function(stream,state,exp) {
         } else {
             q = Parser.raw.charCodeAt(state + 144);
             if(q < 7) {
-                stream.rollback(dx + Parser.raw.charCodeAt(state + 160),9);
+                var dy = dx + Parser.raw.charCodeAt(state + 160);
+                t = stream.cached[stream.pos + (-1 - dy)];
+                if(Parser.raw.charCodeAt(16 * t.state + (Parser.lva[q] >> 8)) == 255) {
+                    stream.pos -= dx;
+                    until = false;
+                    break;
+                }
+                stream.rollback(dy,9);
             } else {
                 break;
             }
@@ -410,7 +417,7 @@ Parser._entry = function(stream,state,exp) {
         while(true) {
             var value = Parser.cases(q,stream);
             t = stream.cached[stream.pos + -1];
-            if(t.term == exp) {
+            if(t.term == exp && !until) {
                 --stream.pos;
                 stream.junk(1);
                 return value;
@@ -422,19 +429,19 @@ Parser._entry = function(stream,state,exp) {
                 break;
             }
             if(prev == 255) {
-                if(exp == -1) {
+                if(until && exp == t.term) {
                     return value;
                 }
-                throw new Error("Unexpected \"" + stream.lex.getString(t.pmin,t.pmax - t.pmin) + "\"" + stream.errpos(t.pmin));
+                throw stream.error("Unexpected \"" + stream.lex.getString(t.pmin,t.pmax - t.pmin) + "\"",t);
             }
             q = Parser.raw.charCodeAt(191 - prev);
         }
     }
-    if(exp == -1 && stream.pos - dx > keep) {
+    if(until && stream.pos - dx == keep + 1 && exp == stream.cached[keep].term) {
         return stream.cached[keep].val;
     }
     t = stream.cached[stream.pos + -1];
-    throw new Error("Unexpected \"" + (t.term != 0 ? stream.lex.getString(t.pmin,t.pmax - t.pmin) : "Eof") + "\"" + stream.errpos(t.pmin));
+    throw stream.error("Unexpected \"" + (t.term != 0 ? stream.lex.getString(t.pmin,t.pmax - t.pmin) : "Eof") + "\"",t);
 };
 Parser.cases = function(_q,s) {
     var _v;
@@ -520,6 +527,9 @@ lm_Stream.prototype = {
     ,stri: function(dx) {
         var t = this.cached[this.pos + dx];
         return this.lex.getString(t.pmin,t.pmax - t.pmin);
+    }
+    ,error: function(msg,t) {
+        return new Error(msg + this.errpos(t.pmin));
     }
     ,next: function() {
         if(this.right == this.pos) {

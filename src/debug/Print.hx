@@ -203,7 +203,7 @@ class Print {
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != INVALID) {
-					if (shift < lrb.segs) {
+					if (shift < lrb.segsEx) {
 						add("" + shift);
 					} else {
 						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
