@@ -7,7 +7,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
 * [x] Lexer: **Stable** Does not support unicode(The maximum char is 254)
 
-* [x] Parser: **UnStable WIP** `rollback-able LR(0)`
+* [x] Parser: *rollback-able LR(0)* **UnStable WIP**
 
   - **Operator Precedence**. **Only for non-terminal**. `Need more tests`
 
@@ -86,7 +86,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
   - **Allow different LHS types**: When the LHS type cannot be unified then the `Dynamic` is used as the type of `Stream.Tok`
 
     ```haxe
-    class Parser implements lm.LR0<Lexer, Int> {  // The second parameter "Int" indicates that all LHS types default to "Int"
+    class Parser implements lm.LR0<Lexer, Int> {  // "Int" indicates that all LHS types default to "Int"
         static var main = switch(s) {
             case [e = expr, Eof]: Std.int(e);
         }
@@ -96,7 +96,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
         }
 
         // extract CFloat(f) => float
-        @:rule(CFloat) static inline function float_of_string(s: String):Int return Std.parseFloat(s);
+        @:rule(CFloat) static inline function float_of_string(s: String):Float return Std.parseFloat(s);
     }
     ```
 
