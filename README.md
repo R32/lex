@@ -9,9 +9,9 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
 * [x] Parser: **UnStable WIP** `rollback-able LR(0)`
 
-  - [x] Operator Precedence. **Only for non-terminal**. `Need more tests`
+  - **Operator Precedence**. **Only for non-terminal**. `Need more tests`
 
-  - [x] Guard, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
+  - **Guard**, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
   - **`@:side`**: Reference [Usage](#usage) example:
 
@@ -74,8 +74,37 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
 	NOTE: if you put tokens together with **different priorities**, you will get a conflict error.
 
+  - **Terml Reflect**: You can use string literals instead of simple terminators in stream match.
+
+    ```haxe
+    switch(s) {
+    case [e1=expr, t=["+", "-"], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+    case ["(", e = expr, ")"]: e;
+    }
+    ```
+
+  - **Allow different LHS types**: When the LHS type cannot be unified then the `Dynamic` is used as the type of `Stream.Tok`
+
+    ```haxe
+    class Parser implements lm.LR0<Lexer, Int> {  // The second parameter "Int" indicates that all LHS types default to "Int"
+        static var main = switch(s) {
+            case [e = expr, Eof]: Std.int(e);
+        }
+        static var expr:Float = switch(s) {       // Explicit declaration "expr" type is "Float"
+            case [e1 = expr, "+", e2 = expr]: e1 + e2;
+            case [CFloat(f)]: f;
+        }
+
+        // extract CFloat(f) => float
+        @:rule(CFloat) static inline function float_of_string(s: String):Int return Std.parseFloat(s);
+    }
+    ```
+
 ### CHANGES
 
+* `x.x.x`:
+  - Added `Terml Reflect`
+  - Allow different LHS types
 * `0.5.0`: Added `@:side`(ReImplement LR0 Parser)
 * `0.4.0`: ~~Independent LHS~~
 * `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
