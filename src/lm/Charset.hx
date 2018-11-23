@@ -34,6 +34,8 @@ class CSet {
 
 	static public inline function single(c: Int):Charset return [new Char(c, c)];
 
+	static public inline function isSingle(cs: Charset):Bool return cs.length == 1 && cs[0].min == cs[0].max;
+
 	static public function complement(c: Charset, ?all: Charset): Charset {
 		var i = 0, len = c.length;
 		if (all == null)

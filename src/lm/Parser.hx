@@ -22,7 +22,7 @@ typedef Symbol = { // from switch cases
 	t: Bool,
 	name: String,  // ident name
 	cset: Charset,
-	ex: String,    // extract name. CStr(s)| then ex = "s" for terminal   | e = expr then ex = "e" for non-terminal
+	ex: String,    // extract name. if "CStr(s)" then ex = "s" for terml, if "e = expr" then ex = "e" for non-terml
 	pos: Position,
 }
 
@@ -206,8 +206,7 @@ class Parser {
 			for (t in termls)
 				if (StringTools.startsWith(t.name, name))
 					cset = CSet.union(cset, t.cset);
-			// to prevent abuse
-			if (cset.length > 1 || (cset.length > 0 && (cset[0].max > cset[0].min)))
+			if ( !CSet.isSingle(cset) ) // to prevent abuse
 				return cset;
 		}
 		return null;
@@ -398,8 +397,10 @@ class Parser {
 					// transform expr
 					var name = s.ex;  // variable name
 					if (s.t) {
-						var ofstr = funMap.get(s.name); //
+						var ofstr = funMap.get(s.name);
 						if (ofstr == null) {
+							if ( CSet.isSingle(s.cset) ) // If you forget to add an extract function
+								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
 							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
