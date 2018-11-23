@@ -270,7 +270,7 @@ class Parser {
 							firstCharChecking(i, LOWER, e.pos);            // all termls but no Eof
 							g.syms.push( {t: true, name: "_",  cset: termlsC_All,       ex: i,    pos: e.pos} );
 
-						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n)
+						case ECall(macro $i{i}, [macro $i{v}]):            // e.g: CInt(n) or Op(op)
 							firstCharChecking(i, UPPER, e.pos);
 							firstCharChecking(v, LOWER, e.pos);
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: v,    pos: e.pos} );
@@ -399,7 +399,7 @@ class Parser {
 					if (s.t) {
 						var ofstr = funMap.get(s.name);
 						if (ofstr == null) {
-							if ( CSet.isSingle(s.cset) ) // If you forget to add an extract function
+							if ( s.name != "_" && CSet.isSingle(s.cset) ) // If you forget to add an extract function
 								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
 							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
