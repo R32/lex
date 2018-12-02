@@ -29,6 +29,16 @@ class LexBuilder {
 			}
 		return ret;
 	}
+
+	static function getTokens(t: Type, map: Map<String, Bool>) {
+		switch (t) {
+		case TAbstract(_.get() => ab, _):
+			for (f in ab.impl.get().statics.get())
+				map.set(f.name, true);
+		case _:
+		}
+	}
+
 	static public function build():Array<Field> {
 		if (lmap == null)
 			lmap = new Map();
@@ -38,10 +48,12 @@ class LexBuilder {
 		var meta = getMeta(cls.meta.extract(":rule"));
 		if (meta.eof == null)
 			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+		var tmap = new Map();
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
-				if (Context.unify(t, Context.typeof(meta.eof)) == false)
+				getTokens(t, tmap);
+				if ( !tmap.exists(meta.eof.toString()))
 					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
 				lmap.set(Utils.getClsFullName(cls), p2t); // store
 				break;
@@ -94,6 +106,8 @@ class LexBuilder {
 				switch(r.action.expr) {
 				case EConst(CIdent(v)):
 					var k = unescape(r.es, idmap);
+					if ( !tmap.exists(v) )
+						Context.fatalError("Unknown identifier: " + v, r.action.pos);
 					p2t.set(k, v);
 				case _:
 				}
