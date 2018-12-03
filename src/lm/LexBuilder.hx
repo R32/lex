@@ -30,12 +30,15 @@ class LexBuilder {
 		return ret;
 	}
 
-	static function getTokens(t: Type, map: Map<String, Bool>) {
-		switch (t) {
+	// only for enum abstract XXX(Int)
+	static function absTokens(t: Type, map: Map<String, Bool>) {
+		return switch (t) {
 		case TAbstract(_.get() => ab, _):
 			for (f in ab.impl.get().statics.get())
 				map.set(f.name, true);
+			true;
 		case _:
+			false;
 		}
 	}
 
@@ -49,12 +52,13 @@ class LexBuilder {
 		if (meta.eof == null)
 			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
 		var tmap = new Map();
+		var abst = false;
 		for (it in cls.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
-				getTokens(t, tmap);
-				if ( !tmap.exists(meta.eof.toString()))
+				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+				abst = absTokens(t, tmap);
 				lmap.set(Utils.getClsFullName(cls), p2t); // store
 				break;
 			}
@@ -102,14 +106,16 @@ class LexBuilder {
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
-				// if "action" is just a simple Token then store it for "reflect"
-				switch(r.action.expr) {
-				case EConst(CIdent(v)):
-					var k = unescape(r.es, idmap);
-					if ( !tmap.exists(v) )
-						Context.fatalError("Unknown identifier: " + v, r.action.pos);
-					p2t.set(k, v);
-				case _:
+				if (abst) {
+					// if "action" is just a simple Token then store it for "reflect"
+					switch(r.action.expr) {
+					case EConst(CIdent(v)):
+						var k = unescape(r.es, idmap);
+						if ( !tmap.exists(v) )
+							Context.fatalError("Unknown identifier: " + v, r.action.pos);
+						p2t.set(k, v);
+					case _:
+					}
 				}
 				// String -> Pattern
 				try {
