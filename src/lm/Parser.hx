@@ -30,6 +30,7 @@ typedef SymbolSet = {
 	action: Expr,
 	guard: Null<Expr>,
 	syms: Array<Symbol>,
+	prec: Null<OpRHS>,
 	pos: Position, // case pos
 }
 
@@ -44,7 +45,23 @@ typedef Lhs = {    // one switch == one Lhs
 	pos: Position,
 }
 
-typedef OpAssoc = Array<{left: Bool, prio: Int, value: Int}>
+enum OpAssocType {
+	Left;
+	Right;
+	NonAssoc;
+}
+
+typedef OpAssoc = {
+	type: OpAssocType,
+	prio: Int,
+	tval: Int,   // terml value, if the name is no exists then -1
+}
+
+typedef OpRHS = {
+	type: OpAssocType,
+	prio: Int,
+	lval: Int,   // last "non-terml" of a case
+}
 
 /**
  parser datas
@@ -57,7 +74,6 @@ class Parser {
 	var maxValue: Int;           // if value >= maxValue then it must be a non-terminal
 	var lhsA: Array<Lhs>;
 	var sEof: String;            // by @:rule from Lexer
-	var cmax: Int;               // char max. default is 255. by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_terms: ComplexType;   // the ctype of tokens
 	var ct_ldef: ComplexType;    // the default ctype of LHS(if not specified)
@@ -65,14 +81,16 @@ class Parser {
 	var ct_stream: ComplexType;  // :lm.Stream<ct_lval>
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
-	var assoc: OpAssoc;
-	var n2Lhs: haxe.ds.Vector<Int>;  // NRule => (lvalue << 8) | syms.length. (for reduction)
-	var p2t: Map<String, String>;    // PatternString => TokenString for reflect
+	var opIMap: haxe.ds.Vector<OpAssoc>; //
+	var opSMap: Map<String, OpAssoc>;    // e.g: %prec UMINUS
+	var n2Lhs: haxe.ds.Vector<Int>;      // NRule => (lvalue << 8) | syms.length. (for reduction)
+	var p2t: Map<String, String>;        // PatternString => TokenString for reflect
 
 	public inline function isEmpty() return this.lhsA.length == 0;
 	public inline function isNonTerm(v) return v >= this.maxValue;
 	public inline function isTerm(v) return v < this.maxValue;
-	public inline function lhsIndex(l:Lhs):Int return l.value - maxValue;
+	public inline function index(l:Lhs):Int return l.value - this.maxValue;
+	public inline function width():Int return this.maxValue + this.lhsA.length;
 
 	public function new(s_it: String, rest: Map<String, Field>) {
 		var cls = Context.getLocalClass().get();
@@ -89,10 +107,6 @@ class Parser {
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
 								Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
 							this.sEof = eof.toString();
-
-							var c: Null<Int> = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).cmax;
-							this.cmax = c == null ? 255 : c;
-
 							p2t = LexBuilder.lmap.get(Utils.getClsFullName(lex));
 							break;
 						}
@@ -124,44 +138,56 @@ class Parser {
 	}
 
 	function readPrecedence(cls:ClassType) {
-		function extract(a: Array<ObjectField>, assoc: OpAssoc) {
-			var dup = new haxe.ds.Vector<Bool>(this.maxValue);
+		function extract(a: Array<ObjectField>, vec: haxe.ds.Vector<OpAssoc>, map:Map<String, OpAssoc>) {
+			var R_UPPER:EReg = ~/^[A-Z][A-Z0-9_]*$/;
 			for (i in 0...a.length) {
 				var li = a[i].expr;
-				var left = a[i].field == "left";
-				if (!left && a[i].field != "right")
-					continue; // skip
+				var stype = a[i].field.toLowerCase();
+				var type = switch( stype ){
+				case "left": Left;
+				case "right": Right;
+				case "nonassoc": NonAssoc;
+				case _: Context.fatalError("UnSupported type of op assoc: " + stype, li.pos);
+				}
 				switch (li.expr) {
 				case EArrayDecl(a):
 					for (e in a) {
-						var term:Udt = switch (e.expr) {
-						case EConst(CIdent(i)):
-							this.udtMap.get(i);
+						var name = switch (e.expr) {
+						case EConst(CIdent(i)): i;
 						case EConst(CString(p)):
-							var t = this.p2t.get(p); // reflect
-							t != null ? this.udtMap.get(t) : null;
-						case _:
-							null;
+							var i = this.p2t.get(p); // reflect
+							if (i == null)
+								Context.fatalError('No reflect for "' + p + '"', e.pos);
+							i;
+						case _: "";
 						}
-						if (term == null || term.t == false)
-							Context.fatalError("UnSupported Token: " + e.toString(), e.pos);
-						if ( dup.get(term.value) )
-							Context.fatalError("Duplicate Token: " + term.name, e.pos);
-						dup.set(term.value, true);
-						assoc.push( {left: left, prio: i, value: term.value} );
+						if ( map.exists(name) )
+							Context.fatalError("Duplicate Token: " + name, e.pos);
+						var term = udtMap.get(name);
+						if (term != null) {
+							if (term.t == false)
+								Context.fatalError("UnSupported Token: " + name, e.pos);
+						} else if ( !R_UPPER.match(name) ) {
+							Context.fatalError("Only accept '/[A-Z][A-Z0-9_]*/' as placeholder: " + name, e.pos);
+						}
+						var op = {type: type, prio: i, tval: term != null ? term.value : -1};
+						map.set(name, op);
+						if (op.tval != -1)
+							vec.set(op.tval, op);
 					}
 				default:
-					Context.fatalError("UnSupported Type",li.pos);
+					Context.fatalError("UnSupported Type", li.pos);
 				}
 			}
 		}
-		assoc = [];
+		this.opIMap = new haxe.ds.Vector(this.maxValue);
+		this.opSMap = new Map();
 		var rule = cls.meta.extract(":rule");
 		if (rule.length > 0) {
 			var obj = rule[0].params[0];
 			switch (obj.expr) {
 			case EObjectDecl(a):
-				extract(a, assoc);
+				extract(a, opIMap, opSMap);
 			default:
 			}
 		}
@@ -176,9 +202,8 @@ class Parser {
 					switch(meta.params[0].expr) {
 					case ECast({expr: EConst(CInt(i))}, _):
 						var n = Std.parseInt(i);
-						if (n < 0 || n > 99) // TODO: limited token value
-							Context.fatalError("Value should be [0-99]", field.pos);
-						if (n > maxValue) maxValue = n;
+						if (n >= maxValue)
+							maxValue = n + 1;
 						firstCharChecking(field.name, UPPER, field.pos);
 						var t = {t: true, name: field.name, value: n, cset: CSet.single(n), pos: field.pos};
 						termls.push(t);
@@ -192,7 +217,6 @@ class Parser {
 		case _:
 		}
 		if (udtMap.get(this.sEof) == null) throw "Invalid EOF value: " + this.sEof; //
-		++ maxValue;
 	}
 
 	function getTermlCSet(name: String) {
@@ -245,14 +269,49 @@ class Parser {
 			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
+		function opVerify(sym: Symbol):Null<OpRHS> {
+			var prio = -1;
+			var type = Left;
+			var got = false;
+			for (c in sym.cset) {
+				for (i in c.min...c.max + 1) {
+					var op = this.opIMap.get(i);
+					if (op == null) {
+						if (prio != -1)
+							Context.fatalError("Mixed non-operator", sym.pos);
+					} else {
+						if (!got) {
+							prio = op.prio;
+							type = op.type;
+						} else {
+							if (prio == -1)
+								Context.fatalError("Mixed non-operator", sym.pos);
+							else if (prio != op.prio)
+								Context.fatalError("Different priority", sym.pos);
+						}
+					}
+					got = true;
+				}
+			}
+			return prio == -1 ? null : {type: type, prio: prio, lval: -1};
+		}
 		for (lhs in this.lhsA) {
-			for (c in cases[lhs.value - this.maxValue]) {
+			for (c in cases[ index(lhs) ]) {
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
-						Context.fatalError('This case is unused', c.values[0].pos);
-					var g: SymbolSet = {action: c.expr, guard: c.guard, syms: [], pos: pos};
-					for (e in el) {
+						Context.fatalError('This case is unused', pos);
+					var g: SymbolSet = {action: c.expr, guard: c.guard, syms: [], prec: null, pos: pos};
+					var len = el.length;
+					if (len == 0) {
+						setEpsilon(lhs, pos);
+						lhs.cases.push(g);
+						continue;
+					}
+					var prec:Null<OpRHS> = null;
+					var ei = 0;
+					var e = el[0];
+					while (true) {
 						switch (e.expr) {
 						case EConst(CIdent(i)):
 							firstCharChecking(i, UPPER, e.pos);            // e.g: CInt
@@ -301,17 +360,36 @@ class Parser {
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
-
+						case EMeta({name: ":prec", params: [{expr: EConst(CIdent(i)), pos: p}]}, e2): // e.g: @:prec(UMINUS)
+							var op = this.opSMap.get(i);
+							if (op == null)
+								Context.fatalError("Undefined :" + i, p);
+							prec = {type: op.type, prio: op.prio, lval: -1};
+							e = e2;
+							continue;
 						case _:
 							Context.fatalError("Unsupported: " + e.toString(), e.pos);
 						}
+						if (++ei >= len) break;
+						e = el[ei];
 					}
-					if (g.syms.length == 0)
-						setEpsilon(lhs, pos);
+					// op prec
+					if (len >= 2) {
+						var x1:Symbol = g.syms[len - 1];
+						var x2:Symbol = g.syms[len - 2];
+						if (x2.t && x1.t == false) { // case [..., Terml, NON-Terml]:
+							if (prec == null)
+								prec = opVerify(x2);
+							if (prec != null) {
+								prec.lval = x1.cset[0].min;
+								g.prec = prec;
+							}
+						}
+					}
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({action: c.expr, guard: null, syms: [], pos: pos});
+					lhs.cases.push({action: c.expr, guard: null, syms: [], prec: null, pos: pos});
 				case [e]:
 					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
@@ -511,6 +589,9 @@ class Parser {
 				Context.fatalError("Duplicate field: " + f.name, f.pos);
 			out.set(f.name, f);
 		}
+
+		if (lvalue > 255) throw "Too Many Termls/NoN-Termls"; // TODO: or force the invalid value up to 16bit??
+
 		// Waiting for "ct_lval" available
 		this.ct_stream = macro :lm.Stream<$ct_lval>;
 		this.ct_stream_tok = macro :lm.Stream.Tok<$ct_lval>;

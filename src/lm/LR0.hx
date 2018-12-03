@@ -8,16 +8,6 @@ import haxe.macro.Type;
 import haxe.macro.Expr;
 import haxe.macro.Context;
 
-private typedef OpAssocExt = {
-	var lvl: Int;    // which state is op value found
-	var nxt: Int;    // in lvl state, when hit (a op value) then goto nxt.
-	var hit: Int;    // in nxt state, a hit value
-	var fid: Int;    // in nxt state, when hit (a hit value) then goto final state.
-	var prio: Int;   // op precedence. The higher the value, the higher the priority
-	var value: Int;  // op value
-	var left: Bool;  // is left assoc?
-}
-
 @:access(lm.LexEngine)
 class LR0Builder extends lm.Parser {
 
@@ -28,7 +18,6 @@ class LR0Builder extends lm.Parser {
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
-	var states: Array<State>;
 	var per: Int;
 	var perRB: Int;
 	var table: Table;
@@ -45,7 +34,7 @@ class LR0Builder extends lm.Parser {
 	public inline function posRB() return this.segsEx * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 	inline function isBit16() return this.invalid == U16MAX;
-	inline function isFinal(id) return id < this.nrules;
+	inline function isFinal(n: Node) return n.id < this.nrules;
 
 	function new(s_it, rest) {
 		super(s_it, rest);
@@ -56,10 +45,20 @@ class LR0Builder extends lm.Parser {
 		this.entrys = [];
 		this.nfas = new haxe.ds.Vector(lhsA.length);
 		this.used = new haxe.ds.Vector(lhsA.length);
-		this.final_counter = U16MAX - 1; // compress it later.
-		this.per = (this.maxValue + this.lhsA.length | 15) + 1;
+		this.final_counter = U16MAX - 1; // will compress it later.
+		this.per = (this.width() - 1 | 15 ) + 1;
 		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
 		this.uid = nrules;  // so all the finalsID must be less then nrules.
+	}
+
+	function dump(file:String) {
+		var f = sys.io.File.write(file);
+		f.writeString("\nProduction:\n");
+		f.writeString(debug.Print.production(this));
+		f.writeString(debug.Print.lr0Table(this));
+		f.writeString("\n\nRAW:\n");
+		this.write(f, true);
+		f.close();
 	}
 
 	function make() {
@@ -112,21 +111,13 @@ class LR0Builder extends lm.Parser {
 			if (s.id > segs) s.id -= diff;
 		}
 
-		this.states = Lambda.array(lstates);
-		this.states.sort(State.onSort);
 		this.doPrecedence();
 
 		// DFA -> Tables
 		this.makeTable();
 		this.rollback();
 		#if lex_lr0table
-		var f = sys.io.File.write("lr0-table.txt");
-		f.writeString("\nProduction:\n");
-		f.writeString(debug.Print.production(this));
-		f.writeString(debug.Print.lr0Table(this));
-		f.writeString("\n\nRAW:\n");
-		this.write(f, true);
-		f.close();
+		this.dump("lr0-table.txt");
 		#end
 		this.checking();
 		return this.generate();
@@ -162,7 +153,7 @@ class LR0Builder extends lm.Parser {
 		for (n in nodes) {
 			for (nc in n.trans) {
 				for (c in nc.chars) {
-					var atLast = isFinal(nc.n.id);
+					var atLast = isFinal(nc.n);
 					var self = c.min;
 					if ( isNonTerm(self) ) {
 						var i = self - maxValue;
@@ -219,7 +210,7 @@ class LR0Builder extends lm.Parser {
 
 		var f = -1;
 		for (n in nodes) {
-			if ( isFinal(n.id) ) {
+			if ( isFinal(n) ) {
 				f = n.id;
 				break;
 			}
@@ -308,51 +299,19 @@ class LR0Builder extends lm.Parser {
 	}
 
 	function doPrecedence() {
-		if (assoc.length == 0) return;
-		inline function segStart(i) return i * this.per;
-		var INVALID = this.invalid;
-		var lvlMap = new Map<Int, Array<OpAssocExt>>(); // lvl => []
-		var fidMap = new Map<Int, Array<OpAssocExt>>(); // fid => []
-		function parse(tmp: Table, begin:Int, max:Int) {
-			for (i in begin...max) {
-				var start = segStart(i);
-				for (op in assoc) {
-					var nxt = tmp.get(start + op.value);
-					if (nxt >= this.segs) continue;
-					var fi = segStart(nxt);
-					for (p in (fi + maxValue)...(fi + maxValue + lhsA.length)) { // only non-terminal
-						var fid = tmp.get(p);
-						if (fid == INVALID || fid < this.segs) continue;
-						// now check which stage can jump to "i"
-						var hit = p - fi;
-						for (j in begin...max) {
-							if (tmp.get(segStart(j) + hit) == i) {
-								var col = lvlMap.get(i);
-								if (col == null) {
-									col = [];
-									lvlMap.set(i, col);
-								}
-								var ex = fidMap.get(fid);
-								if (ex == null) {
-									ex = [];
-									fidMap.set(fid, ex);
-								}
-								var x = {lvl: i, hit: hit, nxt: nxt, fid: fid, prio: op.prio, value: op.value, left: op.left};
-								col.push(x);
-								ex.push(x);
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-		function swap(dst, src) {
+		if (Lambda.empty( this.opSMap ))
+			return;
+		var states = Lambda.array(lstates);
+		states.sort(State.onSort);
+
+		inline function indexByLval(lv) return lv - this.maxValue;
+		function swap(dst, src, begin, max) {
 			if (dst == src) return;
-			var x = this.states[dst]; // x.id == dst
-			var y = this.states[src]; // y.id == src;
+			var x = states[dst]; // x.id == dst
+			var y = states[src]; // y.id == src;
 			// swap targets
-			for (s in this.states) {
+			for (si in begin...max) {
+				var s = states[si];
 				for (i in 0...s.targets.length) {
 					var t = s.targets[i];
 					if (t == dst) {
@@ -365,117 +324,111 @@ class LR0Builder extends lm.Parser {
 			// swap states
 			x.id = src;
 			y.id = dst;
-			this.states[dst] = y;
-			this.states[src] = x;
-			// swap opAssocEx.
-			var a = fidMap.get(dst);
-			var b = fidMap.get(src);
-			if (a != null) {
-				for (op in a)
-					op.fid = src;
-				fidMap.set(src, a);
-			} else {
-				fidMap.remove(src);
+			states[dst] = y;
+			states[src] = x;
+		}
+
+		var moves:Array<{fid:Int, begin:Int, smax:Int}> = [];
+		for (e in this.entrys) {
+			var fvsets = new haxe.ds.Vector(this.lhsA.length);        // follow_sets of all LHS, (tval => tar)
+			for (i in 0...fvsets.length) {
+				var vec = new haxe.ds.Vector<Int>(this.maxValue);     // no "non-termls" here
+				for (j in 0...this.maxValue)
+					vec[j] = -1;
+				fvsets[i] = vec;
 			}
-			for (op in b)
-				op.fid = dst;
-			fidMap.set(dst, b);
-		}
+			var vrule = new haxe.ds.Vector<Int>(this.lstates.length); // State => "which Rule"
+			for (i in 0...vrule.length) vrule[i] = -1;
 
-		// need a tmp table for analysis
-		var tmp = new Table( segStart(this.segs) );
-		for (i in 0...tmp.length)
-			tmp.set(i, INVALID);
-		for (s in this.states) {
-			if (s.id >= this.segs) continue;
-			@:privateAccess LexEngine.makeTrans(tmp, segStart(s.id), s.trans, s.targets);
-		}
-		// parse
-		for (e in this.entrys)
-			parse(tmp, e.begin, e.begin + e.width);
-
-		// If the same ".fid" has an inconsistent ".prio" then raise a conflict error.
-		for (a in fidMap) {
-			var prio = a[0].prio;
-			for (i in 1...a.length)
-				if (a[i].prio != prio)
-					throw "Operator Precedence Conflict";
-		}
-
-		// If all of the left assoc op has same ".prio" in same ".lvl" then remove it
-		for (lvl in lvlMap.keys()) {
-			var a = lvlMap.get(lvl);
-			var prio = a[0].prio;
-			var find = false;
-			for (i in 1...a.length)
-				if (prio != a[i].prio || a[i].left == false) {
-					find = true;
-					break;
-				}
-			if (!find) lvlMap.remove(lvl);
-		}
-
-		// highest(maximum) precedence in lvl
-		var larMap = new haxe.ds.Vector<{left:Int, right: Int}>(this.perRB);
-		for (a in lvlMap) {
-			var lar = {left: -1, right: -1};
-			larMap.set(a[0].lvl, lar);
-			for (op in a) {
-				if (op.left) {
-					if (op.prio > lar.left) lar.left = op.prio;
-				} else {
-					if (op.prio > lar.right) lar.right = op.prio;
-				}
-			}
-		}
-		// (for reduce the size of the table)
-		var dst = this.segs;
-		var skiped = 0;
-		var count = 0;
-		var dupMap = new haxe.ds.Vector<Bool>(this.perRB);
-		for (a in lvlMap) {
-			var lar = larMap.get(a[0].lvl);
-			for (op in a) {
-				if (dupMap.get(op.fid)) continue;
-				count ++;
-				if (op.left && lar.left > lar.right && op.prio == lar.left) {
-					++ skiped;
-				} else {
-					swap(dst++, op.fid);
-				}
-				dupMap.set(op.fid, true);
-			}
-		}
-		//
-		this.segsEx = this.segs + count - skiped;
-
-		// write to s.targets and s.trans
-		for (fid in this.segs...this.segsEx) {
-			var s = this.states[fid];
-			var own = fidMap.get(fid)[0];
-			var tar = [];  // targets
-			var cset = []; // trans
-			var i = 0;
-			var a = lvlMap.get(own.lvl);
-			if (a.length > this.cmax) // the max char
-				throw "Something is Wrong!";
-			for (op in a) {
-				if (own.left) {
-					if (op.prio > own.prio) {
-						tar[i] = op.nxt;
-						cset[i] = Char.c3(op.value, op.value, i);
-						++ i;
-					}
-				} else {
-					if (op.prio >= own.prio) {
-						tar[i] = op.nxt;
-						cset[i] = Char.c3(op.value, op.value, i);
-						++ i;
+			for (i in e.begin...e.begin + e.width) {
+				var s = states[i];
+				if (s.finalID != -1)
+					vrule[i] = s.finalID;
+				for (j in 0...s.trans.length) {
+					var nxt = s.targets[j];
+					if (nxt >= this.segs)
+						vrule[nxt] = states[nxt].finalID;
+					var c = s.trans[j];
+					if ( this.isTerm(c.min) || nxt >= this.segs)
+						continue;
+					var ns = states[nxt];
+					for (k in 0...ns.trans.length) {
+						var nc = ns.trans[k];
+						for (n in nc.min...nc.max + 1) {
+							if (this.isTerm(n) && this.opIMap.get(n) != null) {
+								var tar = ns.targets[k];
+								var vec = fvsets[ indexByLval(c.min) ]; // c is a "non-terml"
+								if (vec[n] != -1 && vec[n] != tar)
+									throw "Operator precedence confict";
+								vec[n] = tar;
+							}
+						}
 					}
 				}
 			}
-			s.trans = cset;
-			s.targets = tar;
+			// Vector => List
+			var flsets = new haxe.ds.Vector(this.lhsA.length);
+			for (i in 0...flsets.length) {
+				var li = new List<OpAssoc>();
+				var vec = fvsets[i];
+				for (j in 0...vec.length) {
+					if (vec[j] == -1) continue;
+					li.add( this.opIMap.get(j) );
+				}
+				flsets[i] = li;
+			}
+			//
+			for (fid in 0...vrule.length) {
+				if (vrule[fid] == -1) continue;
+				var line = this.ruleToCase( vrule[fid] );
+				var prec = line.prec;
+				if (prec == null || prec.type == NonAssoc) continue;
+				var rights = flsets.get( indexByLval(prec.lval) );
+				// left vs right
+				var col = new List<{tar:Int, tval: Int}>();
+				for (r in rights) {
+					if (prec.type == Left && prec.prio < r.prio
+					|| prec.type == Right && prec.prio <= r.prio) {
+						col.add({tval: r.tval, tar: fvsets[indexByLval(prec.lval)][r.tval]});
+					}
+				}
+				if (col.length == 0) continue;
+				if (fid >= this.segs)
+					moves.push({fid: fid, begin: e.begin, smax: e.begin + e.width});
+				// write
+				var tar = states[fid].targets;
+				var cset = states[fid].trans;
+				for (x in col) {
+					var c = Char.c3(x.tval, x.tval, cset.length);
+					if (fid < this.segs && CSet.inter(cset, [c]).length > 0)
+						Context.fatalError("Operator precedence confict", line.pos);
+					cset.push(c);
+					tar.push(x.tar);
+				}
+			}
+		}
+		moves.sort((a, b) -> a.fid - b.fid);
+		// move to the front
+		var li = new List<{dst:Int, src:Int}>();
+		for (m in moves) {
+			var fnew = this.segsEx++;
+			li.add({dst: fnew, src: m.fid});
+			swap(fnew, m.fid, m.begin, m.smax);
+		}
+		// swap the rest
+		for (x in li) {
+			if (x.dst == x.src) continue;
+			for (si in this.segs...this.segsEx) {
+				var s = states[si];
+				for (i in 0...s.targets.length) {
+					var t = s.targets[i];
+					if (t == x.dst) {
+						s.targets[i] = x.src;
+					} else if (t == x.src) {
+						s.targets[i] = x.dst;
+					}
+				}
+			}
 		}
 	}
 
@@ -496,7 +449,7 @@ class LR0Builder extends lm.Parser {
 		for (n in 0...this.nrules)
 			if (rules[n] == INVALID) {
 				var lhs = byRule(n);
-				if ( !this.used.get( lhsIndex(lhs) ) ) continue;
+				if ( !this.used.get( index(lhs) ) ) continue;
 				var msg = "Unreachable switch case";
 				if (!lhs.side)
 					msg += ' OR missing @:side on "' + lhs.name + '"';

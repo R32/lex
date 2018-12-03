@@ -39,6 +39,7 @@ private enum abstract Token(Int) to Int {
 @:rule({
 	left: [OpPlus, OpMinus],
 	left: [OpTimes, OpDiv],
+	nonassoc: [UMINUS],
 }) private class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {
@@ -49,7 +50,7 @@ private enum abstract Token(Int) to Int {
 		case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
 		case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
 		case [LParen, e = expr, RParen]: e;
-		case [OpMinus, e = expr]: -e;
+		case [@:prec(UMINUS) OpMinus, e = expr]: -e;
 		case [CInt(n)]: n;
 	}
 

@@ -33,9 +33,9 @@ class LexTest {
 	static var r_int = "-?[1-9][0-9]*";
 	static var tok =  [
 		"[ \t]+" => lex.token(),
-		"+"   => Op(Plus),
-		"-"     => Op(Minus),
-		"*"   => Op(Times),
+		"+" => Op(Plus),
+		"-" => Op(Minus),
+		"*" => Op(Times),
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,

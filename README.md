@@ -9,7 +9,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
 * [x] Parser: *rollback-able LR(0)* **UnStable WIP**
 
-  - **Operator Precedence**. **Only for non-terminal**. `Need more tests`
+  - **Operator Precedence**. Only for non-terminals.
 
   - **Guard**, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
 
@@ -55,7 +55,6 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 
     ```hx
     _t1.pmax - _t1.pmin;
-    _t1.pstr();
     ```
 
   - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
@@ -105,6 +104,7 @@ Build lexer/parser(LR0) state transition tables in macro(compile phase).
 * `x.x.x`:
   - Added `Terml Reflect`
   - Allow different LHS types
+  - Reimplemented Operator Precedence
 * `0.5.0`: Added `@:side`(ReImplement LR0 Parser)
 * `0.4.0`: ~~Independent LHS~~
 * `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
@@ -247,8 +247,9 @@ enum abstract Token(Int) to Int {
 }
 
 @:rule({
-    left: [OpPlus, OpMinus],
-    left: [OpTimes, OpDiv],   // the lower have higher Priority.
+    left: ["+", "-"],         // The parser could auto reflect(str) => Token
+    left: [OpTimes, OpDiv],   // The lower have higher Priority.
+    nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized
 }) class Parser implements lm.LR0<Lexer, Int> {
 
     static var main = switch(s) {
@@ -260,17 +261,17 @@ enum abstract Token(Int) to Int {
         case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
         case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
         case [LParen, e = expr, RParen]: e;
-        case [OpMinus, e = expr]: -e;
+        case [@:prec(UMINUS) OpMinus, e = expr]: -e;   // %prec UMINUS
         case [CInt(n)]: n;
     }
 
-    // for extract n from CInt(n), NOTICE: If you don't define @:rule(CInt) function, then the "n" type is Token.
+    // for extract n from CInt(n)
     @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 
-    // if the @:rule function has 2 params then the type of the second argument is lm.Stream.Tok<AUTO>.
+    // if the @:rule function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
     // Note: This function does not handle escape
     @:rule(CStr) static function unescape(input: lms.ByteData, t):String {
-      return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
+        return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
     }
 }
 ```

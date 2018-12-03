@@ -57,8 +57,9 @@ enum abstract Token(Int) to Int {
 }
 
 @:rule({
-	left: [OpPlus, OpMinus],
-	left: [OpTimes, OpDiv],   // the lower have higher Priority.
+	left: ["+", "-"],         // The parser could auto reflect(str) => Token
+	left: [OpTimes, OpDiv],   // The lower have higher Priority.
+	nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized
 }) class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {
@@ -70,21 +71,16 @@ enum abstract Token(Int) to Int {
 		case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
 		case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
 		case [LParen, e = expr, RParen]: e;
-		case [OpMinus, e = expr]: -e;
+		case [@:prec(UMINUS) OpMinus, e = expr]: -e;   // %prec UMINUS
 		case [CInt(n)]: n;
 	}
 
-	// for extract n from CInt(n), NOTICE: If you don't define @:rule(CInt) function, then the "n" type is Token.
+	// for extract n from CInt(n)
 	@:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 
-	// if the @:rule function has 3 params then the macro will auto pass it the following parameters.
-	// Note: This function does not handle escape
-	@:rule(CStr) static function unescape(input: lms.ByteData, pmin: Int, pmax: Int):String {
-		return input.readString(pmin + 1, pmax - pmin - 2); // trim quotes
-	}
-
 	// if the @:rule function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
-	//@:rule(CStr) static function unescape(input: lms.ByteData, t):String {
-	//	return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
-	//}
+	// Note: This function does not handle escape
+	@:rule(CStr) static function unescape(input: lms.ByteData, t):String {
+		return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
+	}
 }
