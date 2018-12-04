@@ -14,8 +14,8 @@ private enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;
 	var OpPlus;
-	var OpMinus;
 	var OpTimes;
+	var OpMinus;
 	var OpDiv;
 	var LParen;
 	var RParen;

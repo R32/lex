@@ -344,19 +344,17 @@ class LR0Builder extends lm.Parser {
 				var s = states[i];
 				if (s.finalID != -1)
 					vrule[i] = s.finalID;
-				for (j in 0...s.trans.length) {
-					var nxt = s.targets[j];
+				for (c in s.trans) {
+					var nxt = s.targets[c.ext];
 					if (nxt >= this.segs)
 						vrule[nxt] = states[nxt].finalID;
-					var c = s.trans[j];
 					if ( this.isTerm(c.min) || nxt >= this.segs)
 						continue;
 					var ns = states[nxt];
-					for (k in 0...ns.trans.length) {
-						var nc = ns.trans[k];
+					for (nc in ns.trans) {
 						for (n in nc.min...nc.max + 1) {
 							if (this.isTerm(n) && this.opIMap.get(n) != null) {
-								var tar = ns.targets[k];
+								var tar = ns.targets[nc.ext];
 								var vec = fvsets[ indexByLval(c.min) ]; // c is a "non-terml"
 								if (vec[n] != -1 && vec[n] != tar)
 									throw "Operator precedence confict";
@@ -378,6 +376,7 @@ class LR0Builder extends lm.Parser {
 				flsets[i] = li;
 			}
 			//
+
 			for (fid in 0...vrule.length) {
 				if (vrule[fid] == -1) continue;
 				var line = this.ruleToCase( vrule[fid] );
@@ -395,11 +394,11 @@ class LR0Builder extends lm.Parser {
 				if (col.length == 0) continue;
 				if (fid >= this.segs)
 					moves.push({fid: fid, begin: e.begin, smax: e.begin + e.width});
-				// write
+				// write. NOTE: There is no merge for the same target
 				var tar = states[fid].targets;
 				var cset = states[fid].trans;
 				for (x in col) {
-					var c = Char.c3(x.tval, x.tval, cset.length);
+					var c = Char.c3(x.tval, x.tval, tar.length);
 					if (fid < this.segs && CSet.inter(cset, [c]).length > 0)
 						Context.fatalError("Operator precedence confict", line.pos);
 					cset.push(c);
