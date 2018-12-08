@@ -466,7 +466,7 @@ class Parser {
 							a.push( macro var $stok: $ct_stream_tok = @:privateAccess s.offset($v{dx}) );
 					}
 					// checking...
-					if (s.ex == null)
+					if (s.ex == null || s.ex == "_")
 						continue;
 					if (row.exists(s.ex))
 						Context.fatalError("duplicate var: " + s.ex, s.pos);
@@ -479,8 +479,7 @@ class Parser {
 						if (ofstr == null) {
 							if ( s.name != "_" && CSet.isSingle(s.cset) ) // If you forget to add an extract function
 								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
-							if (name != "_")
-								a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
+							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
@@ -492,7 +491,7 @@ class Parser {
 								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
 							}
 						}
-					} else if (name != "_") {
+					} else {
 						var lvalue = s.cset[0].min; // NON-TERML
 						var ct = lhsA[lvalue - maxValue].ctype;
 						a.push( macro @:pos(li.action.pos) var $name = @:privateAccess (s.offset($v{dx}).val: $ct) );
