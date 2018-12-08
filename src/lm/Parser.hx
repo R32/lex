@@ -479,7 +479,8 @@ class Parser {
 						if (ofstr == null) {
 							if ( s.name != "_" && CSet.isSingle(s.cset) ) // If you forget to add an extract function
 								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
-							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
+							if (name != "_")
+								a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
