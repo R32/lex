@@ -208,12 +208,15 @@ class LR0Builder extends lm.Parser {
 		for (i in 0...len)
 			targets[i] = compile(ta[i].ns);
 
-		var f = -1;
-		for (n in nodes) {
-			if ( isFinal(n) ) {
-				f = n.id;
-				break;
-			}
+		var exits = [];
+		for (n in nodes)
+			if ( isFinal(n) )
+				exits.push(n.id);
+		var f = switch (exits.length) {
+		case 0: -1;
+		case 1: exits[0];
+		default: // since LR(0) so the conflicts can not be resolved.
+			Context.fatalError("conflicts: " + exits.join(","), ruleToCase(exits[0]).pos);
 		}
 		lstates.push(new State(id, trans, targets, f));
 		return id;
