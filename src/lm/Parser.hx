@@ -397,6 +397,24 @@ class Parser {
 				}
 			}
 		}
+		// closure(lsubs)
+		var added = true;
+		while (added) {
+			added = false;
+			for (top in lhsA) {
+				var i = 0;
+				var len = top.lsubs.length;
+				while (i < len) {
+					var sub: Lhs = this.lhsA[top.lsubs[i++] - this.maxValue];
+					for (slv in sub.lsubs) {
+						if (top.lsubs.indexOf(slv) == -1) {
+							top.lsubs.push(slv);
+							added = true;
+						}
+					}
+				}
+			}
+		}
 		organize();
 	}
 
