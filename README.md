@@ -1,7 +1,7 @@
 Lex
 ------
 
-Build lexer/parser(LR0) state transition tables in macro(compile phase).
+Build lexer and simple parser(LR0) in macro.
 
 ## status
 
@@ -249,7 +249,7 @@ enum abstract Token(Int) to Int {
 @:rule({
     left: ["+", "-"],         // The parser could auto reflect(str) => Token
     left: [OpTimes, OpDiv],   // The lower have higher Priority.
-    nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized
+    nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
 }) class Parser implements lm.LR0<Lexer, Int> {
 
     static var main = switch(s) {

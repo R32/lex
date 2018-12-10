@@ -408,7 +408,7 @@ enum Pattern {
 
 class NChars {
 	public var chars: Charset;
-	public var n: Node;
+	public var n: Node;  // target, if the chars is matched then goto "n".
 	public function new(cs, n) {
 		this.chars = cs;
 		this.n = n;
@@ -440,7 +440,7 @@ class NAChars {
 }
 class Node {
 	public var id: Int;
-	public var trans: Array<NChars>;
+	public var trans: Array<NChars>;  //  empty or .length == 1
 	public var epsilon: Array<Node>;
 	public function new(id) {
 		this.id = id;

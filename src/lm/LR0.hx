@@ -153,12 +153,11 @@ class LR0Builder extends lm.Parser {
 		for (n in nodes) {
 			for (nc in n.trans) {
 				for (c in nc.chars) {
-					var atLast = isFinal(nc.n);
-					var self = c.min;
-					if ( isNonTerm(self) ) {
+					if ( isNonTerm(c.min) ) {
+						var self = c.min;
 						var i = self - maxValue;
-						if (alt[i]) continue;
-						var ex = null;
+						if (alt[i]) continue; // already added for current "nodes".
+						var atLast = isFinal(nc.n);
 						if (!atLast) {
 							LexEngine.addNodes(nodes, this.nfas[i]);
 						} else {
