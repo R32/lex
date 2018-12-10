@@ -560,8 +560,7 @@ class LR0Builder extends lm.Parser {
 							var dy = dx + rollL(state);
 							t = stream.offset( -1 - dy);
 							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
-								stream.pos -= dx; // pos of Unexpected token
-								until = false;     // force error
+								until = false; // force error
 								break;
 							}
 							stream.rollback(dy, $v{maxValue});
