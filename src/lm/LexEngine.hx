@@ -90,7 +90,7 @@ class LexEngine {
 	public inline function posRB() return this.segs * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 	public inline function isBit16() return this.invalid == U16MAX;
-	inline function isFinal(id) return id < this.nrules;
+	inline function isFinal(n: Node) return n.id < this.nrules;
 	inline function node() return new Node(uid++);
 
 	function initNode(p: Pattern, f: Node) {
@@ -148,7 +148,7 @@ class LexEngine {
 
 		var f = -1;
 		for (n in nodes) {
-			if ( isFinal(n.id) ) {
+			if ( isFinal(n) ) {
 				f = n.id;
 				break;
 			}
