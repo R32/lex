@@ -270,7 +270,7 @@ class LexBuilder {
 				Context.fatalError("Undefined identifier: " + i, e.pos);
 			s;
 		case EBinop(OpAdd, e1, e2):
-			exprString(e1, map) + exprString(e2, map);
+			splitMix(exprString(e1, map), exprString(e2, map));
 		case EParenthesis(e):
 			exprString(e, map);
 		default:
@@ -341,6 +341,48 @@ class LexBuilder {
 		if (p < i)
 			buf.addSub(s, p, i - p);
 		return buf.toString();
+	}
+
+	// ("a", "0")  => "a0"
+	// ("a|b","0") => "a0|b0"
+	// ("a","0|1") => "a0|a1"
+	// ("a|b","0|1") => "a0|a1|b0|b1"
+	static function splitMix(s1:String, s2:String): String {
+		function split(s:String): Array<String> {
+			var i = 0;
+			var left = 0;
+			var len = s.length;
+			var ret = [];
+			// Ignore all "|" at the beginning
+			while (i < len) {
+				var c = StringTools.fastCodeAt(s, i);
+				if (c == "|".code)
+					++ i;
+				else
+					break;
+			}
+			while (i < len) {
+				var c = StringTools.fastCodeAt(s, i++);
+				if (c == "|".code && i < len && StringTools.fastCodeAt(s, i - 2) != "\\".code) {
+					ret.push( s.substr(left, i - left - 1) );
+					left = i;
+				}
+			}
+			if (left == 0) {
+				ret.push(s);
+			} else if (i > left) {
+				ret.push( s.substr(left, i - left) );
+			}
+			return ret;
+		}
+		function mix(a1: Array<String>, a2: Array<String>): Array<String>{
+			var ret = [];
+			for (x in a1)
+				for (y in a2)
+					ret.push(x + y);
+			return ret;
+		}
+		return mix(split(s1), split(s2)).join("|");
 	}
 }
 #else
