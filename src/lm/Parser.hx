@@ -360,7 +360,16 @@ class Parser {
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
-						case EMeta({name: ":prec", params: [{expr: EConst(CIdent(i)), pos: p}]}, e2): // e.g: @:prec(UMINUS)
+						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(UMINUS)
+							var i = switch(c) {
+							case CIdent(i): i;
+							case CString(s):
+								var i = this.p2t.get(s);
+								if (i == null)
+									Context.fatalError("No associated token: " + s, p);
+								i;
+							case _: Context.fatalError("Unsupported: " + c, p);
+							}
 							var op = this.opSMap.get(i);
 							if (op == null)
 								Context.fatalError("Undefined :" + i, p);
@@ -620,12 +629,13 @@ class Parser {
 			var ofstr = Lambda.find(f.meta, m->m.name == ":rule");
 			if (ofstr != null && ofstr.params.length > 0) {
 				var len = fun.args.length;
-				var t = ofstr.params[0];
-				switch(t.expr){
-				case EConst(CIdent(s)) | EConst(CString(s)):
-					this.funMap.set(s, {name: f.name, ct: fun.ret, args: len});
-				default:
-					Context.fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
+				for (t in ofstr.params) {
+					switch(t.expr){
+					case EConst(CIdent(s)) | EConst(CString(s)):
+						this.funMap.set(s, {name: f.name, ct: fun.ret, args: len});
+					default:
+						Context.fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
+					}
 				}
 				switch(len) {
 				case 1:
