@@ -182,17 +182,17 @@ class LexBuilder {
 			inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public inline function getString(p, len):String return input.readString(p, len);
 			public inline function curpos() return new lms.Position(pmin, pmax);
-			public function new(s: lms.ByteData) {
+			public function new(s: lms.ByteData, ?len:Int) {
 				this.input = s;
 				pmin = 0;
 				pmax = 0;
 			}
-			function _token(state: Int) {
-				var i = pmax, len = input.length;
+			function _token(state:Int, right:Int) {
+				var i = pmax;
 				pmin = i;
-				if (i >= len) return $e{meta.eof};
+				if (i >= right) return $e{meta.eof};
 				var prev = state;
-				while (i < len) {
+				while (i < right) {
 					var c = input.readByte(i++);
 				#if lex_charmax
 					if (c > $v{meta.cmax}) c = $v{meta.cmax};
@@ -234,7 +234,7 @@ class LexBuilder {
 				kind: FFun({
 					args: [],
 					ret: null,
-					expr: macro return _token($i{sname})
+					expr: macro return _token($i{sname}, this.input.length)
 				}),
 				pos: pos,
 			});
