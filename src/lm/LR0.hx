@@ -215,7 +215,9 @@ class LR0Builder extends lm.Parser {
 		case 0: -1;
 		case 1: exits[0];
 		default: // since LR(0) so the conflicts can not be resolved.
-			Context.fatalError("conflicts: " + exits.join(","), ruleToCase(exits[0]).pos);
+			for (r in exits)
+				Context.warning("conflict case: " + r, ruleToCase(r).pos);
+			Context.fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
 		}
 		lstates.push(new State(id, trans, targets, f));
 		return id;
