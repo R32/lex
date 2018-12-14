@@ -5,13 +5,29 @@ Build lexer and simple parser(LR0) in macro.
 
 ## status
 
-* [x] Lexer: **Stable** Does not support unicode(The maximum char is 254)
+* Lexer: **Stable** Does not support unicode(The maximum char is 254)
 
-* [x] Parser: *rollback-able LR(0)* **UnStable WIP**
+  the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation.
 
-  - **Operator Precedence**. Only for non-terminals.
+  The difference with `LexEngine.nml`:
 
-  - **Guard**, [example](test/subs/Guard.hx#L29) If the production(rhs) have a "left sub rhs" and no "non-terminal"(seems useless).
+    1. To save memory/bytes, all *finalStates* have been moved out to the outside.
+
+* Parser: Only **UnStable(WIP) LR(0)** is available.
+
+  Unlike normal LR parser: it has no *action table*(just *jump table*), So how did it *shift/reduce*?
+
+    1. if you got a valid *state* and if `state < SEGS` then *shift* else *reduce*
+
+    2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
+
+  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but not here(errors will be thrown directly).
+
+    > In fact, the main part of this Parser is built by `LexEngine`.
+
+  - Operator Precedence: [details in...](src/lm/LR0.hx#L146-L166)
+
+  - ~~Guard~~: Has been removed because it's useless.
 
   - **`@:side`**: Reference [Usage](#usage) example:
 
@@ -105,6 +121,7 @@ Build lexer and simple parser(LR0) in macro.
   - Added `Terml Reflect`
   - Allow different LHS types
   - Reimplemented Operator Precedence
+  - Removed useless Guard.
 * `0.5.0`: Added `@:side`(ReImplement LR0 Parser)
 * `0.4.0`: ~~Independent LHS~~
 * `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
@@ -112,8 +129,6 @@ Build lexer and simple parser(LR0) in macro.
 * `0.1.x`: init
 
 ### Defines
-
-It looks very messy here.
 
 * `-D lex_charmax`: to simply handle for utf16 char, Because the State Transition Table is 8-bit
 
@@ -131,7 +146,7 @@ It looks very messy here.
 
 * `-D lex_rawinput`: then force use `Bytes` as the input format, default is `String`. see `lms.ByteData`
 
-  actually you can use `--remap <package:target>` to override it.
+  actually you can use `--remap <package:target>` to override `lms.*`.
 
 * `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
 
@@ -140,47 +155,46 @@ It looks very messy here.
   ```
   Production:
     (R0)  MAIN --> EXPR $
-    (R1)  EXPR --> EXPR [+-] EXPR
+    (R1)  EXPR --> EXPR [+ -] EXPR
     (R2)       --> EXPR * EXPR
     (R3)       --> EXPR / EXPR
     (R4)       --> ( EXPR )
     (R5)       --> - EXPR
     (R6)       --> int
-  -------------------------------------------------------------------------------------------------
-  |  (S)  | (RB)  | (EP)  |   $   |  int  |   +   |   -   |   *   |   /   |   (   |   )   | EXPR  |
-  ------------------------------------------------------------------------------------------------- MAIN
-  |   0   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |   7   |
-  -------------------------------------------------------------------------------------------------
-  |   1   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       | R5,S9 |
-  -------------------------------------------------------------------------------------------------
-  |   2   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |   3   |
-  -------------------------------------------------------------------------------------------------
-  |   3   | NULL  | NULL  |       |       |   4   |   4   |   5   |   6   |       |R4,S10 |       |
-  -------------------------------------------------------------------------------------------------
-  |   4   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |   8   |
-  -------------------------------------------------------------------------------------------------
-  |   5   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |R2,S12 |
-  -------------------------------------------------------------------------------------------------
-  |   6   | NULL  | NULL  |       |R6,S14 |       |   1   |       |       |   2   |       |R3,S11 |
-  -------------------------------------------------------------------------------------------------
-  |   7   | NULL  | NULL  |R0,S13 |       |   4   |   4   |   5   |   6   |       |       |       |
-  -------------------------------------------------------------------------------------------------
-  ------------------------------------------------------------------------------------------------- (Operator Precedence)
-  |   8   | NULL  |  R1   |       |       |       |       |   5   |   6   |       |       |       |
-  -------------------------------------------------------------------------------------------------
-  -----------------
-  |   9   | NULL  |
-  -----------------
-  |  10   | NULL  |
-  -----------------
-  |  11   | NULL  |
-  -----------------
-  |  12   | NULL  |
-  -----------------
-  |  13   | NULL  |
-  -----------------
-  |  14   | NULL  |
-  -----------------
+  -------------------------------------------------------------------------------------------------------------------------
+  |   (S)   |  (RB)   |  (EP)   |    $    |   int   |    +    |    -    |    *    |    /    |    (    |    )    |  EXPR   |
+  ------------------------------------------------------------------------------------------------------------------------- MAIN
+  |    0    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         |    8    |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    1    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         | R5,S10  |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    2    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         |    3    |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    3    |  NULL   |  NULL   |         |         |    4    |    4    |    6    |    7    |         | R4,S11  |         |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    4    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         |    5    |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    5    |  NULL   |   R1    |         |         |         |         |    6    |    7    |         |         |         |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    6    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         | R2,S13  |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    7    |  NULL   |  NULL   |         | R6,S14  |         |    1    |         |         |    2    |         | R3,S12  |
+  -------------------------------------------------------------------------------------------------------------------------
+  |    8    |  NULL   |  NULL   |  R0,S9  |         |    4    |    4    |    6    |    7    |         |         |         |
+  -------------------------------------------------------------------------------------------------------------------------
+  ---------------------
+  |    9    |  NULL   |
+  ---------------------
+  |   10    |  NULL   |
+  ---------------------
+  |   11    |  NULL   |
+  ---------------------
+  |   12    |  NULL   |
+  ---------------------
+  |   13    |  NULL   |
+  ---------------------
+  |   14    |  NULL   |
+  ---------------------
   ```
 
 ## Usage
@@ -295,7 +309,7 @@ Demo.main = function() {
     console.log("Demo.hx:8:",Parser._entry(new Parser(new Lexer("1 - 2 * (3 + 4) + 5 * 6")).stream,0,9,false) == 17);
 };
 var lm_Lexer = function() { };
-var Lexer = function(s) {
+var Lexer = function(s,len) {
     this.input = s;
     this.pmin = 0;
     this.pmax = 0;
@@ -303,7 +317,7 @@ var Lexer = function(s) {
 Lexer.cases = function(s,lex) {
     switch(s) {
     case 0:
-        return lex._token(0);
+        return lex._token(0,lex.input.length);
     case 1:
         return 1;
     case 2:
@@ -320,13 +334,13 @@ Lexer.cases = function(s,lex) {
         return 7;
     case 8:
         var pmin = lex.pmin;
-        var t = lex._token(4);
+        var t = lex._token(4,lex.input.length);
         lex.pmin = pmin;
         return t;
     case 9:
-        return lex._token(4);
+        return lex._token(4,lex.input.length);
     case 10:
-        return lex._token(4);
+        return lex._token(4,lex.input.length);
     default:
         return 8;
     }
@@ -335,15 +349,14 @@ Lexer.prototype = {
     getString: function(p,len) {
         return this.input.substr(p,len);
     }
-    ,_token: function(state) {
+    ,_token: function(state,right) {
         var i = this.pmax;
-        var len = this.input.length;
         this.pmin = i;
-        if(i >= len) {
+        if(i >= right) {
             return 0;
         }
         var prev = state;
-        while(i < len) {
+        while(i < right) {
             var c = this.input.charCodeAt(i++);
             state = Lexer.raw.charCodeAt(128 * state + c);
             if(state >= 7) {
@@ -371,7 +384,7 @@ Lexer.prototype = {
         return Lexer.cases(q,this);
     }
     ,token: function() {
-        return this._token(0);
+        return this._token(0,this.input.length);
     }
 };
 var Parser = function(lex) {
@@ -405,7 +418,6 @@ Parser._entry = function(stream,state,exp,until) {
                 var dy = dx + Parser.raw.charCodeAt(state + 160);
                 t = stream.cached[stream.pos + (-1 - dy)];
                 if(Parser.raw.charCodeAt(16 * t.state + (Parser.lva[q] >> 8)) == 255) {
-                    stream.pos -= dx;
                     until = false;
                     break;
                 }
@@ -417,7 +429,7 @@ Parser._entry = function(stream,state,exp,until) {
         dx = 0;
         while(true) {
             var value = Parser.cases(q,stream);
-            t = stream.cached[stream.pos + -1];
+            t = stream.reduce(Parser.lva[q]);
             if(t.term == exp && !until) {
                 --stream.pos;
                 stream.junk(1);
@@ -444,34 +456,30 @@ Parser._entry = function(stream,state,exp,until) {
     t = stream.cached[stream.pos + -1];
     throw stream.error("Unexpected \"" + (t.term != 0 ? stream.lex.getString(t.pmin,t.pmax - t.pmin) : "Eof") + "\"",t);
 };
-Parser.cases = function(_q,s) {
-    var _v;
-    switch(_q) {
+Parser.cases = function(q,s) {
+    switch(q) {
     case 0:
-        _v = s.cached[s.pos + -2].val;
-        break;
+        return s.cached[s.pos + -2].val;
     case 1:
         var e1 = s.cached[s.pos + -3].val;
         var e2 = s.cached[s.pos + -1].val;
-        _v = s.cached[s.pos + -2].term == 2 ? e1 + e2 : e1 - e2;
+        if(s.cached[s.pos + -2].term == 2) {
+            return e1 + e2;
+        } else {
+            return e1 - e2;
+        }
         break;
     case 2:
-        _v = s.cached[s.pos + -3].val * s.cached[s.pos + -1].val;
-        break;
+        return s.cached[s.pos + -3].val * s.cached[s.pos + -1].val;
     case 3:
-        _v = s.cached[s.pos + -3].val / s.cached[s.pos + -1].val | 0;
-        break;
+        return s.cached[s.pos + -3].val / s.cached[s.pos + -1].val | 0;
     case 4:
-        _v = s.cached[s.pos + -2].val;
-        break;
+        return s.cached[s.pos + -2].val;
     case 5:
-        _v = -s.cached[s.pos + -1].val;
-        break;
+        return -s.cached[s.pos + -1].val;
     default:
-        _v = Std.parseInt(s.stri(-1));
+        return Std.parseInt(s.stri(-1));
     }
-    s.reduce(Parser.lva[_q]);
-    return _v;
 };
 var Std = function() { };
 Std.parseInt = function(x) {
@@ -552,8 +560,11 @@ lm_Stream.prototype = {
         }
     }
     ,reduce: function(lvw) {
-        var pmax = this.cached[this.pos + -1].pmax;
         var w = lvw & 255;
+        if(w == 0) {
+            return this.reduceEP(lvw >>> 8);
+        }
+        var pmax = this.cached[this.pos + -1].pmax;
         this.pos -= w;
         var t = this.cached[this.pos];
         t.term = lvw >>> 8;
@@ -566,10 +577,21 @@ lm_Stream.prototype = {
             this.cached[i] = this.cached[i + w];
             ++i;
         }
+        return t;
+    }
+    ,reduceEP: function(lv) {
+        var prev = this.cached[this.pos - 1];
+        var t = new lm_Tok(lv,prev.pmax,prev.pmax);
+        var i = this.right;
+        while(--i >= this.pos) this.cached[i + 1] = this.cached[i];
+        this.cached[this.pos] = t;
+        ++this.pos;
+        ++this.right;
+        return t;
     }
 };
 Lexer.raw = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\x0f\xff\xff\xff\xff\xff\x0e\x0d\x0c\x0b\xff\x02\xff\x0a\x09\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x03\x03\x03\x03\x03\x03\x03\x03\x03\x03\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x08\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x06\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\x05\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x07\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x08\x06\x07\x04\x02\x05\x01\x0b\x09\xff\x0a\xff\x01\x03\x00\xff";
-Parser.raw = "\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x07\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x09\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x03\xff\xff\xff\xff\xff\xff\xff\x04\x04\x05\x06\xff\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x08\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x0c\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x0b\xff\xff\xff\xff\xff\x0d\xff\x04\x04\x05\x06\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x05\x06\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x06\x00\x02\x03\x04\x05\x01\xff\xff\xff\xff\xff\xff\xff\xff";
+Parser.raw = "\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x08\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x0a\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x03\xff\xff\xff\xff\xff\xff\xff\x04\x04\x06\x07\xff\x0b\xff\xff\xff\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x05\xff\xff\xff\xff\xff\xff\xff\xff\xff\x06\x07\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x0d\xff\xff\xff\xff\xff\xff\x0e\xff\x01\xff\xff\x02\xff\xff\xff\x0c\xff\xff\xff\xff\xff\x09\xff\x04\x04\x06\x07\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x06\x02\x03\x04\x05\x00\xff\xff\xff\x01\xff\xff\xff\xff\xff";
 Parser.lva = [2306,2563,2563,2563,2563,2562,2561];
 Demo.main();
 })();
