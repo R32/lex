@@ -30,7 +30,7 @@ typedef SymbolSet = {
 	action: Expr,
 	guard: Null<Expr>,
 	syms: Array<Symbol>,
-	prec: Null<OpRHS>,
+	prec: Null<OpPrec>,
 	pos: Position, // case pos
 }
 
@@ -40,8 +40,9 @@ typedef Lhs = {    // one switch == one Lhs
 	side: Bool,    // if @:side
 	epsilon: Bool, // if have switch "default:" or "case []:"
 	cases: Array<SymbolSet>,
-	lsubs: Array<Int>, // left subs, Array<Lhs::value>
+	lsubs: List<Int>, // left subs, Array<Lhs::value>
 	ctype: ComplexType,
+	lops: List<OpFollow>,// op follows
 	pos: Position,
 }
 
@@ -57,12 +58,18 @@ typedef OpAssoc = {
 	tval: Int,   // terml value, if the name is no exists then -1
 }
 
-typedef OpRHS = {
+typedef OpPrec = {
 	type: OpAssocType,
 	prio: Int,
 	lval: Int,   // last "non-terml" of a case
 }
 
+typedef OpFollow = {
+	type: OpAssocType,
+	prio: Int,
+	own: Int,    // lhs.value
+	cpos: Int,   // case index
+}
 /**
  parser datas
 */
@@ -241,16 +248,16 @@ class Parser {
 		return t == null || t.t ? null : t.cset;
 	}
 
-	inline function byRule(n):Lhs return lhsA[(this.n2Lhs[n] >> 8) - maxValue]; // index = lhs.value - maxValue
-
-	function ruleToCase(n: Int): SymbolSet {
+	function byRule(n):{lhs: Lhs, ncase: SymbolSet} {
 		for (lhs in lhsA) {
 			var len = lhs.cases.length;
-			if (n < len) return lhs.cases[n];
+			if (n < len) return {lhs: lhs, ncase: lhs.cases[n]};
 			n -= len;
 		}
 		throw "NotFound";
 	}
+
+	inline function ruleToCase(n: Int):SymbolSet return byRule(n).ncase;
 
 	function transform(out) {
 		var cases:Array<Array<Case>> = preProcess(out);
@@ -269,7 +276,7 @@ class Parser {
 			if (cset == null) Context.fatalError("Undefined: " + name, pos);
 			return cset;
 		}
-		function opVerify(sym: Symbol):Null<OpRHS> {
+		function opVerify(sym: Symbol):{type:OpAssocType, prio:Int} {
 			var prio = -1;
 			var type = Left;
 			var got = false;
@@ -293,7 +300,7 @@ class Parser {
 					got = true;
 				}
 			}
-			return prio == -1 ? null : {type: type, prio: prio, lval: -1};
+			return {type: type, prio: prio};
 		}
 		for (lhs in this.lhsA) {
 			for (c in cases[ index(lhs) ]) {
@@ -308,7 +315,7 @@ class Parser {
 						lhs.cases.push(g);
 						continue;
 					}
-					var prec:Null<OpRHS> = null;
+					var prec:Null<OpPrec> = null;
 					var ei = 0;
 					var e = el[0];
 					while (true) {
@@ -341,7 +348,7 @@ class Parser {
 							if (el.length == 1 && nt == lhs.name)
 								Context.fatalError("Infinite recursion", e.pos);
 							if (nt != lhs.name && el[0] == e)
-								lhs.lsubs.push(udt.value);
+								lhs.lsubs.add(udt.value);
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
@@ -382,17 +389,26 @@ class Parser {
 						if (++ei >= len) break;
 						e = el[ei];
 					}
-					// op prec
 					if (len >= 2) {
+						// op prec
 						var x1:Symbol = g.syms[len - 1];
 						var x2:Symbol = g.syms[len - 2];
-						if (x2.t && x1.t == false) { // case [..., Terml, NON-Terml]:
-							if (prec == null)
-								prec = opVerify(x2);
-							if (prec != null) {
+						if (x2.t && x1.t == false) { // case [..., termls, non-terml]:
+							if (prec == null) {
+								var op = opVerify(x2);
+								// NOTE: the value of prio might be -1. so the g.prec may be null or {prio: -1}....
+								g.prec = {type: op.type, prio: op.prio, lval: x1.cset[0].min};
+							} else {
 								prec.lval = x1.cset[0].min;
 								g.prec = prec;
 							}
+						}
+						// op follows for each LHS
+						var x1:Symbol = g.syms[0];
+						var x2:Symbol = g.syms[1];
+						if (x2.t && x1.t == false) { // case [non-term, termls, ...]:
+							var op = opVerify(x2);
+							lhs.lops.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
 						}
 					}
 					lhs.cases.push(g);
@@ -413,11 +429,13 @@ class Parser {
 			for (top in lhsA) {
 				var i = 0;
 				var len = top.lsubs.length;
-				while (i < len) {
-					var sub: Lhs = this.lhsA[top.lsubs[i++] - this.maxValue];
+				for (tlv in top.lsubs) {
+					if (i++ == len)
+						break;
+					var sub = this.lhsA[tlv - this.maxValue];
 					for (slv in sub.lsubs) {
-						if (top.lsubs.indexOf(slv) == -1) {
-							top.lsubs.push(slv);
+						if (Lambda.indexOf(top.lsubs, slv) == -1) {
+							top.lsubs.add(slv);
 							added = true;
 						}
 					}
@@ -600,8 +618,9 @@ class Parser {
 							side: Lambda.exists(f.meta, e-> e.name == ":side"),
 							epsilon: false,
 							cases: [],
-							lsubs: [],
+							lsubs: new List(),
 							ctype: ct == null ? this.ct_ldef : ct,
+							lops: new List(),
 							pos: f.pos,
 						});
 						continue;

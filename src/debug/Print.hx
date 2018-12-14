@@ -22,6 +22,7 @@ class Print {
 		"Percent"   => "%",
 
 		"Dot" => ".",
+		"DblDot" => ":",
 		"Comma" => ",",
 		"Semicolon" => ";",
 		"LParen" => "(",
@@ -64,6 +65,7 @@ class Print {
 		"OpAssignAnd" => "&=",
 		"OpAssignXor" => "^=",
 		"OpArrow" => "=>",
+		"Arrow" => "->",
 		"OpNot" => "!",
 		"OpBits" => "~",
 		"OpIncrement" => "++",
@@ -203,7 +205,7 @@ class Print {
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != INVALID) {
-					if (shift < lrb.segsEx) {
+					if (shift < lrb.segs) {
 						add("" + shift);
 					} else {
 						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
@@ -232,14 +234,9 @@ class Print {
 				s_row(i, en.begin, name);
 			horLine(); nxtLine();
 		}
-		for (i in lrb.segs...lrb.segsEx) {
-			s_row(i, lrb.segs, "(Operator Precedence)");
-		}
-		// end line
-		horLine(); nxtLine();
 		// final states
 		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
-		for (i in lrb.segsEx...lrb.nstates) {
+		for (i in lrb.segs...lrb.nstates) {
 			sp(); add(i + ""); sp(); s_rollback(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		}

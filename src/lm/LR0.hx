@@ -22,7 +22,6 @@ class LR0Builder extends lm.Parser {
 	var perRB: Int;
 	var table: Table;
 	var segs: Int;
-	var segsEx: Int;
 	var nrules: Int;
 	var nstates: Int;
 	var invalid: Int;
@@ -31,7 +30,7 @@ class LR0Builder extends lm.Parser {
 	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
 
 	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
-	public inline function posRB() return this.segsEx * this.per;
+	public inline function posRB() return this.segs * this.per;
 	public inline function posRBL() return posRB() + this.perRB;
 	inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
@@ -98,7 +97,6 @@ class LR0Builder extends lm.Parser {
 		}
 
 		// properties
-		this.segsEx = this.segs;
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
 		this.perRB = 1 + ((nstates - 1) | 15);
@@ -110,9 +108,6 @@ class LR0Builder extends lm.Parser {
 					s.targets[i] -= diff;
 			if (s.id > segs) s.id -= diff;
 		}
-
-		this.doPrecedence();
-
 		// DFA -> Tables
 		this.makeTable();
 		this.rollback();
@@ -125,43 +120,65 @@ class LR0Builder extends lm.Parser {
 
 	function makeTable() {
 		var INVALID = this.invalid;
-		var bytes = (segsEx * per) + (3 * perRB);
+		var bytes = (segs * per) + (3 * perRB);
 		var tbls = new Table(bytes);
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID);
-			if (s.id < segsEx)
+			if (s.id < segs)
 				LexEngine.makeTrans(tbls, s.id * per, s.trans, s.targets);
 		}
 		this.table = tbls;
 	}
 
 	function closure(nodes: Array<Node>) {
-		function noSelf(dst: Array<Node>, src: Array<Node>, self: Int) {
-			function isSelf (n: Node) {
-				for (nc in n.trans)
-					for (c in nc.chars)
-						return c.min == self;
-				return false;
+		inline function addAll(nodes, nfa) LexEngine.addNodes(nodes, nfa);
+		function atFirst(n: Node, lval:Int) {
+			for (nc in n.trans)
+				for (c in nc.chars)
+					return c.min == lval;
+			return false;
+		}
+		function filterAdd(dst: Array<Node>, from:Int, lval: Int, rule: Int) {
+			var nfa = this.nfas[from];
+			var r = ruleToCase(rule);
+			if (r.prec == null || r.syms.length == 1) { // null || single
+				return addAll(dst, nfa);
 			}
-			for (n in src)
-				if (!isSelf(n))
+			// exclude if node == lval
+			for (n in nfa)
+				if (!atFirst(n, lval))
 					LexEngine.addNode(dst, n);
+
+			// filter by Operator Precedence
+			var prec = r.prec;
+			var rights = this.lhsA[from].lops;
+			if (prec.prio == -1) {
+				for (right in rights)
+					if (right.own == lval && right.prio != -1)
+						LexEngine.addNode(dst, nfa[right.cpos]);
+			} else if (prec.type != NonAssoc) {
+				for (right in rights)
+					if (right.own == lval
+							&& (prec.type == Left && prec.prio < right.prio || prec.type == Right && prec.prio <= right.prio)
+						) LexEngine.addNode(dst, nfa[right.cpos]);
+			}
 		}
 		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
 		for (n in nodes) {
 			for (nc in n.trans) {
 				for (c in nc.chars) {
 					if ( isNonTerm(c.min) ) {
-						var self = c.min;
-						var i = self - maxValue;
-						if (alt[i]) continue; // already added for current "nodes".
+						var lval = c.min;     // the value of the last non-term
+						var i = lval - maxValue;
+						if (alt[i]) continue; // if already added to current "nodes".
 						var atLast = isFinal(nc.n);
+						var exit = nc.n.id;
 						if (!atLast) {
-							LexEngine.addNodes(nodes, this.nfas[i]);
+							addAll(nodes, this.nfas[i]);
 						} else {
-							noSelf(nodes, this.nfas[i], self);
+							filterAdd(nodes, i, lval, exit);
 						}
 						alt[i] = true;
 						used[i] = true;
@@ -170,14 +187,15 @@ class LR0Builder extends lm.Parser {
 							var j = s - maxValue;
 							if (alt[j]) continue;
 							if (!atLast) {
-								LexEngine.addNodes(nodes, this.nfas[j]);
+								addAll(nodes, this.nfas[j]);
 							} else {
-								noSelf(nodes, this.nfas[j], self);
+								filterAdd(nodes, j, lval, exit);
 							}
 							alt[j] = true;
 							used[j] = true;
 						}
 					}
+					break;
 				}
 			}
 		}
@@ -302,139 +320,6 @@ class LR0Builder extends lm.Parser {
 		}
 	}
 
-	function doPrecedence() {
-		if (Lambda.empty( this.opSMap ))
-			return;
-		var states = Lambda.array(lstates);
-		states.sort(State.onSort);
-
-		inline function indexByLval(lv) return lv - this.maxValue;
-		function swap(dst, src, begin, max) {
-			if (dst == src) return;
-			var x = states[dst]; // x.id == dst
-			var y = states[src]; // y.id == src;
-			// swap targets
-			for (si in begin...max) {
-				var s = states[si];
-				for (i in 0...s.targets.length) {
-					var t = s.targets[i];
-					if (t == dst) {
-						s.targets[i] = src;
-					} else if (t == src) {
-						s.targets[i] = dst;
-					}
-				}
-			}
-			// swap states
-			x.id = src;
-			y.id = dst;
-			states[dst] = y;
-			states[src] = x;
-		}
-
-		var moves:Array<{fid:Int, begin:Int, smax:Int}> = [];
-		for (e in this.entrys) {
-			var fvsets = new haxe.ds.Vector(this.lhsA.length);        // follow_sets of all LHS, (tval => tar)
-			for (i in 0...fvsets.length) {
-				var vec = new haxe.ds.Vector<Int>(this.maxValue);     // no "non-termls" here
-				for (j in 0...this.maxValue)
-					vec[j] = -1;
-				fvsets[i] = vec;
-			}
-			var vrule = new haxe.ds.Vector<Int>(this.lstates.length); // State => "which Rule"
-			for (i in 0...vrule.length) vrule[i] = -1;
-
-			for (i in e.begin...e.begin + e.width) {
-				var s = states[i];
-				if (s.finalID != -1)
-					vrule[i] = s.finalID;
-				for (c in s.trans) {
-					var nxt = s.targets[c.ext];
-					if (nxt >= this.segs)
-						vrule[nxt] = states[nxt].finalID;
-					if ( this.isTerm(c.min) || nxt >= this.segs)
-						continue;
-					var ns = states[nxt];
-					for (nc in ns.trans) {
-						for (n in nc.min...nc.max + 1) {
-							if (this.isTerm(n) && this.opIMap.get(n) != null) {
-								var tar = ns.targets[nc.ext];
-								var vec = fvsets[ indexByLval(c.min) ]; // c is a "non-terml"
-								if (vec[n] != -1 && vec[n] != tar)
-									throw "Operator precedence confict";
-								vec[n] = tar;
-							}
-						}
-					}
-				}
-			}
-			// Vector => List
-			var flsets = new haxe.ds.Vector(this.lhsA.length);
-			for (i in 0...flsets.length) {
-				var li = new List<OpAssoc>();
-				var vec = fvsets[i];
-				for (j in 0...vec.length) {
-					if (vec[j] == -1) continue;
-					li.add( this.opIMap.get(j) );
-				}
-				flsets[i] = li;
-			}
-			//
-
-			for (fid in 0...vrule.length) {
-				if (vrule[fid] == -1) continue;
-				var line = this.ruleToCase( vrule[fid] );
-				var prec = line.prec;
-				if (prec == null || prec.type == NonAssoc) continue;
-				var rights = flsets.get( indexByLval(prec.lval) );
-				// left vs right
-				var col = new List<{tar:Int, tval: Int}>();
-				for (r in rights) {
-					if (prec.type == Left && prec.prio < r.prio
-					|| prec.type == Right && prec.prio <= r.prio) {
-						col.add({tval: r.tval, tar: fvsets[indexByLval(prec.lval)][r.tval]});
-					}
-				}
-				if (col.length == 0) continue;
-				if (fid >= this.segs)
-					moves.push({fid: fid, begin: e.begin, smax: e.begin + e.width});
-				// write. NOTE: There is no merge for the same target
-				var tar = states[fid].targets;
-				var cset = states[fid].trans;
-				for (x in col) {
-					var c = Char.c3(x.tval, x.tval, tar.length);
-					if (fid < this.segs && CSet.inter(cset, [c]).length > 0)
-						Context.fatalError("Operator precedence confict", line.pos);
-					cset.push(c);
-					tar.push(x.tar);
-				}
-			}
-		}
-		moves.sort((a, b) -> a.fid - b.fid);
-		// move to the front
-		var li = new List<{dst:Int, src:Int}>();
-		for (m in moves) {
-			var fnew = this.segsEx++;
-			li.add({dst: fnew, src: m.fid});
-			swap(fnew, m.fid, m.begin, m.smax);
-		}
-		// swap the rest
-		for (x in li) {
-			if (x.dst == x.src) continue;
-			for (si in this.segs...this.segsEx) {
-				var s = states[si];
-				for (i in 0...s.targets.length) {
-					var t = s.targets[i];
-					if (t == x.dst) {
-						s.targets[i] = x.src;
-					} else if (t == x.src) {
-						s.targets[i] = x.dst;
-					}
-				}
-			}
-		}
-	}
-
 	function checking() {
 		var INVALID = this.invalid;
 		// init exitN/NRule => final_state rules
@@ -451,7 +336,7 @@ class LR0Builder extends lm.Parser {
 		// 1. Is switch case unreachable?
 		for (n in 0...this.nrules)
 			if (rules[n] == INVALID) {
-				var lhs = byRule(n);
+				var lhs = byRule(n).lhs;
 				if ( !this.used.get( index(lhs) ) ) continue;
 				var msg = "Unreachable switch case";
 				if (!lhs.side)
@@ -522,7 +407,7 @@ class LR0Builder extends lm.Parser {
 			static var lva:Array<Int> = [$a{lva}];
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
-			static inline var NSEGSEX = $v{this.segsEx};
+			static inline var NSEGS   = $v{this.segs};
 			static inline function getU(i:Int):Int return $getU;
 			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
 			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
@@ -544,7 +429,7 @@ class LR0Builder extends lm.Parser {
 						t = stream.next();
 						state = trans(prev, t.term);
 						t.state = state;
-						if (state >= NSEGSEX)
+						if (state >= NSEGS)
 							break;
 						prev = state;
 					}
@@ -581,7 +466,7 @@ class LR0Builder extends lm.Parser {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGSEX) break;
+						if (prev < NSEGS) break;
 						if (prev == INVALID) {
 							if (until && exp == t.term)
 								return value;
