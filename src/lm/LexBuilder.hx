@@ -240,9 +240,18 @@ class LexBuilder {
 			});
 		}
 		// build switch
-		var actions = [for (g in groups) for (r in g.rules) r.action];
+		var actions = [];
+		actions.resize(lex.nrules);
+		var i = 0;
+		for (g in groups)
+			for (r in g.rules)
+				actions[i++] = r.action;
 		var defCase = actions.pop();
-		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var liCase: Array<Case> = [];
+		liCase.resize(actions.length);
+		for (i in 0...actions.length) {
+			liCase[i] = {values: [macro $v{i}], expr: actions[i]};
+		}
 		var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
 		defs.fields.push({
 			name: "cases",

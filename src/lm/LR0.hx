@@ -481,10 +481,19 @@ class LR0Builder extends lm.Parser {
 			}
 		}
 		// build switch
-		var actions = Lambda.flatten( lhsA.map(l -> l.cases) ).map( s -> s.action );
+		var actions = [];
+		actions.resize(this.nrules);
+		var i = 0;
+		for (l in this.lhsA)
+			for (c in l.cases)
+				actions[i++] = c.action;
 		var here = Context.currentPos();
 		var defCase = actions.pop();
-		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
+		var liCase:Array<Case> = [];
+		liCase.resize(actions.length);
+		for (i in 0...actions.length) {
+			liCase[i] = {values: [macro $v{i}], expr: actions[i]};
+		}
 		var eSwitch = {expr: ESwitch(macro (q), liCase, defCase), pos: here};
 		defs.fields.push({
 			name: "cases",
