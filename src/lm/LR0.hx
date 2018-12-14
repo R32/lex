@@ -285,11 +285,10 @@ class LR0Builder extends lm.Parser {
 			var base = seg * this.per;
 			for (lv in 0...this.per) {
 				var nxt = table.get(lv + base);
-				if (nxt == INVALID || alt[nxt] || isNonTerm(lv)) continue;
+				if (nxt == INVALID || epsilon(nxt) != INVALID || alt[nxt] || isNonTerm(lv)) continue;
 				table.set(rollpos + nxt, exit);
 				table.set(rlenpos + nxt, length);
-				if (epsilon(nxt) == INVALID)
-					que.add({exit: exit, nxt: nxt, len: length + 1});
+				que.add({exit: exit, nxt: nxt, len: length + 1});
 			}
 		}
 		function noNxt(seg) {
@@ -356,18 +355,6 @@ class LR0Builder extends lm.Parser {
 				}
 			}
 			if (!find) throw("Missing terminator in STATE: " + i);
-		}
-		// 3. switch guard
-		var n = 0;
-		for (lhs in this.lhsA) {
-			for (li in lhs.cases) {
-				if (li.guard != null) {
-					var final_state = rules[n];
-					if (this.table.get(this.posRB() + final_state) == INVALID)
-						Context.fatalError("No switch case that can be rollback from here", li.guard.pos);
-				}
-				++ n;
-			}
 		}
 		// more?
 	}
@@ -457,7 +444,7 @@ class LR0Builder extends lm.Parser {
 					dx = 0;         // reset dx after rollback
 					while (true) {
 						var value:$ct_lval = gotos(q, stream);
-						t = stream.offset( -1); // reduced token
+						t = stream.reduce( lva[q] );
 						if (t.term == exp && !until) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
@@ -498,18 +485,16 @@ class LR0Builder extends lm.Parser {
 		var here = Context.currentPos();
 		var defCase = actions.pop();
 		var liCase = Lambda.mapi( actions, (i, e)->({values: [macro $v{i}], expr: e}: Case) );
-		var eSwitch = {expr: ESwitch(macro (_q), liCase, defCase), pos: here};
+		var eSwitch = {expr: ESwitch(macro (q), liCase, defCase), pos: here};
 		defs.fields.push({
 			name: "cases",
 			access: [AStatic],
 			kind: FFun({
-				args: [{name: "_q", type: macro: Int}, {name: "s", type: ct_stream}],
+				args: [{name: "q", type: macro: Int}, {name: "s", type: ct_stream}],
 				ret: ct_lval,
 				expr: macro {
 					@:mergeBlock $b{preDefs};
-					var _v:$ct_lval = $eSwitch;
-					@:privateAccess s.reduce(lva[_q]);
-					return _v;
+					return $eSwitch;
 				}
 			}),
 			pos: here,

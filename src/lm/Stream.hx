@@ -111,10 +111,11 @@ class Stream<LHS> {
 			++ dx;
 		}
 	}
-
-	function reduce(lvw) { // lvw == lv << 8 | w;
-		var pmax = offset(-1).pmax;
+	function reduce(lvw): Tok<LHS> { // lvw == lv << 8 | w;
 		var w = lvw & 0xFF;
+		if (w == 0)
+			return reduceEP(lvw >>> 8);
+		var pmax = offset(-1).pmax;
 		pos -= w;
 		var t = cached[pos];
 		t.term = lvw >>> 8;
@@ -128,12 +129,13 @@ class Stream<LHS> {
 			cached[i] = cached[i + w];
 			++ i;
 		}
+		return t;
 	}
-	function reduceEP(lv) {
+	function reduceEP(lv): Tok<LHS> {
 		var prev = cached[pos - 1];
 		var t = new Tok<LHS>(lv, prev.pmax, prev.pmax);
-		t.state = prev.state;
 		shift(t);
+		return t;
 	}
 	inline function shift(t: Tok<LHS>) {
 		var i = right;

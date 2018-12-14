@@ -28,7 +28,6 @@ typedef Symbol = { // from switch cases
 
 typedef SymbolSet = {
 	action: Expr,
-	guard: Null<Expr>,
 	syms: Array<Symbol>,
 	prec: Null<OpPrec>,
 	pos: Position, // case pos
@@ -304,11 +303,13 @@ class Parser {
 		}
 		for (lhs in this.lhsA) {
 			for (c in cases[ index(lhs) ]) {
+				if (c.guard != null)
+					Context.fatalError("Unsupported: " + "guard", c.guard.pos);
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.fatalError('This case is unused', pos);
-					var g: SymbolSet = {action: c.expr, guard: c.guard, syms: [], prec: null, pos: pos};
+					var g: SymbolSet = {action: c.expr, syms: [], prec: null, pos: pos};
 					var len = el.length;
 					if (len == 0) {
 						setEpsilon(lhs, pos);
@@ -414,7 +415,7 @@ class Parser {
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({action: c.expr, guard: null, syms: [], prec: null, pos: pos});
+					lhs.cases.push({action: c.expr, syms: [], prec: null, pos: pos});
 				case [e]:
 					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
@@ -496,7 +497,7 @@ class Parser {
 		ti = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var row = ["s" => true, "_q" => true]; // reserve "s" as stream, "_q" for reduction
+				var row = ["s" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				this.n2Lhs[ti] = lhs.value << 8 | len;
@@ -550,28 +551,10 @@ class Parser {
 					li.action = {expr: EBlock(a), pos: li.action.pos};
 				case _:
 				}
-				var reduceEp = len > 0 ? (macro null) : (macro @:privateAccess s.reduceEP($v{lhs.value}));
-				if (len == 0) // if epsilon then return directly
-					li.action = macro @:pos(li.action.pos) return $e{li.action};
-				li.action = if (li.guard == null) {
-					macro @:pos(li.action.pos) @:mergeBlock {
-						$reduceEp;
-						@:mergeBlock $b{a};
-						@:mergeBlock $e{li.action};
-					}
-				} else {
-					macro @:pos(li.action.pos) @:mergeBlock {
-						@:mergeBlock $b{a};
-						if ($e{li.guard}) {
-							$reduceEp;
-							@:mergeBlock $e{li.action};
-						} else {
-							var _1 = @:privateAccess s.offset( -1).state;
-							@:privateAccess s.rollback( rollL(_1), $v{maxValue} );
-							return gotos(rollB(_1), s);
-						}
-					}
-				} // end if else
+				li.action = macro @:pos(li.action.pos) @:mergeBlock {
+					@:mergeBlock $b{a};
+					@:mergeBlock $e{li.action};
+				}
 				++ ti;
 			}
 		}
@@ -607,7 +590,7 @@ class Parser {
 					case ESwitch(macro ($i{"s"}), cl, edef):
 						if (cl.length == 0 && edef == null) continue;
 						if (edef != null)
-							cl.push({values: [macro @:pos(edef.pos) _], expr: edef, guard: null});
+							cl.push({values: [macro @:pos(edef.pos) _], expr: edef});
 						firstCharChecking(f.name, LOWER, f.pos);
 						if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), t_lhs) )
 							this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
