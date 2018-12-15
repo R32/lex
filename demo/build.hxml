@@ -1,0 +1,6 @@
+-D old-error-format
+-lib hscript
+-lib lex
+-lib hx3compat
+-main Main
+--interp

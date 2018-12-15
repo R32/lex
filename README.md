@@ -5,13 +5,13 @@ Build lexer and simple parser(LR0) in macro.
 
 ## status
 
+[parser for hscript](/demo/) Just as a demo, Only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
+
 * Lexer: **Stable** Does not support unicode(The maximum char is 254)
 
-  the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation.
+  the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation. and The difference with `LexEngine.nml`:
 
-  The difference with `LexEngine.nml`:
-
-    1. To save memory/bytes, all *finalStates* have been moved out to the outside.
+    1. To obviously save memory/bytes, all *finalStates* have been moved out to the outside.
 
 * Parser: Only **UnStable(WIP) LR(0)** is available.
 
@@ -21,51 +21,42 @@ Build lexer and simple parser(LR0) in macro.
 
     2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
 
-  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but not here(errors will be thrown directly).
+  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but not here(errors will be thrown directly). *In fact, the main part of this Parser is built by `LexEngine`*.
 
-    > In fact, the main part of this Parser is built by `LexEngine`.
+  - Operator Precedence:
 
-  - Operator Precedence: [details in...](src/lm/LR0.hx#L146-L166)
+    ```haxe
+    // the operator precedence definitions:
+    @:rule({
+        left: ["+", "-"],         // The parser could auto reflect(str) => Token
+        left: [OpTimes, OpDiv],   // The lower have higher Priority.
+        nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
+    }) class MyParser implements lm.LR0<MyLexer,...
+
+    // Different from the normal LR parser, the behavior of "nonassoc" is same as "left". Since
+    // this parser is not very necessary to refer the operator precedence definitions.
+
+    // Refer to the following stream matching cases:
+    [E, op, ...]: if defined(op) then case.right.own = E.value // the right type is OpRight
+    [..., op, E]: if defined(op) then case.left.lval = E.value // the left type is OpLeft
+    [..., ot, E]: if not defined(op) then case.left.lval = E.value & case.left.prio = -1;
+    [..., T, E] or [E]:              then case.left = null
+
+    // when calculating closure(Array<NFA>):
+    [..., E]: if E at the and of case, then will according the case.left and .rights to do some mix.
+
+    // you can use @:prec(Null<LEFT>, ?RIGHT) to specify OpLeft and OpRight for a matching case. e.g:
+    [@:prec(UMINUS), "-", e = expr]:
+
+    // It's very rare to specify OpRight by @:prec,
+    // for a string: "var a:Array<Int>=[]", the close token ">" will be parsed as ">=" by Lexer. so:
+    [@:prec(">=", ">=")   e1 = expr, ">", "=", e2 = expr]: if (_t2.pmax == _t3.pmin) ...
+
+    [@:prec(">>=", ">>=") e1 = expr, ">", ">", "=", e2 = expr]:
+    ```
 
   - ~~Guard~~: Has been removed because it's useless.
 
-  - **`@:side`**: Reference [Usage](#usage) example:
-
-    ```haxe
-    // need to add "@:side" to "expr"
-    // then you can skip the main entry(par.main()) and call expr() independently
-    static function main() {
-        var str = '1 - 2 * (3 + 4) + 5 * 6';
-        var lex = new Lexer(lms.ByteData.ofString(str));
-        var par = new Parser(lex);
-        var s = @:privateAccess par.stream;
-        trace(@:privateAccess Parser.expr(s) == (1 - 2 * (3 + 4) + 5 * 6) );
-        var t = s.peek(0);
-        trace(t.term == Eof);
-    }
-    ```
-
-    In fact you should use it in `actions`, something like:
-
-    ```haxe
-    static var main = switch(s) {
-        case [e = expr_list, Eof];  // use expr_list instead of expr
-    }
-    static var expr_list = switch(s) {
-        case []:                    // epsilon
-            var e = expr(s);        // call LHS expr.
-            var t = s.peek(0);
-            if (t.term == Eof) {
-                e;
-            } else if (t.term == Comma) {
-                s.junk(1);          // discard Comma
-                var e2 = expr(s);
-                //......
-                e + e2;
-            } else {}
-    }
-    @:side static var expr = switch(s)  // NOTE: @:side
-    ```
 
   - **Position**: Inside the actions, you could use `_t1~_tN` to access the position.
 
@@ -98,7 +89,7 @@ Build lexer and simple parser(LR0) in macro.
     }
     ```
 
-  - **Allow different LHS types**: When the LHS type cannot be unified then the `Dynamic` is used as the type of `Stream.Tok`
+  - **different LHS types**: When the LHS type cannot be unified then the `Dynamic` is used as the type of `Stream.Tok`
 
     ```haxe
     class Parser implements lm.LR0<Lexer, Int> {  // "Int" indicates that all LHS types default to "Int"
@@ -199,7 +190,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ## Usage
 
-copy from [demo/Demo.hx](demo/Demo.hx)
+copy from [test/subs/Demo.hx](test/subs//Demo.hx)
 
 ```hx
 package;
@@ -223,7 +214,6 @@ enum abstract Token(Int) to Int {
     var OpDiv;
     var LParen;
     var RParen;
-    var CStr;
 }
 
 /**
