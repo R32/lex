@@ -153,7 +153,7 @@ class LR0Builder extends lm.Parser {
 
 			// filter by Operator Precedence
 			var prec = r.prec;
-			var rights = this.lhsA[from].lops;
+			var rights = this.lhsA[from].lrights;
 			if (prec.prio == -1) {
 				for (right in rights)
 					if (right.own == lval && right.prio != -1)

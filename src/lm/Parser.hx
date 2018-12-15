@@ -29,7 +29,7 @@ typedef Symbol = { // from switch cases
 typedef SymbolSet = {
 	action: Expr,
 	syms: Array<Symbol>,
-	prec: Null<OpPrec>,
+	prec: Null<OpLeft>,
 	pos: Position, // case pos
 }
 
@@ -41,7 +41,7 @@ typedef Lhs = {    // one switch == one Lhs
 	cases: Array<SymbolSet>,
 	lsubs: List<Int>, // left subs, Array<Lhs::value>
 	ctype: ComplexType,
-	lops: List<OpFollow>,// op follows
+	lrights: List<OpRight>,
 	pos: Position,
 }
 
@@ -54,20 +54,20 @@ enum OpAssocType {
 typedef OpAssoc = {
 	type: OpAssocType,
 	prio: Int,
-	tval: Int,   // terml value, if the name is no exists then -1
+	tval: Int,      // terml value, if the name is no exists then -1
 }
 
-typedef OpPrec = {
+typedef OpLeft = {  // for stream match: [ ..., termls, E], if ( query(termls) ) then .lval = E.value, ...
 	type: OpAssocType,
 	prio: Int,
-	lval: Int,   // last "non-terml" of a case
+	lval: Int,      // last "non-terml" of a case
 }
 
-typedef OpFollow = {
+typedef OpRight = { // for stream match: [E, termls, ... ], if ( query(termls) ) then  .own = E.value, ...
 	type: OpAssocType,
 	prio: Int,
-	own: Int,    // lhs.value
-	cpos: Int,   // case index
+	own: Int,       // lhs.value
+	cpos: Int,      // case index
 }
 /**
  parser datas
@@ -316,7 +316,7 @@ class Parser {
 						lhs.cases.push(g);
 						continue;
 					}
-					var prec:Null<OpPrec> = null;
+					var prec:Null<OpLeft> = null;
 					var ei = 0;
 					var e = el[0];
 					while (true) {
@@ -409,7 +409,7 @@ class Parser {
 						var x2:Symbol = g.syms[1];
 						if (x2.t && x1.t == false) { // case [non-term, termls, ...]:
 							var op = opVerify(x2);
-							lhs.lops.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
+							lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
 						}
 					}
 					lhs.cases.push(g);
@@ -603,7 +603,7 @@ class Parser {
 							cases: [],
 							lsubs: new List(),
 							ctype: ct == null ? this.ct_ldef : ct,
-							lops: new List(),
+							lrights: new List(),
 							pos: f.pos,
 						});
 						continue;
