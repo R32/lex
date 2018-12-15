@@ -158,11 +158,10 @@ class LR0Builder extends lm.Parser {
 				for (right in rights)
 					if (right.own == lval && right.prio != -1)
 						LexEngine.addNode(dst, nfa[right.cpos]);
-			} else if (prec.type != NonAssoc) {
+			} else {
 				for (right in rights)
-					if (right.own == lval
-							&& (prec.type == Left && prec.prio < right.prio || prec.type == Right && prec.prio <= right.prio)
-						) LexEngine.addNode(dst, nfa[right.cpos]);
+					if (right.own == lval && (prec.prio < right.prio || prec.type == Right && prec.prio <= right.prio))
+						LexEngine.addNode(dst, nfa[right.cpos]);
 			}
 		}
 		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
