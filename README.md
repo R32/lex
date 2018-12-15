@@ -39,7 +39,7 @@ Build lexer and simple parser(LR0) in macro.
     // Refer to the following stream matching cases:
     [E, op, ...]: if defined(op) then case.right.own = E.value // the right type is OpRight
     [..., op, E]: if defined(op) then case.left.lval = E.value // the left type is OpLeft
-    [..., ot, E]: if not defined(op) then case.left.lval = E.value & case.left.prio = -1;
+    [..., op, E]: if not defined(op) then case.left.lval = E.value & case.left.prio = -1;
     [..., T, E] or [E]:              then case.left = null
 
     // when calculating closure(Array<NFA>):
@@ -108,7 +108,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ### CHANGES
 
-* `x.x.x`:
+* `0.6.0`:
   - Added `Terml Reflect`
   - Allow different LHS types
   - Reimplemented Operator Precedence
