@@ -316,7 +316,7 @@ class Parser {
 						lhs.cases.push(g);
 						continue;
 					}
-					var prec:Null<OpLeft> = null;
+					var prec:{left:OpLeft, right:OpRight} = {left: null, right: null};
 					var ei = 0;
 					var e = el[0];
 					while (true) {
@@ -368,20 +368,30 @@ class Parser {
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
-						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(UMINUS)
-							var i = switch(c) {
-							case CIdent(i): i;
-							case CString(s):
-								var i = this.p2t.get(s);
-								if (i == null)
-									Context.fatalError("No associated token: " + s, p);
-								i;
-							case _: Context.fatalError("Unsupported: " + c, p);
+						case EMeta({name: ":prec", params: p}, e2): // e.g: @:prec(LEFT, ?RIGHT)
+							var max = lm.Utils.imin(2, p.length);
+							var j = 0;
+							while (j < max) {
+								var i = switch(p[j].expr) {
+								case EConst(CIdent(i)): i;
+								case EConst(CString(s)):
+									var i = this.p2t.get(s);
+									if (i == null)
+										Context.fatalError("No associated token: " + s, p[j].pos);
+									i;
+								case _: Context.fatalError("Unsupported: " + c, p[j].pos);
+								}
+								if (i != "null") {
+									var op = this.opSMap.get(i);
+									if (op == null)
+										Context.fatalError("Undefined :" + i, p[j].pos);
+									if (j == 0)
+										prec.left  = {type: op.type, prio: op.prio, lval: -1};
+									else
+										prec.right = {type: op.type, prio: op.prio, own: -1, cpos: -1};
+								}
+								++ j;
 							}
-							var op = this.opSMap.get(i);
-							if (op == null)
-								Context.fatalError("Undefined :" + i, p);
-							prec = {type: op.type, prio: op.prio, lval: -1};
 							e = e2;
 							continue;
 						case _:
@@ -395,21 +405,27 @@ class Parser {
 						var x1:Symbol = g.syms[len - 1];
 						var x2:Symbol = g.syms[len - 2];
 						if (x2.t && x1.t == false) { // case [..., termls, non-terml]:
-							if (prec == null) {
+							if (prec.left == null) {
 								var op = opVerify(x2);
 								// NOTE: the value of prio might be -1. so the g.prec may be null or {prio: -1}....
 								g.prec = {type: op.type, prio: op.prio, lval: x1.cset[0].min};
-							} else {
-								prec.lval = x1.cset[0].min;
-								g.prec = prec;
+							} else {  // by @:prec(LEFT, )
+								prec.left.lval = x1.cset[0].min;
+								g.prec = prec.left;
 							}
 						}
 						// op follows for each LHS
 						var x1:Symbol = g.syms[0];
 						var x2:Symbol = g.syms[1];
 						if (x2.t && x1.t == false) { // case [non-term, termls, ...]:
-							var op = opVerify(x2);
-							lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
+							if (prec.right == null) {
+								var op = opVerify(x2);
+								lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
+							} else { // rare use by @:prec(...,RIGHT)
+								prec.right.own = x1.cset[0].min;
+								prec.right.cpos = lhs.cases.length;
+								lhs.lrights.add(prec.right);
+							}
 						}
 					}
 					lhs.cases.push(g);
