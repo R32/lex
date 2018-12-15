@@ -1,4 +1,4 @@
-package;
+package subs;
 
 class Demo {
 	static function main() {
@@ -10,7 +10,7 @@ class Demo {
 }
 
 // NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"
-enum abstract Token(Int) to Int {
+private enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;
 	var OpPlus;
@@ -29,7 +29,7 @@ enum abstract Token(Int) to Int {
 *
 * and all the `static var X = "string"` will be treated as rules if no `@:skip`
 */
-@:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
+@:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
 	static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
 	static var r_int = "-?[1-9][0-9]*";
 	static var tok =  [                  // a rule set definition
@@ -60,7 +60,7 @@ enum abstract Token(Int) to Int {
 	left: ["+", "-"],         // The parser could auto reflect(str) => Token
 	left: [OpTimes, OpDiv],   // The lower have higher Priority.
 	nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized
-}) class Parser implements lm.LR0<Lexer, Int> {
+}) private class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {
 		case [e = expr, Eof]: e;
