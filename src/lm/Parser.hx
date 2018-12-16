@@ -413,7 +413,8 @@ class Parser {
 						if (x2.t && x1.t == false) { // case [non-term, termls, ...]:
 							if (prec.right == null) {
 								var op = opVerify(x2);
-								lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
+								if (op.prio != -1)
+									lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
 							} else { // rare use by @:prec(...,RIGHT)
 								prec.right.own = x1.cset[0].min;
 								prec.right.cpos = lhs.cases.length;
