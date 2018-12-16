@@ -22,7 +22,6 @@ class LR0Builder extends lm.Parser {
 	var perRB: Int;
 	var table: Table;
 	var segs: Int;
-	var nrules: Int;
 	var nstates: Int;
 	var invalid: Int;
 	var entrys: Array<{index:Int, begin:Int, width:Int}>;
@@ -46,7 +45,6 @@ class LR0Builder extends lm.Parser {
 		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // will compress it later.
 		this.per = (this.width() - 1 | 15 ) + 1;
-		this.nrules = Lambda.fold(this.lhsA, (l, n) -> l.cases.length + n, 0);
 		this.uid = nrules;  // so all the finalsID must be less then nrules.
 	}
 
@@ -334,7 +332,7 @@ class LR0Builder extends lm.Parser {
 		// 1. Is switch case unreachable?
 		for (n in 0...this.nrules)
 			if (rules[n] == INVALID) {
-				var lhs = byRule(n).lhs;
+				var lhs = byRule(n);
 				if ( !this.used.get( index(lhs) ) ) continue;
 				var msg = "Unreachable switch case";
 				if (!lhs.side)
@@ -483,9 +481,8 @@ class LR0Builder extends lm.Parser {
 		var actions = [];
 		actions.resize(this.nrules);
 		var i = 0;
-		for (l in this.lhsA)
-			for (c in l.cases)
-				actions[i++] = c.action;
+		for (c in this.vcases)
+			actions[i++] = c.action;
 		var here = Context.currentPos();
 		var defCase = actions.pop();
 		var liCase:Array<Case> = [];

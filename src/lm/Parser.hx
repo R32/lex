@@ -74,6 +74,8 @@ typedef OpRight = { // for stream match: [E, termls, ... ], if ( query(termls) )
 */
 class Parser {
 
+	var nrules: Int;
+	var vcases: haxe.ds.Vector<SymbolSet>;  // flatten(all lhs.cases)
 	var termls: Array<Udt>;      // all Terminal
 	var termlsC_All: Charset;    // Terminal Universal Set.
 	var udtMap: Map<String,Udt>; // User Defined Terminal + Non-Terminal
@@ -247,16 +249,16 @@ class Parser {
 		return t == null || t.t ? null : t.cset;
 	}
 
-	function byRule(n):{lhs: Lhs, ncase: SymbolSet} {
+	function byRule(n):Lhs {
 		for (lhs in lhsA) {
 			var len = lhs.cases.length;
-			if (n < len) return {lhs: lhs, ncase: lhs.cases[n]};
+			if (n < len) return lhs;
 			n -= len;
 		}
 		throw "NotFound";
 	}
 
-	inline function ruleToCase(n: Int):SymbolSet return byRule(n).ncase;
+	inline function ruleToCase(n: Int):SymbolSet return this.vcases.get(n);
 
 	function transform(out) {
 		var cases:Array<Array<Case>> = preProcess(out);
@@ -455,9 +457,8 @@ class Parser {
 
 	function organize() {
 		// find max and second largest
-		var lsecond = 0, lmax = 0, lcases = 0;
+		var lsecond = 0, lmax = 0;
 		for (lhs in lhsA) {
-			lcases += lhs.cases.length;
 			for (li in lhs.cases) {
 				var len = li.syms.length;
 				if (len > lmax) {
@@ -487,10 +488,12 @@ class Parser {
 			}
 		}
 		var toks:Array<Array<Null<Bool>>> = [];
-		toks.resize(lcases);
+		toks.resize(nrules);
 		var ti = 0;
+		this.vcases = new haxe.ds.Vector(nrules);
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
+				this.vcases[ti] = li;
 				tmp = [];
 				tmp.resize(li.syms.length);
 				if (li.action == null)
@@ -499,7 +502,7 @@ class Parser {
 				toks[ti++] = tmp;
 			}
 		}
-		this.n2Lhs = new haxe.ds.Vector<Int>(lcases);
+		this.n2Lhs = new haxe.ds.Vector<Int>(nrules);
 		// duplicate var checking. & transform expr
 		ti = 0;
 		for (lhs in lhsA) {
@@ -589,6 +592,7 @@ class Parser {
 		var fields: Array<Field> = Context.getBuildFields();
 		var flazy = new List<{f: Field, fun: Function}>();
 		var ret = [];
+		this.nrules = 0;
 		for (f in fields) {
 			if (f.access.indexOf(AStatic) > -1) {
 				switch (f.kind) {
@@ -602,6 +606,7 @@ class Parser {
 						if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), t_lhs) )
 							this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
 						ret.push(cl);
+						this.nrules += cl.length;
 						this.lhsA.push({
 							name: f.name,
 							value: lvalue++,
