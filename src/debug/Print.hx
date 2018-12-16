@@ -176,40 +176,30 @@ class Print {
 			col.push({name: name, value: i});
 		}
 		smax += 2; // | 10 |
-		if (smax < 9) smax = 9;
+		if (smax < 7) smax = 7;
 		col.sort( (a, b) -> a.value - b.value);
 
 		var buf = new StringBuf();
 		inline function add(s) buf.add( sPad(s, smax) );
 		inline function sp() buf.add("|");
 		inline function nxtLine() buf.add("\n");
-		var lineWidth = 1 + (smax + 1) * (col.length + 3);
+		var lineWidth = 1 + (smax + 1) * (col.length + 2);
 		inline function horLine() buf.add(sRepeat(lineWidth, "-"));
 
 		var raw = lrb.table;
-		var rollpos = lrb.posRB();
-		var rlenpos = lrb.posRBL();
 		var INVALID = lrb.invalid;
 		function s_epsilon(fid: Int) {
 			var s = lrb.table.get(lrb.table.length - 1 - fid);
 			add(s == INVALID ? "NULL" : "R" + s);
 		}
-		function s_rollback(i: Int) {
-			var s = lrb.table.get(rollpos + i);
-			add(s == INVALID ? "NULL" : "R" + s + "+L" + lrb.table.get(rlenpos + i));
-		}
 		function s_row(i: Int, begin: Int, name: String) {
 			horLine(); ( if (i == begin) buf.add(" " + name) ); nxtLine();
-			sp(); add(i + ""); sp(); s_rollback(i); sp(); s_epsilon(i); sp();
+			sp(); add(i + ""); sp(); s_epsilon(i); sp();
 			var base = i * lrb.per;
 			for (v in col) {
 				var shift = raw.get(base + v.value);
 				if (shift != INVALID) {
-					if (shift < lrb.segs) {
-						add("" + shift);
-					} else {
-						add("R" + raw.get(raw.length - 1 - shift) + ",S" + shift);
-					}
+					add("" + shift);
 				} else {
 					add("");
 				}
@@ -219,7 +209,7 @@ class Print {
 		}
 		// header
 		horLine(); nxtLine();
-		sp(); add("(S)"); sp(); add("(RB)"); sp(); add("(EP)"); sp();
+		sp(); add("(S)"); sp(); add("(EP)"); sp();
 		for (v in col) {
 			add(v.name); sp();
 		}
@@ -237,7 +227,7 @@ class Print {
 		// final states
 		buf.add(sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		for (i in lrb.segs...lrb.nstates) {
-			sp(); add(i + ""); sp(); s_rollback(i); sp();
+			sp(); add(i + ""); sp(); s_epsilon(i); sp();
 			buf.add("\n" + sRepeat( 1 + (smax + 1) * 2, "-") + "\n");
 		}
 		return buf.toString();

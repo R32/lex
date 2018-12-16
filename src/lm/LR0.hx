@@ -19,7 +19,7 @@ class LR0Builder extends lm.Parser {
 	var final_counter: Int;
 	var lstates: List<State>;
 	var per: Int;
-	var perRB: Int;
+	var perExit: Int;
 	var table: Table;
 	var segs: Int;
 	var nstates: Int;
@@ -28,9 +28,7 @@ class LR0Builder extends lm.Parser {
 	var nfas: haxe.ds.Vector<Array<Node>>; // assoc with lhsA
 	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
 
-	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
-	public inline function posRB() return this.segs * this.per;
-	public inline function posRBL() return posRB() + this.perRB;
+	public inline function write(out, split = false) this.table.write(per, perExit, isBit16(), out, split);
 	inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
 
@@ -97,7 +95,7 @@ class LR0Builder extends lm.Parser {
 		// properties
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
-		this.perRB = 1 + ((nstates - 1) | 15);
+		this.perExit = 1 + ((nstates - 1) | 15);
 		// compress finalState
 		var diff = final_counter + 1 - segs;
 		for (s in lstates) {
@@ -108,7 +106,7 @@ class LR0Builder extends lm.Parser {
 		}
 		// DFA -> Tables
 		this.makeTable();
-		this.rollback();
+
 		#if lex_lr0table
 		this.dump("lr0-table.txt");
 		#end
@@ -118,7 +116,7 @@ class LR0Builder extends lm.Parser {
 
 	function makeTable() {
 		var INVALID = this.invalid;
-		var bytes = (segs * per) + (3 * perRB);
+		var bytes = (segs * per) + perExit;
 		var tbls = new Table(bytes);
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
@@ -270,59 +268,13 @@ class LR0Builder extends lm.Parser {
 		}
 	}
 
-	function rollback() {
-		inline function epsilon(seg) return table.exits(seg);
-		var alt = new haxe.ds.Vector<Bool>(this.perRB);
-		var INVALID = this.invalid;
-		var rollpos = this.posRB();
-		var rlenpos = this.posRBL();
-		var que = new List<{exit: Int, nxt: Int, len: Int}>(); // FIFO
-		function loop(exit, seg, length) {
-			alt[seg] = true;
-			var base = seg * this.per;
-			for (lv in 0...this.per) {
-				var nxt = table.get(lv + base);
-				if (nxt == INVALID || epsilon(nxt) != INVALID || alt[nxt] || isNonTerm(lv)) continue;
-				table.set(rollpos + nxt, exit);
-				table.set(rlenpos + nxt, length);
-				que.add({exit: exit, nxt: nxt, len: length + 1});
-			}
-		}
-		function noNxt(seg) {
-			if (table.get(rollpos + seg) != INVALID) return;
-			var base = seg * this.per;
-			for (lv in 0...this.per) {
-				var nxt = table.get(lv + base);
-				if (nxt != INVALID)
-					alt[nxt] = true;
-			}
-		}
-		for (e in entrys) {
-			for (i in 0...alt.length) alt[i] = false; // reset
-
-			for (seg in e.begin...e.begin + e.width) {
-				var exit = epsilon(seg);
-				if (exit == INVALID)
-					noNxt(seg);
-				else
-					loop(exit, seg, 1);
-			}
-
-			while (true) {
-				var q = que.pop();
-				if (q == null) break;
-				loop(q.exit, q.nxt, q.len);
-			}
-		}
-	}
-
 	function checking() {
 		var INVALID = this.invalid;
 		// init exitN/NRule => final_state rules
 		var rules = new haxe.ds.Vector<Int>(this.nrules);
 		for (n in 0...this.nrules)
 			rules[n] = INVALID;
-		for (i in table.length-this.perRB...table.length) {
+		for (i in table.length - this.perExit...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
 			// since: i = table.length - 1 - state; // table.exitpos
@@ -395,8 +347,6 @@ class LR0Builder extends lm.Parser {
 			static inline function getU(i:Int):Int return $getU;
 			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
 			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
-			static inline function rollB(s:Int):Int return getU(s + $v{this.posRB()});
-			static inline function rollL(s:Int):Int return getU(s + $v{this.posRBL()});
 			static inline function gotos(fid:Int, s:$ct_stream):$ct_lval return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
@@ -425,20 +375,9 @@ class LR0Builder extends lm.Parser {
 					if (q < NRULES) {
 						stream.pos -= dx;
 					} else {
-						q = rollB(state);
-						if (q < NRULES) {
-							var dy = dx + rollL(state);
-							t = stream.offset( -1 - dy);
-							if ( trans(t.state, lva[q] >> 8) == INVALID ) {
-								until = false; // force error
-								break;
-							}
-							stream.rollback(dy, $v{maxValue});
-						} else {
-							break;  // throw error.
-						}
+						break;  // throw error.
 					}
-					dx = 0;         // reset dx after rollback
+					dx = 0;
 					while (true) {
 						var value:$ct_lval = gotos(q, stream);
 						t = stream.reduce( lva[q] );

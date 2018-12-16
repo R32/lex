@@ -5,8 +5,9 @@ class Demo {
 		var str = '1 - 2 * (3 + 4) + 5 * 6';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var par = new Parser(lex);
-		trace(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
+		eq(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
 	}
+	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw lm.Utils.error("ERROR in " + pos);
 }
 
 // NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"

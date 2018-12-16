@@ -20,12 +20,12 @@ class LexEngine {
 	public var per(default, null): Int;
 
 	/**
-	 the size of the "exit table" & "rollback table".
+	 the size of the "exit table"
 	*/
-	public var perRB(default, null): Int;
+	public var perExit(default, null): Int;
 
 	/**
-	 format: [seg0,seg1,......,segN, rollback,rollback_len,exits]
+	 format: [seg0,seg1,......,segN,exits]
 	*/
 	public var table(default, null): Table;
 
@@ -70,7 +70,7 @@ class LexEngine {
 		}
 		// properties
 		this.invalid = lstates.length < U8MAX ? U8MAX : U16MAX;
-		this.perRB = 1 + ((lstates.length - 1) | 15);
+		this.perExit = 1 + ((lstates.length - 1) | 15);
 
 		// compress finalState
 		var diff = final_counter + 1 - segs;
@@ -82,13 +82,9 @@ class LexEngine {
 		}
 		// DFA -> Tables
 		this.makeTables();
-		// rollback detection
-		this.rollback();
 	}
 
-	public inline function write(out, split = false) this.table.write(posRB(), per, perRB, isBit16(), out, split);
-	public inline function posRB() return this.segs * this.per;
-	public inline function posRBL() return posRB() + this.perRB;
+	public inline function write(out, split = false) this.table.write(per, perExit, isBit16(), out, split);
 	public inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
 	inline function node() return new Node(uid++);
@@ -159,7 +155,7 @@ class LexEngine {
 
 	function makeTables() {
 		var INVALID = this.invalid;
-		var bytes = (segs * per) + (3 * perRB); // segsN + (rollbak + rollback_len + exits)
+		var bytes = (segs * per) + perExit; // segsN + exits
 		var tbls = new Table(bytes);
 		for (i in 0...bytes) tbls.set(i, INVALID);
 
@@ -169,31 +165,6 @@ class LexEngine {
 				makeTrans(tbls, s.id * per, s.trans, s.targets);
 		}
 		this.table = tbls;
-	}
-
-	function rollback() {
-		inline function epsilon(seg) return this.table.exits(seg);
-		var INVALID = this.invalid;
-		var rollpos = posRB();
-		var rlenpos = posRBL();
-		function loop(exit, seg, smax, length) {
-			var base = seg * this.per;
-			for (p in base...base + this.per) {
-				var nxt = this.table.get(p);
-				if (nxt >= smax || epsilon(nxt) != INVALID || nxt == seg) continue;
-				this.table.set(rollpos + nxt, exit);
-				this.table.set(rlenpos + nxt, length); // junk(length) when rollback.
-				loop(exit, nxt, smax, length + 1);
-			}
-		}
-		for (e in this.entrys) {
-			var smax = e.begin + e.width;
-			for (seg in e.begin...smax) {
-				var exit = epsilon(seg);
-				if (exit == INVALID) continue;
-				loop(exit, seg, smax, 1);
-			}
-		}
 	}
 
 	static function makeTrans(tbls: Table, start: Int, trans: Array<Char>, targets: Array<Int>) {
@@ -485,7 +456,8 @@ abstract Table(haxe.ds.Vector<Int>) {
 			return b;
 		}
 	}
-	public function write(left:Int, per:Int, perRB:Int, bit16:Bool, out:haxe.io.Output, split:Bool) {
+	public function write(per:Int, perExit:Int, bit16:Bool, out:haxe.io.Output, split:Bool) {
+		var left = this.length - perExit;
 		if (!split) out.writeByte('"'.code);
 		var prefix = bit16 ? "\\u" : "\\x";
 		var padd = bit16 ? 4: 2;
@@ -494,10 +466,9 @@ abstract Table(haxe.ds.Vector<Int>) {
 			if (split && i > 0 && i % per == 0) out.writeString("\n");
 			out.writeString( prefix + StringTools.hex(this.get(i), padd).toLowerCase() );
 		}
-		var rest = this.length - left;
-		for (i in 0...rest) {
+		for (i in 0...perExit) {
 			if (split && i % 16 == 0) out.writeString("\n");
-			if (split && i % perRB == 0) out.writeString("\n");
+			if (split && i % perExit == 0) out.writeString("\n");
 			out.writeString( prefix + StringTools.hex(this.get(left + i), padd).toLowerCase() );
 		}
 		if (!split) out.writeByte('"'.code);

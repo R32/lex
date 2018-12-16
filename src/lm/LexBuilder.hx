@@ -172,8 +172,6 @@ class LexBuilder {
 			static inline function getU(i:Int):Int return $getU;
 			static inline function trans(s:Int, c:Int):Int return getU($v{lex.per} * s + c);
 			static inline function exits(s:Int):Int return getU($v{lex.table.length - 1} - s);
-			static inline function rollB(s:Int):Int return getU(s + $v{lex.posRB()});
-			static inline function rollL(s:Int):Int return getU(s + $v{lex.posRBL()});
 			static inline function gotos(s:Int, lex: $ct_lex) return cases(s, lex);
 			public var input(default, null): lms.ByteData;
 			public var pmin(default, null): Int;
@@ -212,12 +210,7 @@ class LexBuilder {
 				if (q < NRULES) {
 					pmax = i - prev;
 				} else {
-					q = rollB(state);
-					if (q < NRULES) {
-						pmax = i - prev - rollL(state);
-					} else {
-						throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
-					}
+					throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
 				}
 				return gotos(q, this);
 			}
@@ -301,7 +294,7 @@ class LexBuilder {
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
 		for (n in 0...lex.nrules)
 			exits[n] = INVALID;
-		for (i in table.length-lex.perRB...table.length) {
+		for (i in table.length - lex.perExit...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
 			exits[n] = table.length - 1 - i;

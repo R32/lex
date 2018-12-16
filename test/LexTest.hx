@@ -7,7 +7,7 @@ class LexTest {
 		// lexer
 		subs.LexBase.main();
 		subs.LexVarIdent.main();
-		subs.LexRollback.main();
+		// subs.LexRollback.main();
 		// parser
 		subs.Demo.main();
 	}
