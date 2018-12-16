@@ -27,6 +27,7 @@ class LR0Builder extends lm.Parser {
 	var entrys: Array<{index:Int, begin:Int, width:Int}>;
 	var nfas: haxe.ds.Vector<Array<Node>>; // assoc with lhsA
 	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
+	var hasSide: Bool;                     // if have @:side on LHS
 
 	public inline function write(out, split = false) this.table.write(per, perExit, isBit16(), out, split);
 	inline function isBit16() return this.invalid == U16MAX;
@@ -87,6 +88,7 @@ class LR0Builder extends lm.Parser {
 		// side entrys
 		for (i in 1...this.lhsA.length) {
 			if (this.lhsA[i].side == false) continue;
+			hasSide = true;
 			this.h = new Map(); // reset
 			compile( LexEngine.addNodes([], this.nfas[i]) );
 			addEntry(i);
@@ -381,7 +383,7 @@ class LR0Builder extends lm.Parser {
 					while (true) {
 						var value:$ct_lval = gotos(q, stream);
 						t = stream.reduce( lva[q] );
-						if (t.term == exp && !until) {
+						if ($e{ hasSide ? macro (t.term == exp && !until) : macro (t.term == exp) }) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
 							return value;
@@ -389,21 +391,35 @@ class LR0Builder extends lm.Parser {
 						t.val = value;
 						t.state = trans(stream.offset( -2).state, t.term);
 						prev = t.state;
-						if (prev < NSEGS) break;
-						if (prev == INVALID) {
-							if (until && exp == t.term)
-								return value;
-							throw stream.UnExpected(t);
+						if (prev < NSEGS)
+							break;
+						$e{ // Macro selection
+							if (hasSide) {
+								macro
+								if (prev == INVALID) {
+									if (until && exp == t.term)
+									return value;
+									throw stream.UnExpected(t);
+								}
+							} else {
+								macro {};
+							}
 						}
 						q = exits(prev);
 					}
 				}
-				if ( until && (stream.pos - dx == keep + 1) && (exp == stream.cached[keep].term) )
-					return stream.cached[keep].val;
+				$e{ // Macro selection
+					if (hasSide) {
+						macro if ( until && (stream.pos - dx == keep + 1) && (exp == stream.cached[keep].term) ) // hasSide 3
+								return stream.cached[keep].val;
+					} else {
+						macro {};
+					}
+				}
 				t = stream.offset( -1);
 				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
-			@:access(lm.Stream, lm.Tok)
+			@:dce @:access(lm.Stream, lm.Tok)
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lval {
 				var keep = stream.pos;
 				var prev = stream.offset( -1);
