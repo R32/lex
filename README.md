@@ -105,6 +105,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ### CHANGES
 
+* `0.6.1`: minor
 * `0.6.0`:
   - Added `Terml Reflect`
   - Allow different LHS types
