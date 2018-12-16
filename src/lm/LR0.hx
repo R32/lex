@@ -140,8 +140,8 @@ class LR0Builder extends lm.Parser {
 		}
 		function filterAdd(dst: Array<Node>, from:Int, lval: Int, rule: Int) {
 			var nfa = this.nfas[from];
-			var r = ruleToCase(rule);
-			if (r.prec == null || r.syms.length == 1) { // null || single
+			var prec = ruleToCase(rule).prec;
+			if (prec == null) { // [E]  or [...,T,E]
 				return addAll(dst, nfa);
 			}
 			// exclude if node == lval
@@ -150,7 +150,6 @@ class LR0Builder extends lm.Parser {
 					LexEngine.addNode(dst, n);
 
 			// filter by Operator Precedence
-			var prec = r.prec;
 			var rights = this.lhsA[from].lrights;
 			if (prec.prio == -1) {
 				for (right in rights)
