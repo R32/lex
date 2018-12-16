@@ -556,7 +556,7 @@ class Parser {
 					} else {
 						var lvalue = s.cset[0].min; // NON-TERML
 						var ct = lhsA[lvalue - maxValue].ctype;
-						a.push( macro @:pos(s.pos) var $name: $ct = @:privateAccess (s.offset($v{dx}).val: $ct) );
+						a.push( macro @:pos(s.pos) var $name: $ct = @:privateAccess (cast s.offset($v{dx}).val: $ct) );
 					}
 				}
 				switch(li.action.expr) {

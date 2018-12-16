@@ -399,7 +399,7 @@ class LR0Builder extends lm.Parser {
 			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
 			static inline function rollB(s:Int):Int return getU(s + $v{this.posRB()});
 			static inline function rollL(s:Int):Int return getU(s + $v{this.posRBL()});
-			static inline function gotos(fid:Int, s:$ct_stream) return cases(fid, s);
+			static inline function gotos(fid:Int, s:$ct_stream):$ct_lval return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = new lm.Stream<$ct_lval>(lex, 0);
