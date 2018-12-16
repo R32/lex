@@ -368,30 +368,21 @@ class Parser {
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
-						case EMeta({name: ":prec", params: p}, e2): // e.g: @:prec(LEFT, ?RIGHT)
-							var max = lm.Utils.imin(2, p.length);
-							var j = 0;
-							while (j < max) {
-								var i = switch(p[j].expr) {
-								case EConst(CIdent(i)): i;
-								case EConst(CString(s)):
-									var i = this.p2t.get(s);
-									if (i == null)
-										Context.fatalError("No associated token: " + s, p[j].pos);
-									i;
-								case _: Context.fatalError("Unsupported: " + c, p[j].pos);
-								}
-								if (i != "null") {
-									var op = this.opSMap.get(i);
-									if (op == null)
-										Context.fatalError("Undefined :" + i, p[j].pos);
-									if (j == 0)
-										prec.left  = {type: op.type, prio: op.prio, lval: -1};
-									else
-										prec.right = {type: op.type, prio: op.prio, own: -1, cpos: -1};
-								}
-								++ j;
+						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(LEFT, ?RIGHT)
+							var i = switch(c) {
+							case CIdent(i): i;
+							case CString(s):
+								var i = this.p2t.get(s);
+								if (i == null)
+									Context.fatalError("No associated token: " + s, p);
+								i;
+							case _: Context.fatalError("Unsupported: " + c, p);
 							}
+							var op = this.opSMap.get(i);
+							if (op == null)
+								Context.fatalError("Undefined :" + i, p);
+							prec.left  = {type: op.type, prio: op.prio, lval: -1};
+							prec.right = {type: op.type, prio: op.prio, own: -1, cpos: -1};
 							e = e2;
 							continue;
 						case _:

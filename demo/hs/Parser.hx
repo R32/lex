@@ -118,12 +118,12 @@ import hscript.Expr;
 
 	static var expr = switch (s) {
 		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]: EBinop(s.str(_t2), e1, e2);
-		case [@:prec("<<=", "<<=") e1 = expr, ">", ">", "=", e2 = expr]:      conpos(s, [_t2, _t3, _t4]);  EBinop(">>=", e1, e2);
-		case [@:prec("<<=", "<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]: conpos(s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
-		case [@:prec("<=", "<=") e1 = expr, ">", "=", e2 = expr]:             conpos(s, [_t2, _t3]); EBinop(">=", e1, e2);
-		case [@:prec("<<", "<<") e1 = expr, ">", ">", e2 = expr]:             conpos(s, [_t2, _t3]); EBinop(">>", e1, e2);
-		case [@:prec("<<", "<<") e1 = expr, ">", ">", ">", e2 = expr]:        conpos(s, [_t2, _t3, _t4]); EBinop(">>>", e1, e2);
-		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:       EBinop(s.str(_t2), e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(s, [_t2, _t3, _t4]);  EBinop(">>=", e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
+		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(s, [_t2, _t3]); EBinop(">=", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(s, [_t2, _t3]); EBinop(">>", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(s, [_t2, _t3, _t4]); EBinop(">>>", e1, e2);
+		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(s.str(_t2), e1, e2);
 		case [e1 = expr, "<<", e2 = expr]:                     EBinop("<<", e1, e2);
 		case [e1 = expr, "||", e2 = expr]:                     EBinop("||", e1, e2);
 		case [e1 = expr, "&&", e2 = expr]:                     EBinop("&&", e1, e2);

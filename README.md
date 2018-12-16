@@ -5,7 +5,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ## status
 
-[parser for hscript](/demo/) Just as a demo, Only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
+[a demo parser for hscript](/demo/) only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
 
 * Lexer: **Stable** Does not support unicode(The maximum char is 254)
 
@@ -37,22 +37,19 @@ Build lexer and simple parser(LR0) in macro.
     // this parser is not very necessary to refer the operator precedence definitions.
 
     // Refer to the following stream matching cases:
-    [E, op, ...]: if defined(op) then case.right.own = E.value // the right type is OpRight
-    [..., op, E]: if defined(op) then case.left.lval = E.value // the left type is OpLeft
+    [E, op, ...]: if defined(op)     then case.right.own = E.value // the right type is OpRight
+    [..., op, E]: if defined(op)     then case.left.lval = E.value // the left type is OpLeft
     [..., op, E]: if not defined(op) then case.left.lval = E.value & case.left.prio = -1;
     [..., T, E] or [E]:              then case.left = null
 
     // when calculating closure(Array<NFA>):
     [..., E]: if E at the and of case, then will according the case.left and .rights to do some mix.
 
-    // you can use @:prec(Null<LEFT>, ?RIGHT) to specify OpLeft and OpRight for a matching case. e.g:
-    [@:prec(UMINUS), "-", e = expr]:
+    // you can use @:prec(FOLLOW) to specify both the value of OpLeft and OpRight(If there are not null). e.g:
+    [@:prec(UMINUS), "-", e = expr]:   // only case.left.prio & .type = UMINUS, since case.right is null
 
-    // It's very rare to specify OpRight by @:prec,
     // for a string: "var a:Array<Int>=[]", the close token ">" will be parsed as ">=" by Lexer. so:
-    [@:prec(">=", ">=")   e1 = expr, ">", "=", e2 = expr]: if (_t2.pmax == _t3.pmin) ...
-
-    [@:prec(">>=", ">>=") e1 = expr, ">", ">", "=", e2 = expr]:
+    [@:prec(">=")   e1 = expr, ">", "=", e2 = expr]: if (_t2.pmax == _t3.pmin) ...
     ```
 
   - ~~Guard~~: Has been removed because it's useless.
