@@ -541,22 +541,22 @@ class Parser {
 						if (ofstr == null) {
 							if ( s.name != "_" && CSet.isSingle(s.cset) ) // If you forget to add an extract function
 								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
-							a.push(macro var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
+							a.push(macro @:pos(s.pos) var $name: $ct_terms = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
 							case 1:  // (string)
-								a.push(macro var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+								a.push(macro @:pos(s.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
 							case 2:  // (input, tok)
-								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
+								a.push(macro @:pos(s.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
 							default: // (input, pmin, pmax)
-								a.push(macro var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
+								a.push(macro @:pos(s.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
 							}
 						}
 					} else {
 						var lvalue = s.cset[0].min; // NON-TERML
 						var ct = lhsA[lvalue - maxValue].ctype;
-						a.push( macro @:pos(li.action.pos) var $name = @:privateAccess (s.offset($v{dx}).val: $ct) );
+						a.push( macro @:pos(s.pos) var $name: $ct = @:privateAccess (s.offset($v{dx}).val: $ct) );
 					}
 				}
 				switch(li.action.expr) {
