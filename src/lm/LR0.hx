@@ -338,7 +338,7 @@ class LR0Builder extends lm.Parser {
 			getU = macro StringTools.fastCodeAt(raw, i);
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
-		var lva = this.n2Lhs.map(n -> macro $v{n}).toArray();
+		var lva = this.reduceDetail.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var defs = macro class {
 			static var raw = $raw;
 			static var lva:Array<Int> = [$a{lva}];

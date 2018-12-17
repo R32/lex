@@ -74,8 +74,6 @@ typedef OpRight = { // for stream match: [E, termls, ... ], if ( query(termls) )
 */
 class Parser {
 
-	var nrules: Int;
-	var vcases: haxe.ds.Vector<SymbolSet>;  // flatten(all lhs.cases)
 	var termls: Array<Udt>;      // all Terminal
 	var termlsC_All: Charset;    // Terminal Universal Set.
 	var udtMap: Map<String,Udt>; // User Defined Terminal + Non-Terminal
@@ -84,15 +82,17 @@ class Parser {
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_terms: ComplexType;   // the ctype of tokens
-	var ct_ldef: ComplexType;    // the default ctype of LHS(if not specified)
+	var ct_ldef: ComplexType;    // the default ctype of LHS.
 	var ct_lval: ComplexType;    // if "ct_lhs" can no be unified with any "LHS.ctype" then its value is ":Dynamic"
 	var ct_stream: ComplexType;  // :lm.Stream<ct_lval>
 	var ct_stream_tok: ComplexType;
 	var preDefs: Array<Expr>;    // for function cases()
-	var opIMap: haxe.ds.Vector<OpAssoc>; //
-	var opSMap: Map<String, OpAssoc>;    // e.g: %prec UMINUS
-	var n2Lhs: haxe.ds.Vector<Int>;      // NRule => (lvalue << 8) | syms.length. (for reduction)
-	var p2t: Map<String, String>;        // PatternString => TokenString for reflect
+	var opIMap: haxe.ds.Vector<OpAssoc>;   // term value => OpAssoc
+	var opSMap: Map<String, OpAssoc>;      // (term name | placeholder) => OpAssoc
+	var reduceDetail: haxe.ds.Vector<Int>; // item = (lvalue << 8) | syms.length. (used for reduce)
+	var reflect: Map<String, String>;      // PatternString => TokenString
+	var nrules: Int;                       //  length(all switch cases)
+	var vcases: haxe.ds.Vector<SymbolSet>; // flatten(all lhs.cases)
 
 	public inline function isEmpty() return this.lhsA.length == 0;
 	public inline function isNonTerm(v) return v >= this.maxValue;
@@ -115,7 +115,7 @@ class Parser {
 							if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
 								Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
 							this.sEof = eof.toString();
-							p2t = LexBuilder.lmap.get(Utils.getClsFullName(lex));
+							reflect = LexBuilder.lmap.get(Utils.getClsFullName(lex));
 							break;
 						}
 					}
@@ -163,7 +163,7 @@ class Parser {
 						var name = switch (e.expr) {
 						case EConst(CIdent(i)): i;
 						case EConst(CString(p)):
-							var i = this.p2t.get(p); // reflect
+							var i = this.reflect.get(p); // reflect
 							if (i == null)
 								Context.fatalError('No reflect for "' + p + '"', e.pos);
 							i;
@@ -328,7 +328,7 @@ class Parser {
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
 						case EConst(CString(s)):
-							var i = this.p2t.get(s);
+							var i = this.reflect.get(s);
 							if (i == null)
 								Context.fatalError("No associated token: " + s, e.pos);
 							firstCharChecking(i, UPPER, e.pos);
@@ -359,7 +359,7 @@ class Parser {
 							for (t in a) {
 								var i = switch (t.expr) {
 								case EConst(CIdent(i)): i;
-								case EConst(CString(s)): this.p2t.get(s);
+								case EConst(CString(s)): this.reflect.get(s);
 								default: null;
 								}
 								if (i == null)
@@ -374,7 +374,7 @@ class Parser {
 							var i = switch(c) {
 							case CIdent(i): i;
 							case CString(s):
-								var i = this.p2t.get(s);
+								var i = this.reflect.get(s);
 								if (i == null)
 									Context.fatalError("No associated token: " + s, p);
 								i;
@@ -503,7 +503,7 @@ class Parser {
 				toks[ti++] = tmp;
 			}
 		}
-		this.n2Lhs = new haxe.ds.Vector<Int>(nrules);
+		this.reduceDetail = new haxe.ds.Vector<Int>(nrules);
 		// duplicate var checking. & transform expr
 		ti = 0;
 		for (lhs in lhsA) {
@@ -511,7 +511,7 @@ class Parser {
 				var row = ["s" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
-				this.n2Lhs[ti] = lhs.value << 8 | len;
+				this.reduceDetail[ti] = lhs.value << 8 | len;
 				for (i in 0...len) {
 					var s = li.syms[i];
 					var dx = -(len - i);

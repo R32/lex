@@ -45,7 +45,7 @@ class LexBuilder {
 	static public function build():Array<Field> {
 		if (lmap == null)
 			lmap = new Map();
-		var p2t = new Map(); // patternString => TokenString
+		var reflect = new Map(); // patternString => TokenString
 		var cls = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cls.pack, name: cls.name});
 		var meta = getMeta(cls.meta.extract(":rule"));
@@ -59,7 +59,7 @@ class LexBuilder {
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
 				abst = absTokens(t, tmap);
-				lmap.set(Utils.getClsFullName(cls), p2t); // store
+				lmap.set(Utils.getClsFullName(cls), reflect); // store
 				break;
 			}
 		}
@@ -113,7 +113,7 @@ class LexBuilder {
 						var k = unescape(r.es, idmap);
 						if ( !tmap.exists(v) )
 							Context.fatalError("Unknown identifier: " + v, r.action.pos);
-						p2t.set(k, v);
+						reflect.set(k, v);
 					case _:
 					}
 				}
