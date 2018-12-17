@@ -64,26 +64,9 @@ class Stream<LHS> {
 		}
 	}
 
-	public function errpos(pmin: Int): String {
-		var input = lex.input;
-		var line = 1;
-		var char = 0;
-		var i = 0;
-		while (i < pmin) {
-			var c = input.readByte(i++);
-			if (c == "\n".code) {
-				char = 0;
-				++ line;
-			} else {
-				++ char;
-			}
-		}
-		return " at line: " + line + ", char: " + char;
-	}
-
 	function stri(dx):String return str( offset(dx) );
 
-	public function error(msg:String, t: Tok<LHS>) return lm.Utils.error(msg + errpos(t.pmin));
+	public function error(msg:String, t: Tok<LHS>) return lm.Utils.error(msg + posString(t.pmin, lex.input));
 
 	public inline function UnExpected(t: Tok<LHS>) return error('Unexpected "' + str(t) + '"', t);
 
@@ -99,7 +82,7 @@ class Stream<LHS> {
 		return cached[pos++];
 	}
 
-	function rollback(dx: Int, maxv: Int) {
+	function rollback(dx: Int, maxv: Int) {// if you want set lex.pmax, set maxv = 0, otherwise use MAXVALUE
 		pos -= dx;
 		dx = pos;
 		while (dx < right) {
@@ -144,5 +127,21 @@ class Stream<LHS> {
 		cached[pos] = t;
 		++pos;
 		++right;
+	}
+
+	static public function posString(pmin: Int, input: lms.ByteData): String {
+		var line = 1;
+		var char = 0;
+		var i = 0;
+		while (i < pmin) {
+			var c = input.readByte(i++);
+			if (c == "\n".code) {
+				char = 0;
+				++ line;
+			} else {
+				++ char;
+			}
+		}
+		return " at line: " + line + ", char: " + char;
 	}
 }

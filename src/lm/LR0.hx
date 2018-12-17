@@ -345,6 +345,7 @@ class LR0Builder extends lm.Parser {
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
 			static inline var NSEGS   = $v{this.segs};
+			static inline var MAXVALUE   = $v{this.maxValue};        // see .isNonTerm(v)/.isTerm(v)
 			static inline function getU(i:Int):Int return $getU;
 			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
 			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
