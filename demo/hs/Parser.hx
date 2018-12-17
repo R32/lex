@@ -52,7 +52,7 @@ import hscript.Expr;
 			| ETry(_):
 			default:
 				if (t.term != cast Eof)
-					throw lm.Utils.error( s.UnExpected(t) );
+					throw s.UnExpected(t);
 			}
 		}
 	}
@@ -64,7 +64,7 @@ import hscript.Expr;
 		while (i < len) {
 			var t2 = a[i++];
 			if (t1.pmax != t2.pmin)
-				throw lm.Utils.error( s.UnExpected(t2) );
+				throw s.UnExpected(t2);
 			t1 = t2;
 		}
 	}
