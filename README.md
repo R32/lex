@@ -105,8 +105,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ### CHANGES
 
-* `x.x.x`:
-  - Removed unstable & useless rollback.
+* `0.7.0`: Removed unstable & useless rollback.
 * `0.6.0`:
   - Added `Terml Reflect`
   - Allow different LHS types
