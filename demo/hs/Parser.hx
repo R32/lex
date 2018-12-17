@@ -9,7 +9,7 @@ import hscript.Expr;
 * - 2. using ">",">","=" instead of ">>=" for parsing, and also ">>", ">>>", ">=", ">>>="
 */
 @:rule({
-	right: ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^=", "=>", "->",/* ">>=", ">>>=" */],
+	right: ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^=", "=>", "->", "?", /* ">>=", ">>>=" */],
 	left: ["||"],
 	left: ["&&"],
 	left: ["..."],
@@ -321,4 +321,31 @@ import hscript.Expr;
 		case ["default", ":"]:                    {v: [], e: EBlock([])};
 		case ["default", ":", e = list]:          {v: [], e: EBlock(e)};
 	}
+
+/*  unavailable
+	static var prepro = switch(s) {
+		case ["#if", c = p_cond, n = p_next, "#end"]:                            null;
+		case ["#if", c = p_cond, n = p_next, p = p_else, "#end"]:                null;
+		case ["#if", c = p_cond, n = p_next, p = p_elseif, "#end"]:              null;
+		case ["#if", c = p_cond, n = p_next, p = p_elseif, p = p_else, "#end"]:  null;
+	}
+	static var p_elseif = switch(s) {
+		case [p = p_elseif, "#elseif", c = p_cond, n = p_next]:                  null;
+		case ["#elseif", c = p_cond, n = p_next]:                                null;
+	}
+	static var p_else = switch(s) {
+		case ["#else" n = p_next]:                                               null;
+	}
+	static var p_next = switch(s) {
+		case [Eof]:                               throw lm.Utils.error("Unclosed: " + "#if");
+		case [l = list]:                          l.length == 1 ? l[0] : l;
+	}
+	static var p_cond = switch(s) {
+		case [c1 = p_cond, "&&", c2 = p_cond]:    EBinop("&&", c1, c2);
+		case [c1 = p_cond, "||", c2 = p_cond]:    EBinop("||", c1, c2);
+		case ["(", c = p_cond, ")"]:              EParent(c);
+		case ["!", c = p_cond]:                   EUnop("!", true, c);
+		case [CIdent(i)]:                         EIdent(i);
+	}
+*/
 }

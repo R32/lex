@@ -24,6 +24,11 @@ enum abstract Token(Int) to Int {
 	var Kwd_Try;
 	var Kwd_Catch;
 	var Kwd_Throw;
+	// Prepro
+	var PrIf;        // #if
+	var PrElse;
+	var PrElseIf;
+	var PrEnd;
 	// Const
 	var CIdent;
 	var CInt;
@@ -124,6 +129,11 @@ enum abstract Token(Int) to Int {
 		"try" =>        Kwd_Try,
 		"catch" =>      Kwd_Catch,
 		"throw" =>      Kwd_Throw,
+		// PrePro
+		"#if"     =>    PrIf,
+		"#else"   =>    PrElse,
+		"#elseif" =>    PrElseIf,
+		"#end"    =>    PrEnd,
 		// Const
 		ident =>            CIdent,
 		"0x[A-Fa-f0-9]+" => CInt,
@@ -147,7 +157,6 @@ enum abstract Token(Int) to Int {
 		"[" => LBracket,
 		"]" => RBracket,
 		"@:?" + ident => Meta,
-		"#" + ident =>   Sharp,
 		// Op
 		"%" =>    OpMod,
 		"*" =>    OpMul,
@@ -276,6 +285,13 @@ class Lexer {
 #end
 	static var smap: Map<Int, String> = new Map(); // pmin => String
 
+	public function reset(s: lms.ByteData) {
+		this.input = s;
+		pmin = 0;
+		pmax = 0;
+		smap = new Map();
+	}
+
 	function strpos(p:Int):String {
 		var line = 1;
 		var char = 0;
@@ -317,6 +333,11 @@ class Lexer {
 		case Kwd_Try: "try";
 		case Kwd_Catch: "catch";
 		case Kwd_Throw: "throw";
+		//
+		case PrIf: "#if";
+		case PrElse: "#else";
+		case PrElseIf: "#elseif";
+		case PrEnd: "#end";
 		// Const
 		case CIdent: ext;
 		case CInt: ext;

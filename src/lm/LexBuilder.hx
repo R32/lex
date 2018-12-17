@@ -164,6 +164,7 @@ class LexBuilder {
 			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 			getU = macro StringTools.fastCodeAt(raw, i);
 		}
+
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var INVALID = $v{lex.invalid};
@@ -180,7 +181,7 @@ class LexBuilder {
 			inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public inline function getString(p, len):String return input.readString(p, len);
 			public inline function curpos() return new lms.Position(pmin, pmax);
-			public function new(s: lms.ByteData, ?len:Int) {
+			public function new(s: lms.ByteData) {
 				this.input = s;
 				pmin = 0;
 				pmax = 0;
