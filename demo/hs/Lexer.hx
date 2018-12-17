@@ -130,10 +130,10 @@ enum abstract Token(Int) to Int {
 		"catch" =>      Kwd_Catch,
 		"throw" =>      Kwd_Throw,
 		// PrePro
-		"#if"     =>    PrIf,
-		"#else"   =>    PrElse,
-		"#elseif" =>    PrElseIf,
-		"#end"    =>    PrEnd,
+		"#if"     =>    lex.prep.process(PrIf, lex),
+		"#else"   =>    lex.prep.process(PrElse, lex),
+		"#elseif" =>    lex.prep.process(PrElseIf, lex),
+		"#end"    =>    lex.prep.process(PrEnd, lex),
 		// Const
 		ident =>            CIdent,
 		"0x[A-Fa-f0-9]+" => CInt,
@@ -283,13 +283,20 @@ enum abstract Token(Int) to Int {
 #else
 class Lexer {
 #end
-	static var smap: Map<Int, String> = new Map(); // pmin => String
+	static var smap: Map<Int, String>;      // pmin => String
+
+	var prep: hs.PreProcess;
+
+	public function new(s: lms.ByteData) {  // if "new" already exists, then the macro will not build it again.
+		reset(s);
+	}
 
 	public function reset(s: lms.ByteData) {
 		this.input = s;
 		pmin = 0;
 		pmax = 0;
 		smap = new Map();
+		prep = new hs.PreProcess(this);
 	}
 
 	function strpos(p:Int):String {

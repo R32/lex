@@ -118,11 +118,11 @@ import hscript.Expr;
 
 	static var expr = switch (s) {
 		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]: EBinop(s.str(_t2), e1, e2);
-		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(s, [_t2, _t3, _t4]);  EBinop(">>=", e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(s, [_t2, _t3, _t4]);      EBinop(">>=", e1, e2);
 		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
-		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(s, [_t2, _t3]); EBinop(">=", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(s, [_t2, _t3]); EBinop(">>", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(s, [_t2, _t3, _t4]); EBinop(">>>", e1, e2);
+		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(s, [_t2, _t3]);           EBinop(">=", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(s, [_t2, _t3]);           EBinop(">>", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(s, [_t2, _t3, _t4]);      EBinop(">>>", e1, e2);
 		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(s.str(_t2), e1, e2);
 		case [e1 = expr, "<<", e2 = expr]:                     EBinop("<<", e1, e2);
 		case [e1 = expr, "||", e2 = expr]:                     EBinop("||", e1, e2);
@@ -321,31 +321,4 @@ import hscript.Expr;
 		case ["default", ":"]:                    {v: [], e: EBlock([])};
 		case ["default", ":", e = list]:          {v: [], e: EBlock(e)};
 	}
-
-/*  unavailable
-	static var prepro = switch(s) {
-		case ["#if", c = p_cond, n = p_next, "#end"]:                            null;
-		case ["#if", c = p_cond, n = p_next, p = p_else, "#end"]:                null;
-		case ["#if", c = p_cond, n = p_next, p = p_elseif, "#end"]:              null;
-		case ["#if", c = p_cond, n = p_next, p = p_elseif, p = p_else, "#end"]:  null;
-	}
-	static var p_elseif = switch(s) {
-		case [p = p_elseif, "#elseif", c = p_cond, n = p_next]:                  null;
-		case ["#elseif", c = p_cond, n = p_next]:                                null;
-	}
-	static var p_else = switch(s) {
-		case ["#else" n = p_next]:                                               null;
-	}
-	static var p_next = switch(s) {
-		case [Eof]:                               throw lm.Utils.error("Unclosed: " + "#if");
-		case [l = list]:                          l.length == 1 ? l[0] : l;
-	}
-	static var p_cond = switch(s) {
-		case [c1 = p_cond, "&&", c2 = p_cond]:    EBinop("&&", c1, c2);
-		case [c1 = p_cond, "||", c2 = p_cond]:    EBinop("||", c1, c2);
-		case ["(", c = p_cond, ")"]:              EParent(c);
-		case ["!", c = p_cond]:                   EUnop("!", true, c);
-		case [CIdent(i)]:                         EIdent(i);
-	}
-*/
 }
