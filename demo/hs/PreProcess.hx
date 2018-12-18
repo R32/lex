@@ -68,8 +68,12 @@ import hscript.Expr;
 
 	// %start parse
 	static var parse = switch(s) {
-		case [e = cond]:                      @:privateAccess s.rollback(0, 0); e; // since the next token was parsered in stream.
-		case [Eof]:                           throw s.error("Unclosed: " + "#if/else", _t1);
+		case [e = cond]:
+			@:privateAccess s.lex.pmax = s.lex.pmin; // since the next token was parsered in stream.
+			@:privateAccess --s.right;               // same on stream.
+			e;
+		case [Eof]:
+			throw s.error("Unclosed: " + "#if/else", _t1);
 	}
 	static var cond = switch(s) {
 		case [c1 = cond, "&&", c2 = cond]:    EBinop("&&", c1, c2);
