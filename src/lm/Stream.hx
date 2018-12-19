@@ -60,8 +60,8 @@ class Stream<LHS> {
 
 	public function new(l: lm.Lexer<Int>, s: Int) {
 		lex = l;
-		cached = new haxe.ds.Vector(128);
-		cached[0] = new Tok(0, 0, 0);
+		cached = new haxe.ds.Vector<Tok<LHS>>(128);
+		cached[0] = new Tok<LHS>(0, 0, 0);
 		cached[0].state = s;
 		right = 1;
 		pos = 1;
