@@ -10,12 +10,15 @@ class Tok<LHS> {
 	public var pmin(default, null): Int;
 	public var pmax(default, null): Int;
 	public var val(default, null): LHS;
-	public function new(t, min, max) {
+	function new(t, min, max) {
 		term = t;
 		pmin = min;
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
+
+	var nxt: Tok<LHS>;
+
 	public inline function pstr():String return '$pmin-$pmax';
 }
 
@@ -23,6 +26,29 @@ class Tok<LHS> {
 @:generic
 #end
 class Stream<LHS> {
+
+	var h(get, never): Tok<LHS>;   // header. used to link the recycled tok
+	inline function get_h() return cached[0];
+
+	function recycle(tok: Tok<LHS>) {
+		tok.nxt = h.nxt;
+		h.nxt = tok;
+	}
+
+	function reqTok(term, min, max): Tok<LHS> {
+		return if ( h.nxt == null ) {
+			new Tok(term, min, max);
+		} else {
+			var t = h.nxt;
+			h.nxt = t.nxt;
+			t.nxt = null;
+			//
+			t.term = term;
+			t.pmin = min;
+			t.pmax = max;
+			t;
+		}
+	}
 
 	var cached: haxe.ds.Vector<Tok<LHS>>;
 	var lex: lm.Lexer<Int>;
@@ -34,8 +60,8 @@ class Stream<LHS> {
 
 	public function new(l: lm.Lexer<Int>, s: Int) {
 		lex = l;
-		cached = new haxe.ds.Vector<Tok<LHS>>(128);
-		cached[0] = new Tok<LHS>(0, 0, 0);
+		cached = new haxe.ds.Vector(128);
+		cached[0] = new Tok(0, 0, 0);
 		cached[0].state = s;
 		right = 1;
 		pos = 1;
@@ -44,23 +70,31 @@ class Stream<LHS> {
 	public function peek(i: Int):Tok<LHS> {
 		while (rest <= i) {
 			var t = lex.token();
-			cached[right++] = new Tok<LHS>(t, lex.pmin, lex.pmax);
+			cached[right++] = reqTok(t, lex.pmin, lex.pmax);
 		}
 		return cached[pos + i];
 	}
 
 	public function junk(n: Int) {
-		if (n <= 0) {
-			right = pos;
-		} else if (rest >= n) {
+		if (n > 0 && rest >= n) {
+			var i = n;
+			while (i-- > 0)
+				recycle( cached[pos + i] );
+
+			i = pos;
 			right -= n;
-			for (i in pos...right)
+			while (i < right) {
 				cached[i] = cached[i + n];
-		} else {
-			n -= rest;
-			while (n-- > 0)
-				lex.token();
-			right = pos;
+				++ i;
+			}
+		} else { // let right = pos
+			if (n > 0) {
+				n -= rest;
+				while (n-- > 0)
+					lex.token();
+			}
+			while (right > pos)
+				recycle( cached[--right] );
 		}
 	}
 
@@ -77,7 +111,7 @@ class Stream<LHS> {
 	function next() {
 		if (right == pos) {
 			var t = lex.token();
-			cached[right++] = new Tok<LHS>(t, lex.pmin, lex.pmax);
+			cached[right++] = reqTok(t, lex.pmin, lex.pmax);
 		}
 		return cached[pos++];
 	}
@@ -92,10 +126,13 @@ class Stream<LHS> {
 		t.term = lvw >>> 8;
 		t.pmax = pmax;
 		++ pos;
-		// fast junk(w - 1)
 		-- w;
+		var i = w;
+		while (i-- > 0)
+			recycle(cached[pos + i]);
+		// fast junk(w - 1)
 		right -= w;
-		var i = pos;
+		i = pos;
 		while (i < right) {
 			cached[i] = cached[i + w];
 			++ i;
@@ -104,7 +141,7 @@ class Stream<LHS> {
 	}
 	function reduceEP(lv): Tok<LHS> {
 		var prev = cached[pos - 1];
-		var t = new Tok<LHS>(lv, prev.pmax, prev.pmax);
+		var t = reqTok(lv, prev.pmax, prev.pmax);
 		shift(t);
 		return t;
 	}

@@ -423,7 +423,7 @@ class LR0Builder extends lm.Parser {
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lval {
 				var keep = stream.pos;
 				var prev = stream.offset( -1);
-				var t = new lm.Stream.Tok<$ct_lval>(lv, prev.pmax, prev.pmax);
+				var t = stream.reqTok(lv, prev.pmax, prev.pmax);
 				t.state = state;
 				stream.shift(t);
 				var value = _entry(stream, state, lv, true);
