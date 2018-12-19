@@ -2,11 +2,12 @@ package;
 
 class Main extends Test {             // override hscript/Test.hx
 
+	static var lex = new hs.Lexer(lms.ByteData.ofString(""));
+	static var par = new hs.Parser(lex);
+
 	override function assertScript(x, v:Dynamic, ?vars:Dynamic, allowTypes = false, ?pos:haxe.PosInfos) {
-		var str = lms.ByteData.ofString(x);
-		var lex = new hs.Lexer(str);  // hs.Lexer
-		var p = new hs.Parser(lex);   // hs.Parser
-		var program = p.main();
+		lex.reset( lms.ByteData.ofString(x) );
+		var program = par.main();
 		var bytes = hscript.Bytes.encode(program);
 		program = hscript.Bytes.decode(bytes);
 		var interp = new hscript.Interp();

@@ -289,6 +289,7 @@ class Lexer {
 
 	public function new(s: lms.ByteData) {  // if "new" already exists, then the macro will not build it again.
 		reset(s);
+		prep = new hs.PreProcess(this);
 	}
 
 	public function reset(s: lms.ByteData) {
@@ -296,7 +297,6 @@ class Lexer {
 		pmin = 0;
 		pmax = 0;
 		smap = new Map();
-		prep = new hs.PreProcess(this);
 	}
 
 	function strpos(p:Int):String {

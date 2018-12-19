@@ -70,7 +70,7 @@ import hscript.Expr;
 	static var parse = switch(s) {
 		case [e = cond]:
 			@:privateAccess s.lex.pmax = s.lex.pmin; // since the next token was parsered in stream.
-			@:privateAccess --s.right;               // same on stream.
+			s.junk(0);                               // same on stream.
 			e;
 		case [Eof]:
 			throw s.error("Unclosed: " + "#if/else", _t1);
