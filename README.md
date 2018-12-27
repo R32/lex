@@ -34,11 +34,15 @@ Build lexer and simple parser(LR0) in macro.
     // Different from the normal LR parser, the behavior of "nonassoc" is same as "left". Since
     // this parser is not very necessary to refer the operator precedence definitions.
 
-    // Refer to the following stream matching cases:
-    [E, op, ...]: if defined(op)     then case.right.own = E.value // the right type is OpRight
+    // Refer to the following stream matching cases: UPPERCASE is "non-terml" and LOWERCASE is "terml"
     [..., op, E]: if defined(op)     then case.left.lval = E.value // the left type is OpLeft
-    [..., op, E]: if not defined(op) then case.left.lval = E.value & case.left.prio = -1;
-    [..., T, E] or [E]:              then case.left = null
+    [..., op, E]: if not defined(op) then case.left = null
+    [..., T, E] | [E] | [..., t]:    then case.left = null
+    [E, op, ...]: if defined(op)     then case.right.own = E.value // the right type is OpRight
+    [E, op, ...]: if not defined(op) then case.right.prio = -1
+    [E, T, ...]                      then case.right.prio = -1
+    [E]:                             then case.right.prio = -2
+    [t, ...]                         then case.right = null
 
     // when calculating closure(Array<NFA>):
     [..., E]: if E at the and of case, then will according the case.left and .rights to do some mix.

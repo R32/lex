@@ -131,36 +131,25 @@ class LR0Builder extends lm.Parser {
 	}
 
 	function closure(nodes: Array<Node>) {
-		inline function addAll(nodes, nfa) LexEngine.addNodes(nodes, nfa);
-		function atFirst(n: Node, lval:Int) {
-			for (nc in n.trans)
-				for (c in nc.chars)
-					return c.min == lval;
-			return false;
-		}
-		function filterAdd(dst: Array<Node>, from:Int, lval: Int, rule: Int) {
+		function mixing(dst: Array<Node>, from:Int, lval: Int, rule: Int) {
 			var nfa = this.nfas[from];
-			var prec = ruleToCase(rule).prec;
-			if (prec == null) { // [E]  or [...,T,E]
-				return addAll(dst, nfa);
-			}
-			// exclude if node == lval
-			for (n in nfa)
-				if (!atFirst(n, lval))
-					LexEngine.addNode(dst, n);
-
-			// filter by Operator Precedence
-			var rights = this.lhsA[from].lrights;
-			if (prec.prio == -1) {
-				for (right in rights)
-					if (right.own == lval && right.prio != -1)
-						LexEngine.addNode(dst, nfa[right.cpos]);
+			var lhs = this.lhsA[from];
+			var caze = ruleToCase(rule);
+			if (caze.left == null) {          // [E] | [...,T,E] | [..., undefined_op, E]
+				for (i in 0...nfa.length)
+					if (caze != lhs.cases[i]) // Exclude only the rule itself
+						LexEngine.addNode(dst, nfa[i]);
 			} else {
-				for (right in rights)
-					if (right.own == lval && (prec.prio < right.prio || prec.type == Right && prec.prio <= right.prio))
-						LexEngine.addNode(dst, nfa[right.cpos]);
+				var left = caze.left;
+				for (i in 0...nfa.length) {
+					var right = lhs.cases[i].right;
+					if ( right == null || right.own != lval || right.prio == -1
+					|| (right.prio >= 0 && (left.prio < right.prio || left.type == Right && left.prio <= right.prio))
+					) LexEngine.addNode(dst, nfa[i]);
+				}
 			}
 		}
+		inline function addAll(nodes, nfa) LexEngine.addNodes(nodes, nfa);
 		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
 		for (n in nodes) {
 			for (nc in n.trans) {
@@ -174,7 +163,7 @@ class LR0Builder extends lm.Parser {
 						if (!atLast) {
 							addAll(nodes, this.nfas[i]);
 						} else {
-							filterAdd(nodes, i, lval, exit);
+							mixing(nodes, i, lval, exit);
 						}
 						alt[i] = true;
 						used[i] = true;
@@ -185,7 +174,7 @@ class LR0Builder extends lm.Parser {
 							if (!atLast) {
 								addAll(nodes, this.nfas[j]);
 							} else {
-								filterAdd(nodes, j, lval, exit);
+								mixing(nodes, j, lval, exit);
 							}
 							alt[j] = true;
 							used[j] = true;

@@ -29,7 +29,8 @@ typedef Symbol = { // from switch cases
 typedef SymbolSet = {
 	action: Expr,
 	syms: Array<Symbol>,
-	prec: Null<OpLeft>,
+	left: Null<OpLeft>,
+	right: Null<OpRight>,
 	pos: Position, // case pos
 }
 
@@ -41,7 +42,6 @@ typedef Lhs = {    // one switch == one Lhs
 	cases: Array<SymbolSet>,
 	lsubs: List<Int>, // left subs, Array<Lhs::value>
 	ctype: ComplexType,
-	lrights: List<OpRight>,
 	pos: Position,
 }
 
@@ -65,9 +65,8 @@ typedef OpLeft = {  // for stream match: [ ..., termls, E], if ( query(termls) )
 
 typedef OpRight = { // for stream match: [E, termls, ... ], if ( query(termls) ) then  .own = E.value, ...
 	type: OpAssocType,
-	prio: Int,
+	prio: Int,      // could be (-2: singular, (-1: undefined, (0~n: competing with OpLeft
 	own: Int,       // lhs.value
-	cpos: Int,      // case index
 }
 /**
  parser datas
@@ -311,7 +310,7 @@ class Parser {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
 						Context.fatalError('This case is unused', pos);
-					var g: SymbolSet = {action: c.expr, syms: [], prec: null, pos: pos};
+					var g: SymbolSet = {action: c.expr, syms: [], left: null, right: null, pos: pos};
 					var len = el.length;
 					if (len == 0) {
 						setEpsilon(lhs, pos);
@@ -350,8 +349,11 @@ class Parser {
 								Context.fatalError("Undefined non-terminal: " + nt, e.pos);
 							if (el.length == 1 && nt == lhs.name)
 								Context.fatalError("Infinite recursion", e.pos);
-							if (nt != lhs.name && el[0] == e)
-								lhs.lsubs.add(udt.value);
+							if (el[0] == e)	{ // the first item
+								if (nt != lhs.name)
+									lhs.lsubs.add(udt.value);
+								g.right = {type: Left, prio: (el.length > 1 ? -1 : -2), own: udt.cset[0].min};
+							}
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
 						case EBinop(OpAssign, macro $i{v}, macro $a{a}):   // e.g: t = [OpPlus, OpMinus]
@@ -370,7 +372,7 @@ class Parser {
 							if (cset == CSet.C_EMPTY)
 								Context.fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
-						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(LEFT, ?RIGHT)
+						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(FOLLOW)
 							var i = switch(c) {
 							case CIdent(i): i;
 							case CString(s):
@@ -384,7 +386,7 @@ class Parser {
 							if (op == null)
 								Context.fatalError("Undefined :" + i, p);
 							prec.left  = {type: op.type, prio: op.prio, lval: -1};
-							prec.right = {type: op.type, prio: op.prio, own: -1, cpos: -1};
+							prec.right = {type: op.type, prio: op.prio, own: -1};
 							e = e2;
 							continue;
 						case _:
@@ -400,11 +402,11 @@ class Parser {
 						if (x2.t && x1.t == false) { // case [..., termls, non-terml]:
 							if (prec.left == null) {
 								var op = opVerify(x2);
-								// NOTE: the value of prio might be -1. so the g.prec may be null or {prio: -1}....
-								g.prec = {type: op.type, prio: op.prio, lval: x1.cset[0].min};
+								if (op.prio != -1)
+									g.left = {type: op.type, prio: op.prio, lval: x1.cset[0].min};
 							} else {  // by @:prec(LEFT, )
 								prec.left.lval = x1.cset[0].min;
-								g.prec = prec.left;
+								g.left = prec.left;
 							}
 						}
 						// op follows for each LHS
@@ -414,18 +416,17 @@ class Parser {
 							if (prec.right == null) {
 								var op = opVerify(x2);
 								if (op.prio != -1)
-									lhs.lrights.add({type: op.type, prio: op.prio, own: x1.cset[0].min, cpos: lhs.cases.length});
+									g.right = {type: op.type, prio: op.prio, own: x1.cset[0].min}
 							} else { // rare use by @:prec(...,RIGHT)
 								prec.right.own = x1.cset[0].min;
-								prec.right.cpos = lhs.cases.length;
-								lhs.lrights.add(prec.right);
+								g.right = prec.right;
 							}
 						}
 					}
 					lhs.cases.push(g);
 				case [{expr:EConst(CIdent("_")), pos: pos}]: // case _: || defualt:
 					setEpsilon(lhs, pos);
-					lhs.cases.push({action: c.expr, syms: [], prec: null, pos: pos});
+					lhs.cases.push({action: c.expr, syms: [], left: null, right: null, pos: pos});
 				case [e]:
 					Context.fatalError("Expected [ patterns ]", e.pos);
 				case _:
@@ -616,7 +617,6 @@ class Parser {
 							cases: [],
 							lsubs: new List(),
 							ctype: ct == null ? this.ct_ldef : ct,
-							lrights: new List(),
 							pos: f.pos,
 						});
 						continue;
