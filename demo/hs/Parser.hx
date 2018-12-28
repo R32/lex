@@ -4,7 +4,7 @@ import hs.Lexer;
 import hscript.Expr;
 
 /**
-* The Parser for hscript (Just as an example, Only passed the Test.hx of hscript.)
+* The Parser for hscript (As an example only that passed the Test.hx of hscript.)
 * - 1. (HACK 1) for arrow-functions. since `(x)->expr` will be conflict with `(expr)` which is annoying.
 * - 2. using ">",">","=" instead of ">>=" for parsing, and also ">>", ">>>", ">=", ">>>="
 */

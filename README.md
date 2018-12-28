@@ -3,11 +3,11 @@ Lex
 
 Build lexer and simple parser(LR0) in macro.
 
-## demo
+## example
 
-[hscript parser](/demo/) only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
+* [hscript parser(*As an example only*)](/demo/)
 
-[css selector parser](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
+* [css selector](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
 
 ## status
 
@@ -108,7 +108,8 @@ Build lexer and simple parser(LR0) in macro.
 
 ### CHANGES
 
-* `0.7.0`: Removed unstable & useless rollback.
+* `0.8.0`: Improvements
+* `0.7.0`: Removed unstable & useless code.
 * `0.6.0`:
   - Added `Terml Reflect`
   - Allow different LHS types
