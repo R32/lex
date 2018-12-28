@@ -32,7 +32,7 @@ private enum abstract Token(Int) to Int {
 */
 @:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
 	static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
-	static var r_int = "-?[1-9][0-9]*";
+	static var r_int = "[1-9][0-9]*";
 	static var tok =  [                  // a rule set definition
 		"[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
 		r_zero + "|" + r_int => CInt,    //

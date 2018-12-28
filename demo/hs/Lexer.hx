@@ -103,7 +103,7 @@ enum abstract Token(Int) to Int {
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
 
 	static var ident = "[a-zA-Z_][a-zA-Z0-9_]*";
-	static var integer = "0|-?[1-9][0-9]*";
+	static var integer = "0|[1-9][0-9]*";
 
 	static var token = [
 		"[ \t\r\n]+" => lex.token(),
@@ -143,7 +143,7 @@ enum abstract Token(Int) to Int {
 			lex.pmax = lex.pmin;     // reset
 			lex._token(BEGIN, max);  // see LexBuilder.hx#L229 about BEGIN
 		},
-		"-?.[0-9]+|-?[0-9]+.[0-9]*" => CFloat,
+		".[0-9]+|[0-9]+.[0-9]*" => CFloat,
 		//
 		"?" => Question,
 		"." => Dot,
