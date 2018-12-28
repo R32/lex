@@ -3,9 +3,13 @@ Lex
 
 Build lexer and simple parser(LR0) in macro.
 
-## status
+## demo
 
-[a demo parser for hscript](/demo/) only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
+[hscript parser](/demo/) only passed the Test.hx from [hscript](https://github.com/HaxeFoundation/hscript)
+
+[css selector parser](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
+
+## status
 
 * Lexer: *the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation. and the difference is:*
 
