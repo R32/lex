@@ -13,7 +13,7 @@ private typedef Group = {
 
 class LexBuilder {
 
-	static public var lmap: Map<String, Map<String, String>>; // LexName => [PatternString => TokenString]
+	@:persistent static public var lmap: Map<String, Map<String, String>>; // LexName => [PatternString => TokenString]
 
 	static function getMeta(metas: Array<MetadataEntry>) {
 		var ret = {cmax: 255, eof: null};
