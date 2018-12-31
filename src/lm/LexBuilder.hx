@@ -211,7 +211,7 @@ class LexBuilder {
 				if (q < NRULES) {
 					pmax = i - prev;
 				} else {
-					throw lm.Utils.error("UnMatached: " + pmin + "-" + pmax + ': "' + input.readString(pmin, i - pmin) + '"');
+					throw lm.Utils.error("UnMatached: " + input.readString(pmin, i - pmin - prev) + lm.Utils.posString(pmin, input));
 				}
 				return gotos(q, this);
 			}

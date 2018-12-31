@@ -299,21 +299,7 @@ class Lexer {
 		smap = new Map();
 	}
 
-	function strpos(p:Int):String {
-		var line = 1;
-		var char = 0;
-		var i = 0;
-		while (i < p) {
-			var c = input.readByte(i++);
-			if (c == "\n".code) {
-				char = 0;
-				++ line;
-			} else {
-				++ char;
-			}
-		}
-		return " at line: " + line + ", char: " + char;
-	}
+	inline function strpos(p:Int):String return lm.Utils.posString(p, this.input);
 
 	static public function s_token(t: Token, ext = "const") {
 		return switch(t){
