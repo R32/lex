@@ -29,7 +29,7 @@ class LR0Builder extends lm.Parser {
 	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
 	var hasSide: Bool;                     // if have @:side on LHS
 
-	public inline function write(out, split = false) this.table.write(per, perExit, isBit16(), out, split);
+	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
 
@@ -53,7 +53,7 @@ class LR0Builder extends lm.Parser {
 		f.writeString(debug.Print.production(this));
 		f.writeString(debug.Print.lr0Table(this));
 		f.writeString("\n\nRAW:\n");
-		this.write(f, true);
+		this.debugWrite(f);
 		f.close();
 	}
 
@@ -300,8 +300,8 @@ class LR0Builder extends lm.Parser {
 
 	function generate(): Array<Field> {
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
-		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		if (isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true;
+		// force string as table format if `-D lex_strtable` and ucs2
+		if (Context.defined("lex_strtable") && Context.defined("utf16")) force_bytes = false;
 
 		var getU:Expr = null;
 		var raw:Expr = null;
@@ -317,15 +317,8 @@ class LR0Builder extends lm.Parser {
 			raw = macro haxe.Resource.getBytes($v{resname});
 		#end
 		} else {
-			var out = haxe.macro.Compiler.getOutput() + ".lr0-table";
-			var dir = haxe.io.Path.directory(out);
-			if (!sys.FileSystem.exists(dir))
-				sys.FileSystem.createDirectory(dir);
-			var f = sys.io.File.write(out);
-			this.write(f);
-			f.close();
+			raw = macro $v{ this.table.map(i -> String.fromCharCode(i)).join("") };
 			getU = macro StringTools.fastCodeAt(raw, i);
-			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
 		}
 		var lva = this.reduceDetail.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var defs = macro class {

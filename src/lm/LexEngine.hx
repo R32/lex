@@ -84,7 +84,7 @@ class LexEngine {
 		this.makeTables();
 	}
 
-	public inline function write(out, split = false) this.table.write(per, perExit, isBit16(), out, split);
+	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	public inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
 	inline function node() return new Node(uid++);
@@ -433,7 +433,7 @@ class State {
 	public static function onSort(a: State, b: State) return a.id - b.id;
 }
 
-@:forward(length)
+@:forward(length, map)
 abstract Table(haxe.ds.Vector<Int>) {
 	public function new(len) this = new haxe.ds.Vector<Int>(len);
 	@:arrayAccess public inline function get(i) return this.get(i);
@@ -456,22 +456,20 @@ abstract Table(haxe.ds.Vector<Int>) {
 			return b;
 		}
 	}
-	public function write(per:Int, perExit:Int, bit16:Bool, out:haxe.io.Output, split:Bool) {
+	public function debugWrite(per:Int, perExit:Int, bit16:Bool, out:haxe.io.Output) {
 		var left = this.length - perExit;
-		if (!split) out.writeByte('"'.code);
 		var prefix = bit16 ? "\\u" : "\\x";
 		var padd = bit16 ? 4: 2;
 		for (i in 0...left) {
-			if (split && i > 0 && i % 16 == 0) out.writeString("\n");
-			if (split && i > 0 && i % per == 0) out.writeString("\n");
+			if (i > 0 && i % 16 == 0) out.writeString("\n");
+			if (i > 0 && i % per == 0) out.writeString("\n");
 			out.writeString( prefix + StringTools.hex(this.get(i), padd).toLowerCase() );
 		}
 		for (i in 0...perExit) {
-			if (split && i % 16 == 0) out.writeString("\n");
-			if (split && i % perExit == 0) out.writeString("\n");
+			if (i % 16 == 0) out.writeString("\n");
+			if (i % perExit == 0) out.writeString("\n");
 			out.writeString( prefix + StringTools.hex(this.get(left + i), padd).toLowerCase() );
 		}
-		if (!split) out.writeByte('"'.code);
 		out.flush();
 	}
 }

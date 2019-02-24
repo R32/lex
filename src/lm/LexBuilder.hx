@@ -130,7 +130,7 @@ class LexBuilder {
 		var lex = new LexEngine(apats, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
-		lex.write(f, true);
+		lex.debugWrite(f);
 		f.close();
 		#end
 		// checking
@@ -138,8 +138,8 @@ class LexBuilder {
 
 		// generate
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
-		if (Context.defined("lex_strtable")) force_bytes = false; // force string as table format
-		if (lex.isBit16() && force_bytes == false && !Context.defined("utf16")) force_bytes = true; // if platform doesn't support ucs2 then force bytes.
+		// force string as table format if `-D lex_strtable` and ucs2
+		if (Context.defined("lex_strtable") && Context.defined("utf16")) force_bytes = false;
 		var getU: Expr = null;
 		var raw: Expr = null;
 		if (force_bytes) {
@@ -154,14 +154,7 @@ class LexBuilder {
 			raw = macro haxe.Resource.getBytes($v{resname});
 			#end
 		} else {
-			var out = haxe.macro.Compiler.getOutput() + ".lex-table";
-			var dir = haxe.io.Path.directory(out);
-			if (!sys.FileSystem.exists(dir))
-				sys.FileSystem.createDirectory(dir);
-			var f = sys.io.File.write(out);
-			lex.write(f);
-			f.close();
-			raw = macro ($e{haxe.macro.Compiler.includeFile(out, Inline)});
+			raw = macro $v{ lex.table.map(i -> String.fromCharCode(i)).join("") };
 			getU = macro StringTools.fastCodeAt(raw, i);
 		}
 
