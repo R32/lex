@@ -17,13 +17,13 @@ Build lexer and simple parser(LR0) in macro.
 
 * Parser: Only LR(0) is available. (WIP)
 
-  Unlike normal LR parser: it has no *action table*(just *jump table*), So how did it *shift/reduce*?
+  Unlike normal LR parser, there is no *action table*(just *jump table*), So how did it *shift/reduce*?
 
     1. if you got a valid *state* and if `state < SEGS` then *shift* else *reduce*
 
     2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
 
-  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but not here(errors will be thrown directly). *In fact, the main part of this Parser is built by `LexEngine`*.
+  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but here will be thrown directly. (*In fact, the main part of this Parser is built by `LexEngine`.*)
 
   - Operator Precedence:
 
