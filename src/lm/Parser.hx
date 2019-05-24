@@ -464,100 +464,106 @@ class Parser {
 	}
 
 	function organize() {
-		// Scanning for reduce the temp varialbes from _t1~_tN
-		var lsecond = 0, lmax = 0;
+		// the value of N for _t1~_tN
+		var tmax = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				var len = li.syms.length;
-				if (len > lmax) {
-					lsecond = lmax;
-					lmax = len;
-				}
+				if (li.syms.length > tmax)
+					tmax = li.syms.length;
 			}
 		}
-		if (lsecond == 0) lsecond = lmax;
-		for (i in 0...lsecond) {
-			var stok = "_t" + (i + 1);
-			preDefs.push(macro var $stok: $ct_stream_tok);
-		}
-		var tmp: Array<Null<Bool>>;
+		//
+		var tacc = [for (i in 0...tmax) 0];
+		var texists: Array<Null<Bool>> = [];
 		function loop(e: Expr) {
 			switch(e.expr) {
 			case EConst(CIdent(s)):
-				if (s.substr(0, 2) == "_t") {
-					var i = Std.parseInt(s.substr(2, s.length - 2));
-					if (i != null)
-						tmp[i - 1] = true;
+				if ( StringTools.startsWith(s, "_t") ) {
+					var i = Std.parseInt( s.substr(2, s.length - 2) );
+					if (i == null) return;
+					-- i;
+					if (i >= 0 && i < texists.length) {
+						tacc[i] += 1;
+						texists[i] = true;
+					}
 				}
 			default:
 				e.iter(loop);
 			}
 		}
 
-		var toks:Array<Array<Null<Bool>>> = [];
-		toks.resize(nrules);
-		var ti = 0;
+		var index = 0;
 		this.vcases = new haxe.ds.Vector(nrules);
+		// Scanning for reduce the temp varialbes from _t1~_tN
+		var texistsAll = new haxe.ds.Vector<Array<Null<Bool>>>(nrules); //
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				this.vcases[ti] = li;
-				tmp = [];
-				tmp.resize(li.syms.length);
+				this.vcases[index] = li;  // init this.vcases at the same time
 				if (li.action == null)
 					Context.fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
-				li.action.iter(loop);
-				toks[ti++] = tmp;
+				texists = [];
+				texists.resize(li.syms.length);
+				texistsAll[index++] = texists;
+				li.action.iter(loop);     // update tacc & texists
 			}
 		}
+		// Add "_t1~_tN"
+		for (i in 0...tmax)
+			if (tacc[i] > 1) {
+				var stok = "_t" + (i + 1);
+				this.preDefs.push(macro var $stok: $ct_stream_tok);
+			}
+
 		// duplicate var checking. & transform expr
 		this.lvalues = new haxe.ds.Vector<Int>(this.nrules);
-		ti = 0;
+		index = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
 				var row = ["s" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
-				this.lvalues[ti] = lhs.value << 8 | len;
+				this.lvalues[index] = lhs.value << 8 | len;
 				for (i in 0...len) {
-					var s = li.syms[i];
-					var dx = -(len - i);
-					if (toks[ti][i]) {
+					var dx = -(len - i); // negative
+					if ( texistsAll[index][i] ) {
 						var stok = "_t" + (i + 1);
-						if (i < lsecond)
-							a.push( macro $i{stok} = @:privateAccess s.offset($v{dx}) );
+						var expr = macro @:privateAccess s.offset($v{dx});
+						if (tacc[i] > 1)
+							a.push( macro $i{stok} = $expr );
 						else
-							a.push( macro var $stok: $ct_stream_tok = @:privateAccess s.offset($v{dx}) );
+							a.push( macro var $stok: $ct_stream_tok = $expr );
 					}
+					var sym = li.syms[i];
 					// checking...
-					if (s.ex == null || s.ex == "_")
+					if (sym.ex == null || sym.ex == "_")
 						continue;
-					if (row.exists(s.ex))
-						Context.fatalError("duplicate var: " + s.ex, s.pos);
-					row.set(s.ex, true);
+					if (row.exists(sym.ex))
+						Context.fatalError("duplicate var: " + sym.ex, sym.pos);
+					row.set(sym.ex, true);
 
 					// transform expr
-					var name = s.ex;  // variable name
-					if (s.t) {
-						var ofstr = funMap.get(s.name);
+					var name = sym.ex;  // variable name
+					if (sym.t) {
+						var ofstr = funMap.get(sym.name);
 						if (ofstr == null) {
-							if ( s.name != "_" && CSet.isSingle(s.cset) ) // If you forget to add an extract function
-								Context.fatalError("Required a static function with @:rule("+ s.name +")", s.pos);
-							a.push(macro @:pos(s.pos) var $name: $ct_termls = cast @:privateAccess s.offset($v{dx}).term);
+							if ( sym.name != "_" && CSet.isSingle(sym.cset) ) // If you forget to add an extract function
+								Context.fatalError("Required a static function with @:rule("+ sym.name +")", sym.pos);
+							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
 							case 1:  // (string)
-								a.push(macro @:pos(s.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+								a.push(macro @:pos(sym.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
 							case 2:  // (input, tok)
-								a.push(macro @:pos(s.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
+								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
 							default: // (input, pmin, pmax)
-								a.push(macro @:pos(s.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
+								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
 							}
 						}
 					} else {
-						var lhsValue = s.cset[0].min; // NON-TERML
+						var lhsValue = sym.cset[0].min; // NON-TERML
 						var ct = lhsA[lhsValue - maxValue].ctype;
-						a.push( macro @:pos(s.pos) var $name: $ct = @:privateAccess (cast s.offset($v{dx}).val: $ct) );
+						a.push( macro @:pos(sym.pos) var $name: $ct = @:privateAccess (cast s.offset($v{dx}).val: $ct) );
 					}
 				}
 				switch(li.action.expr) {
@@ -572,7 +578,7 @@ class Parser {
 					@:mergeBlock $b{a};
 					@:mergeBlock $e{li.action};
 				}
-				++ ti;
+				++ index;
 			}
 		}
 	}
@@ -584,8 +590,8 @@ class Parser {
 			var a = [];
 			for (c in lhs.cases) {
 				var p = Empty;
-				for (s in c.syms)
-					p = add(p, s.cset);
+				for (sym in c.syms)
+					p = add(p, sym.cset);
 				a.push(p);
 			}
 			ret.push(a);

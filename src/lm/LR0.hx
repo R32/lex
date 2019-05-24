@@ -321,7 +321,7 @@ class LR0Builder extends lm.Parser {
 			getU = macro StringTools.fastCodeAt(raw, i);
 		}
 		var lvs = this.lvalues.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
-		var defs = macro class {
+		var fields = (macro class {
 			static var raw = $raw;
 			static var lvs:Array<Int> = [$a{lvs}];
 			static inline var INVALID = $v{this.invalid};
@@ -401,7 +401,7 @@ class LR0Builder extends lm.Parser {
 				t = stream.offset( -1);
 				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
-			@:dce @:access(lm.Stream, lm.Tok)
+			@:access(lm.Stream, lm.Tok)
 			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lval {
 				var keep = stream.pos;
 				var prev = stream.offset( -1);
@@ -413,7 +413,22 @@ class LR0Builder extends lm.Parser {
 				stream.junk(2);
 				return value;
 			}
+		}).fields;
+		// remove somethings
+		if (!hasSide) {
+			// remove function "_side"
+			var last = fields[fields.length - 1];
+			if (last.name == "_side")
+				fields.pop();
+			// remove extra argument "until" from function "_entry"
+			var last = fields[fields.length - 1];
+			if (last.name == "_entry")
+				switch(last.kind) {
+				case FFun(f): f.args.pop();
+				case _:
+				}
 		}
+
 		// build switch
 		var actions = [];
 		actions.resize(this.nrules);
@@ -428,7 +443,7 @@ class LR0Builder extends lm.Parser {
 			liCase[i] = {values: [macro $v{i}], expr: actions[i]};
 		}
 		var eSwitch = {expr: ESwitch(macro (q), liCase, defCase), pos: here};
-		defs.fields.push({
+		fields.push({
 			name: "cases",
 			access: [AStatic],
 			kind: FFun({
@@ -445,13 +460,16 @@ class LR0Builder extends lm.Parser {
 		// main entry
 		var en = this.entrys[0];
 		var lhs = lhsA[en.index];
-		defs.fields.push({
+		fields.push({
 			name: lhs.name,
 			access: [APublic, AInline],
 			kind: FFun({
 				args: [],
 				ret: lhs.ctype,
-				expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value}, false)
+				expr: (hasSide
+						? macro return _entry(stream, $v{en.begin}, $v{lhs.value}, false)
+						: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
+					)
 			}),
 			pos: lhs.pos,
 		});
@@ -459,7 +477,7 @@ class LR0Builder extends lm.Parser {
 		for (i in 1...this.entrys.length) {
 			var en = this.entrys[i];
 			var lhs = lhsA[en.index];
-			defs.fields.push({
+			fields.push({
 				name: lhs.name,
 				access: [AStatic, AInline],
 				kind: FFun({
@@ -470,16 +488,16 @@ class LR0Builder extends lm.Parser {
 				pos: lhs.pos,
 			});
 		}
-		return defs.fields;
+		return fields;
 	}
 
 	public static function build() {
 		var allFields = new Map<String, Field>();
 		var lrb = new LR0Builder("lm.LR0", allFields);
-		var defs = lrb.make();
+		var fields = lrb.make();
 		// combine
 		var ret = [];
-		for (f in defs)
+		for (f in fields)
 			if (!allFields.exists(f.name))
 				ret.push(f);
 		for (f in allFields) ret.push(f);
