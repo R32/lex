@@ -58,7 +58,7 @@ class Stream<LHS> {
 	var rest(get, never): Int;
 	inline function get_rest():Int return right - pos;
 
-	public function new(l: lm.Lexer<Int>, s: Int) {
+	function new(l: lm.Lexer<Int>, s: Int) {
 		lex = l;
 		cached = new haxe.ds.Vector<Tok<LHS>>(128);
 		cached[0] = new Tok<LHS>(0, 0, 0);
@@ -67,6 +67,9 @@ class Stream<LHS> {
 		pos = 1;
 	}
 
+	/**
+	 for example: `.peek(0)` will get the next token from stream`
+	*/
 	public function peek(i: Int):Tok<LHS> {
 		while (rest <= i) {
 			var t = lex.token();
@@ -75,6 +78,11 @@ class Stream<LHS> {
 		return cached[pos + i];
 	}
 
+	/**
+	 `if n > 0` then discard N token from stream
+
+	 `if n <=0` then discard ALL the rest token from `.cached`, which looks dangerous
+	*/
 	public function junk(n: Int) {
 		if (n > 0 && rest >= n) {
 			var i = n;

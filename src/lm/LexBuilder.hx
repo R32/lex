@@ -46,20 +46,20 @@ class LexBuilder {
 		if (lmap == null)
 			lmap = new Map();
 		var reflect = new Map(); // patternString => TokenString
-		var cls = Context.getLocalClass().get();
-		var ct_lex = TPath({pack: cls.pack, name: cls.name});
-		var meta = getMeta(cls.meta.extract(":rule"));
+		var cl = Context.getLocalClass().get();
+		var ct_lex = TPath({pack: cl.pack, name: cl.name});
+		var meta = getMeta(cl.meta.extract(":rule"));
 		if (meta.eof == null)
-			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cls.pos);
+			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
 		var tmap = new Map();
 		var abst = false;
-		for (it in cls.interfaces) {
+		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
-					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cls.pos);
+					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
 				abst = absTokens(t, tmap);
-				lmap.set(Utils.getClsFullName(cls), reflect); // store
+				lmap.set(Utils.getClsFullName(cl), reflect); // store
 				break;
 			}
 		}

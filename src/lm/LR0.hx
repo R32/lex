@@ -320,10 +320,10 @@ class LR0Builder extends lm.Parser {
 			raw = macro $v{ this.table.map(i -> String.fromCharCode(i)).join("") };
 			getU = macro StringTools.fastCodeAt(raw, i);
 		}
-		var lva = this.reduceDetail.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
+		var lvs = this.lvalues.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var defs = macro class {
 			static var raw = $raw;
-			static var lva:Array<Int> = [$a{lva}];
+			static var lvs:Array<Int> = [$a{lvs}];
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
 			static inline var NSEGS   = $v{this.segs};
@@ -334,7 +334,7 @@ class LR0Builder extends lm.Parser {
 			static inline function gotos(fid:Int, s:$ct_stream):$ct_lval return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = new lm.Stream<$ct_lval>(lex, 0);
+				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex, 0);
 			}
 			@:access(lm.Stream, lm.Tok)
 			static function _entry(stream: $ct_stream, state:Int, exp:Int, until:Bool):$ct_lval {
@@ -364,7 +364,7 @@ class LR0Builder extends lm.Parser {
 					dx = 0;
 					while (true) {
 						var value:$ct_lval = gotos(q, stream);
-						t = stream.reduce( lva[q] );
+						t = stream.reduce( lvs[q] );
 						if ($e{ hasSide ? macro (t.term == exp && !until) : macro (t.term == exp) }) {
 							-- stream.pos;      // discard the last token
 							stream.junk(1);
@@ -380,7 +380,7 @@ class LR0Builder extends lm.Parser {
 								macro
 								if (prev == INVALID) {
 									if (until && exp == t.term)
-									return value;
+										return value;
 									throw stream.UnExpected(t);
 								}
 							} else {

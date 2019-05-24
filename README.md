@@ -11,7 +11,9 @@ Build lexer and simple parser(LR0) in macro.
 
 ## status
 
-* Lexer: *the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation. and the difference is:*
+NOTE: since the limit of [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496), so now you can't use this lib in macros.
+
+* Lexer: *the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation. But the difference is:*
 
   All *finalStates* have been moved out for save memory/bytes,
 
@@ -58,10 +60,17 @@ Build lexer and simple parser(LR0) in macro.
     [@:prec(">=")   e1 = expr, ">", "=", e2 = expr]: if (_t2.pmax == _t3.pmin) ...
     ```
 
-  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position.
+  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position, which is the instance of `lm.Stream.Tok`
 
     ```hx
     _t1.pmax - _t1.pmin;
+    ```
+
+    And also inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
+
+    ```hx
+    var tok = s.peek(0);
+    if (tok.term == SomeToken) s.junk(1);
     ```
 
   - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
@@ -259,7 +268,7 @@ enum abstract Token(Int) to Int {
     nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
 }) class Parser implements lm.LR0<Lexer, Int> {
 
-    static var main = switch(s) {
+    static var main = switch(s) {  // the "s" is instance of lm.Stream
         case [e = expr, Eof]: e;
     }
 
