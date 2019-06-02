@@ -80,11 +80,10 @@ class Stream<LHS> {
 
 	/**
 	 `if n > 0` then discard N token from stream
-
-	 `if n <=0` then discard ALL the rest token from `.cached`, which looks dangerous
 	*/
 	public function junk(n: Int) {
-		if (n > 0 && rest >= n) {
+		if (n <= 0) return;
+		if (rest >= n) {
 			var i = n;
 			while (i-- > 0)
 				recycle( cached[pos + i] );
@@ -96,11 +95,9 @@ class Stream<LHS> {
 				++ i;
 			}
 		} else { // let right = pos
-			if (n > 0) {
-				n -= rest;
-				while (n-- > 0)
-					lex.token();
-			}
+			n -= rest;
+			while (n-- > 0)
+				lex.token();
 			while (right > pos)
 				recycle( cached[--right] );
 		}

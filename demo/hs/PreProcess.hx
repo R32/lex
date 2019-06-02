@@ -56,12 +56,12 @@ import hscript.Expr;
 		var spos = stack.length - 1;
 		var obj = stack[spos];
 		var t = lex.token();
-		while (t != Eof) {
-			if (obj != stack[spos])
-				return t;
+		while (obj == stack[spos]) {
+			if (t == Eof)
+				throw lm.Utils.error( "Unclosed: " + "#if/else" + lm.Utils.posString(lex.pmin, lex.input) );
 			t = lex.token();
 		}
-		throw lm.Utils.error( "Unclosed: " + "#if/else" + lm.Utils.posString(lex.pmin, lex.input) );
+		return t;
 	}
 
 	@:rule(CIdent) static inline function id_ofstring(s:String):String return s;
@@ -70,7 +70,7 @@ import hscript.Expr;
 	static var parse = switch(s) {
 		case [e = cond]:
 			@:privateAccess s.lex.pmax = s.lex.pmin; // since the next token was parsered in stream.
-			s.junk(0);                               // same on stream.
+			s.junk(1);                               // same on stream.
 			e;
 		case [Eof]:
 			throw s.error("Unclosed: " + "#if/else", _t1);
