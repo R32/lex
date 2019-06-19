@@ -9,7 +9,7 @@ import hscript.Expr;
 	nonassoc: ["!"],
 }) class PreProcess implements lm.LR0<hs.Lexer, Expr> {
 
-	public var defines : Map<String, Dynamic> = new Map();
+	public var defines : Map<String, Dynamic> = ["lex" => "1", "hscript" => 1];
 
 	public var stack: Array<{r: Bool}> = [];
 
@@ -35,7 +35,6 @@ import hscript.Expr;
 			skipTokens(lex);
 		case PrElse, PrElseIf if (stack.length > 0):
 			if (stack[stack.length - 1].r) {
-				stack[stack.length - 1].r = false;
 				skipTokens(lex);
 			} else if (t == PrElse) {
 				stack.pop();
@@ -69,8 +68,10 @@ import hscript.Expr;
 	// %start parse
 	static var parse = switch(s) {
 		case [e = cond]:
-			@:privateAccess s.lex.pmax = s.lex.pmin; // since the next token was parsered in stream.
-			s.junk(1);                               // same on stream.
+			if (s.rest > 0) @:privateAccess {
+				s.lex.pmax = s.peek(0).pmin; // FORCE rollback, since the next token was parsered in stream.
+				s.junk(s.rest);              // then clear stream cache
+			}
 			e;
 		case [Eof]:
 			throw s.error("Unclosed: " + "#if/else", _t1);
