@@ -215,7 +215,7 @@ class Print {
 		}
 		nxtLine();
 		// body
-		for (en in lrb.entrys) {
+		for (en in lrb.starts) {
 			var lhs = lrb.lhsA[en.index];
 			var name = mapp.get(lhs.name);
 			if (name == null)

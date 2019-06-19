@@ -58,6 +58,7 @@ private enum abstract Token(Int) to Int {
 }
 
 @:rule({
+	start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
 	left: ["+", "-"],         // The parser could auto reflect(str) => Token
 	left: [OpTimes, OpDiv],   // The lower have higher Priority.
 	nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized

@@ -13,7 +13,7 @@ Build lexer and simple parser(LR0) in macro.
 
 NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
-* Lexer: *the most of this code is taken from the [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml) by Haxe Foundation. But the difference is:*
+* Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml). But the difference is:*
 
   All *finalStates* have been moved out for save memory/bytes,
 
@@ -25,7 +25,7 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
     2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
 
-  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but here will be thrown directly. (*In fact, the main part of this Parser is built by `LexEngine`.*)
+  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but here an error will be thrown directly.
 
   - Operator Precedence:
 
@@ -81,7 +81,7 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
     case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
     }
 
-    // 2.
+    // 2. []
     switch(s) {
     case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
     }
@@ -117,6 +117,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
 ### CHANGES
 
+* `x.x.x`: Simplify
+  - use "%start" instead of ~~`@:side`~~
 * `0.8.0`: Improvements
 * `0.7.0`: Removed unstable & useless code.
 * `0.6.0`:
@@ -124,7 +126,7 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
   - Allow different LHS types
   - Reimplemented Operator Precedence
   - Removed useless Guard.
-* `0.5.0`: Added `@:side`(ReImplement LR0 Parser)
+* `0.5.0`: ~~Added `@:side`(ReImplement LR0 Parser)~~
 * `0.4.0`: ~~Independent LHS~~
 * `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
 * `0.2.0`: Operator Precedence
@@ -263,6 +265,7 @@ enum abstract Token(Int) to Int {
 }
 
 @:rule({
+    start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
     left: ["+", "-"],         // The parser could auto reflect(str) => Token
     left: [OpTimes, OpDiv],   // The lower have higher Priority.
     nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase

@@ -24,10 +24,8 @@ class LR0Builder extends lm.Parser {
 	var segs: Int;
 	var nstates: Int;
 	var invalid: Int;
-	var entrys: Array<{index:Int, begin:Int, width:Int}>;
 	var nfas: haxe.ds.Vector<Array<Node>>; // assoc with lhsA
-	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS
-	var hasSide: Bool;                     // if have @:side on LHS
+	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS, ??May be removed
 
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	inline function isBit16() return this.invalid == U16MAX;
@@ -39,7 +37,6 @@ class LR0Builder extends lm.Parser {
 		this.lstates = new List();
 		this.segs = 0;      // state_counter
 		this.invalid = U16MAX;
-		this.entrys = [];
 		this.nfas = new haxe.ds.Vector(lhsA.length);
 		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // will compress it later.
@@ -73,27 +70,16 @@ class LR0Builder extends lm.Parser {
 			}
 			nfas[p] = nodes;
 		}
-		var begin = 0;
-		function addEntry(i) {
-			this.entrys.push({index: i, begin: begin, width: this.segs - begin});
-			if (begin == this.segs)
-				Context.fatalError("Empty: " + lhsA[i].name, lhsA[i].pos);
-			begin = this.segs;
-			this.used[i] = true;
-		}
 		// NFA -> DFA
-		// main entry
-		compile( LexEngine.addNodes([], this.nfas[0]) );
-		addEntry(0);
-		// side entrys
-		for (i in 1...this.lhsA.length) {
-			if (this.lhsA[i].side == false) continue;
-			hasSide = true;
-			this.h = new Map(); // reset
-			compile( LexEngine.addNodes([], this.nfas[i]) );
-			addEntry(i);
+		var begin = 0;
+		for (e in this.starts) {
+			compile( LexEngine.addNodes([], this.nfas[ e.index ]) );
+			e.begin = begin;
+			e.width = this.segs - begin;
+			begin = this.segs;
+			this.used[e.index] = true;
+			this.h = new Map(); // reset for next
 		}
-
 		// properties
 		this.nstates = lstates.length;
 		this.invalid = nstates < U8MAX ? U8MAX : U16MAX;
@@ -272,14 +258,18 @@ class LR0Builder extends lm.Parser {
 			rules[n] = table.length - 1 - i;
 		}
 		// 1. Is switch case unreachable?
+		var dup = new haxe.ds.Vector<Bool>(this.lhsA.length);
 		for (n in 0...this.nrules)
 			if (rules[n] == INVALID) {
 				var lhs = byRule(n);
-				if ( !this.used.get( index(lhs) ) ) continue;
+				var i = this.index(lhs);
 				var msg = "Unreachable switch case";
-				if (!lhs.side)
-					msg += ' OR missing @:side on "' + lhs.name + '"';
-				Context.fatalError(msg, this.ruleToCase(n).pos);
+				if ( this.used.get(i) ) {
+					Context.fatalError(msg, this.ruleToCase(n).pos);
+				} else if ( !dup.get( i ) ) {
+					Context.warning(msg, lhs.pos);
+					dup.set(i, true);
+				}
 			}
 		// 2. each state
 		for (i in 0...this.segs) {
@@ -295,6 +285,11 @@ class LR0Builder extends lm.Parser {
 			}
 			if (!find) throw("Missing terminator in STATE: " + i);
 		}
+		// 3. The "entry" is not allowed to be epsilon
+		for (e in this.starts)
+			if (this.table.exits(e.begin) != INVALID)
+				Context.fatalError(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
+
 		// more?
 	}
 
@@ -327,21 +322,22 @@ class LR0Builder extends lm.Parser {
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
 			static inline var NSEGS   = $v{this.segs};
-			static inline var MAXVALUE   = $v{this.maxValue};        // see .isNonTerm(v)/.isTerm(v)
+			static inline var MAXVALUE = $v{this.maxValue};     // see .isNonTerm(v)/.isTerm(v)
 			static inline function getU(i:Int):Int return $getU;
 			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
 			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
 			static inline function gotos(fid:Int, s:$ct_stream):$ct_lval return cases(fid, s);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex, 0);
+				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex);
 			}
 			@:access(lm.Stream, lm.Tok)
-			static function _entry(stream: $ct_stream, state:Int, exp:Int, until:Bool):$ct_lval {
+			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lval {
+				var t = stream.newTok($i{sEof}, 0, 0);
+				t.state = state;
+				stream.shift(t); // should be removed when returning
 				var prev = state;
-				var t: lm.Stream.Tok<$ct_lval> = null;
 				var dx = 0;
-				var keep = stream.pos; // used for _side.
 				while (true) {
 					while (true) {
 						t = stream.next();
@@ -361,13 +357,13 @@ class LR0Builder extends lm.Parser {
 					} else {
 						break;  // throw error.
 					}
-					dx = 0;
+					dx = 0;     // reset dx
 					while (true) {
 						var value:$ct_lval = gotos(q, stream);
 						t = stream.reduce( lvs[q] );
-						if ($e{ hasSide ? macro (t.term == exp && !until) : macro (t.term == exp) }) {
-							-- stream.pos;      // discard the last token
-							stream.junk(1);
+						if (t.term == exp) {
+							stream.pos -= 2; // ready to discard (current + the shifted) token
+							stream.junk(2);  // commit
 							return value;
 						}
 						t.val = value;
@@ -375,60 +371,13 @@ class LR0Builder extends lm.Parser {
 						prev = t.state;
 						if (prev < NSEGS)
 							break;
-						$e{ // Macro selection
-							if (hasSide) {
-								macro
-								if (prev == INVALID) {
-									if (until && exp == t.term)
-										return value;
-									throw stream.UnExpected(t);
-								}
-							} else {
-								macro {};
-							}
-						}
 						q = exits(prev);
-					}
-				}
-				$e{ // Macro selection
-					if (hasSide) {
-						macro if ( until && (stream.pos - dx == keep + 1) && (exp == stream.cached[keep].term) ) // hasSide 3
-								return stream.cached[keep].val;
-					} else {
-						macro {};
 					}
 				}
 				t = stream.offset( -1);
 				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
-			@:access(lm.Stream, lm.Tok)
-			static function _side(stream: $ct_stream, state:Int, lv: Int):$ct_lval {
-				var keep = stream.pos;
-				var prev = stream.offset( -1);
-				var t = stream.reqTok(lv, prev.pmax, prev.pmax);
-				t.state = state;
-				stream.shift(t);
-				var value = _entry(stream, state, lv, true);
-				stream.pos = keep;
-				stream.junk(2);
-				return value;
-			}
 		}).fields;
-		// remove somethings
-		if (!hasSide) {
-			// remove function "_side"
-			var last = fields[fields.length - 1];
-			if (last.name == "_side")
-				fields.pop();
-			// remove extra argument "until" from function "_entry"
-			var last = fields[fields.length - 1];
-			if (last.name == "_entry")
-				switch(last.kind) {
-				case FFun(f): f.args.pop();
-				case _:
-				}
-		}
-
 		// build switch
 		var actions = [];
 		actions.resize(this.nrules);
@@ -456,34 +405,17 @@ class LR0Builder extends lm.Parser {
 			}),
 			pos: here,
 		});
-
-		// main entry
-		var en = this.entrys[0];
-		var lhs = lhsA[en.index];
-		fields.push({
-			name: lhs.name,
-			access: [APublic, AInline],
-			kind: FFun({
-				args: [],
-				ret: lhs.ctype,
-				expr: (hasSide
-						? macro return _entry(stream, $v{en.begin}, $v{lhs.value}, false)
-						: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
-					)
-			}),
-			pos: lhs.pos,
-		});
-		// other entrys =>
-		for (i in 1...this.entrys.length) {
-			var en = this.entrys[i];
+		// starts =>
+		for (i in 0...this.starts.length) {
+			var en = this.starts[i];
 			var lhs = lhsA[en.index];
 			fields.push({
 				name: lhs.name,
-				access: [AStatic, AInline],
+				access: [APublic, AInline],
 				kind: FFun({
-					args: [{name: "s", type: ct_stream}],
+					args: [],
 					ret: lhs.ctype,
-					expr: macro return _side(s, $v{en.begin}, $v{lhs.value})
+					expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});
