@@ -13,6 +13,8 @@ import hscript.Expr;
 
 	public var stack: Array<{r: Bool}> = [];
 
+	public var inParsing: Bool = false;
+
 	public function eval(e: Expr) {
 		return switch( e ) {
 		case EIdent(id):              defines.get(id) != null;
@@ -24,30 +26,50 @@ import hscript.Expr;
 		}
 	}
 
+	inline function parentIsFalse() {
+		return stack.length > 1 && false == stack[stack.length - 2].r;
+	}
+
 	public function process(t: Token, lex: hs.Lexer):Token {
-		return switch(t) {
-		case PrIf:
-			if ( eval(parse()) ) {
-				stack.push( {r: true} );
-				return lex.token();
-			}
-			stack.push( {r: false} );
+		return if (inParsing) {
+			t;
+		} else if ( parentIsFalse() && t != PrEnd ) {
 			skipTokens(lex);
-		case PrElse, PrElseIf if (stack.length > 0):
-			if (stack[stack.length - 1].r) {
-				skipTokens(lex);
-			} else if (t == PrElse) {
+		} else {
+			switch(t) {
+			case PrIf:
+				var stub = {r: false};
+				stack.push(stub);
+				inParsing = true;
+				var v = parse();
+				inParsing = false;
+				if ( eval(v) ) {
+					stub.r = true;
+					lex.token();
+				} else {
+					skipTokens(lex);
+				}
+			case PrEnd if (stack.length > 0):
 				stack.pop();
-				stack.push({ r : true });
-				lex.token();
-			} else {
-				stack.pop();
-				process(PrIf, lex);
+				if (stack.length == 0 || stack[stack.length - 1].r) {
+					lex.token();
+				} else {
+					skipTokens(lex);
+				}
+			case PrElse, PrElseIf if (stack.length > 0):
+				if (stack[stack.length - 1].r) {
+					skipTokens(lex);
+				} else if (t == PrElse) {
+					stack.pop();
+					stack.push({ r : true });
+					lex.token();
+				} else {
+					stack.pop();
+					process(PrIf, lex);
+				}
+			case _:
+				t;
 			}
-		case PrEnd if (stack.length > 0):
-			stack.pop();
-			lex.token();
-		default: t;
 		}
 	}
 
