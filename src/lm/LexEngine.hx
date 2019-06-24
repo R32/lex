@@ -326,13 +326,15 @@ class LexEngine {
 				while (i < len) {
 					var c = b.get(i++);
 					if (c == "]".code) {
-						if (range != 0) acc.push(new Char(range, range));
+						if (range != 0) {
+							acc.push(new Char(range, range));
+							acc.push(new Char("-".code, "-".code));
+						}
 						break;
 					} else if (c == "-".code) {
-						if (range != 0) throw "--";
 						if (acc.length == 0) {
-							acc.push(new Char(c, c)); // ('-', '-');
-						} else {
+							acc.push(new Char(c, c)); // add('-')
+						} else if (range == 0) {
 							var last: Char = acc.pop();
 							if (last.min != last.max) throw "todo";
 							range = last.min;
