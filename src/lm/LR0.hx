@@ -335,7 +335,7 @@ class LR0Builder extends lm.Parser {
 			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lval {
 				var t = stream.newTok($i{sEof}, 0, 0);
 				t.state = state;
-				stream.shift(t); // should be removed when returning
+				stream.unshift(t); // should be removed when returning
 				var prev = state;
 				var dx = 0;
 				while (true) {
