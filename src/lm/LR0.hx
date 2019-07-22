@@ -31,6 +31,8 @@ class LR0Builder extends lm.Parser {
 	inline function isBit16() return this.invalid == U16MAX;
 	inline function isFinal(n: Node) return n.id < this.nrules;
 
+	static function fatalError(msg, p) return Context.fatalError("[LR0 build] " + msg , p);
+
 	function new(s_it, rest) {
 		super(s_it, rest);
 		this.h = new Map();
@@ -206,7 +208,7 @@ class LR0Builder extends lm.Parser {
 		default: // since LR(0) so the conflicts can not be resolved.
 			for (r in exits)
 				Context.warning("conflict case: " + r, ruleToCase(r).pos);
-			Context.fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
+			fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
 		}
 		lstates.push(new State(id, trans, targets, f));
 		return id;
@@ -265,7 +267,7 @@ class LR0Builder extends lm.Parser {
 				var i = this.index(lhs);
 				var msg = "Unreachable switch case";
 				if ( this.used.get(i) ) {
-					Context.fatalError(msg, this.ruleToCase(n).pos);
+					fatalError(msg, this.ruleToCase(n).pos);
 				} else if ( !dup.get( i ) ) {
 					Context.warning(msg, lhs.pos);
 					dup.set(i, true);
@@ -288,7 +290,7 @@ class LR0Builder extends lm.Parser {
 		// 3. The "entry" is not allowed to be epsilon
 		for (e in this.starts)
 			if (this.table.exits(e.begin) != INVALID)
-				Context.fatalError(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
+				fatalError(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
 
 		// more?
 	}

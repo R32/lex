@@ -8,7 +8,7 @@ using haxe.macro.Tools;
 
 private typedef Group = {
 	name: String,
-	rules: haxe.ds.Vector<{es: Expr, action: Expr}>,
+	rules: haxe.ds.Vector<{pat: Expr, action: Expr}>,
 }
 
 class LexBuilder {
@@ -31,7 +31,8 @@ class LexBuilder {
 	}
 
 	// only for enum abstract XXX(Int)
-	static function absTokens(t: Type, map: Map<String, Bool>) {
+	static function readIntTokens(t: Type, map: Map<String, Bool>) {
+		if ( !Context.unify(t, Context.getType("Int")) ) return;
 		return switch (t) {
 		case TAbstract(_.get() => ab, _):
 			for (f in ab.impl.get().statics.get())
@@ -40,22 +41,24 @@ class LexBuilder {
 		}
 	}
 
+	static function fatalError(msg, p) return Context.fatalError("[lex build] " + msg , p);
+
 	static public function build():Array<Field> {
 		if (lmap == null)
 			lmap = new Map();
-		var reflect = new Map(); // patternString => TokenString
+		var reflect = new Map(); // patternString => TokenString, Both "lmap" and "reflect" will be used for LR0Parser
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
 		if (meta.eof == null)
-			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
+			fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
 		var tmap = new Map();
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
-					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
-				absTokens(t, tmap);
+					fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
+				readIntTokens(t, tmap);
 				lmap.set(Utils.getClsFullName(cl), reflect); // store
 				break;
 			}
@@ -76,14 +79,14 @@ class LexBuilder {
 					for (e in el) {
 						switch (e.expr) {
 						case EBinop(OpArrow, s, e):
-							g.rules[i++] = {es: s, action: e};
+							g.rules[i++] = {pat: s, action: e};
 						default:
-							Context.fatalError("Expected pattern => function", e.pos);
+							fatalError("Expected pattern => function", e.pos);
 						}
 					}
 					for (x in groups)
 						if (x.name == g.name)
-							Context.fatalError("Duplicated: " + g.name, f.pos);
+							fatalError("Duplicated: " + g.name, f.pos);
 					groups.push(g);
 					continue;
 				case FVar(_, {expr: EConst(CString(s))}):
@@ -100,26 +103,27 @@ class LexBuilder {
 
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var apats = [];
-		var abst = !Lambda.empty(tmap);
+		var have_int_tokens = !Lambda.empty(tmap);
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
-				if (abst) {
+				if (have_int_tokens) {
 					// if "action" is just a simple Token then store it for "reflect"
 					switch(r.action.expr) {
 					case EConst(CIdent(v)):
-						var k = unescape(r.es, idmap);
+						var k = unescape(r.pat, idmap);
 						if ( !tmap.exists(v) )
-							Context.fatalError("Unknown identifier: " + v, r.action.pos);
+							fatalError("Unknown identifier: " + v, r.action.pos);
 						reflect.set(k, v);
 					case _:
 					}
 				}
 				// String -> Pattern
 				try {
-					pats.push( LexEngine.parse(exprString(r.es, idmap), c_all) );
+					var pat = exprString(r.pat, idmap);
+					pats.push( LexEngine.parse(pat, c_all) );
 				} catch(err: Dynamic) {
-					Context.fatalError(Std.string(err), r.es.pos);
+					fatalError(Std.string(err), r.pat.pos);
 				}
 			}
 			apats.push(pats);
@@ -260,14 +264,14 @@ class LexBuilder {
 		case EConst(CIdent(i)):
 			var s = map.get(i);
 			if (s == null)
-				Context.fatalError("Undefined identifier: " + i, e.pos);
+				fatalError("Undefined identifier: " + i, e.pos);
 			s;
 		case EBinop(OpAdd, e1, e2):
 			splitMix(exprString(e1, map), exprString(e2, map));
 		case EParenthesis(e):
 			exprString(e, map);
 		default:
-			Context.fatalError("Invalid rule", e.pos);
+			fatalError("Invalid rule", e.pos);
 		}
 	}
 	static function addInlineFVar(name, value, pos):Field {
@@ -297,7 +301,7 @@ class LexBuilder {
 				if (i >= len) {
 					i -= len;
 				} else {
-					return g.rules[i].es;
+					return g.rules[i].pat;
 				}
 			}
 			throw "NotFound";

@@ -99,6 +99,8 @@ class Parser {
 	public inline function index(l:Lhs):Int return l.value - this.maxValue;
 	public inline function width():Int return this.maxValue + this.lhsA.length;
 
+	static function fatalError(msg, p) return Context.fatalError("[LR0 build] " + msg , p);
+
 	public function new(s_interface: String, allFields: Map<String, Field>) {
 		var cl = Context.getLocalClass().get();
 		var termlsType:Type = null;
@@ -110,7 +112,7 @@ class Parser {
 				break;
 			}
 		if (termlsType == null || !Context.unify(termlsType, Context.getType("Int")))
-			Context.fatalError("Wrong generic Type for "+ s_interface + "<?>", cl.pos);
+			fatalError("Wrong generic Type for "+ s_interface + "<?>", cl.pos);
 		maxValue = 0;
 		termls = [];
 		termlsAll = [];
@@ -136,7 +138,7 @@ class Parser {
 				if (it.t.toString() == "lm.Lexer") {
 					var eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
 					if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
-						Context.fatalError("Invalid EOF value " + eof.toString(), lex.pos);
+						fatalError("Invalid EOF value " + eof.toString(), lex.pos);
 					this.sEof = eof.toString();
 					this.reflect = LexBuilder.lmap.get( Utils.getClsFullName(lex) );
 					return it.params[0];
@@ -156,14 +158,14 @@ class Parser {
 					case EConst(CIdent(i)):
 						var lhs = Lambda.find(this.lhsA, lhs -> lhs.name == i);
 						if (lhs == null)
-							Context.fatalError("UnSupported %start: " + i, e.pos);
+							fatalError("UnSupported %start: " + i, e.pos);
 						this.starts.push({index: this.index(lhs), begin: -1, width: -1});
 					case _:
-						Context.fatalError("UnSupported :" + TExprTools.toString(e), e.pos);
+						fatalError("UnSupported :" + TExprTools.toString(e), e.pos);
 					}
 				}
 			case _:
-				Context.fatalError("UnSupported :" + TExprTools.toString(a), a.pos);
+				fatalError("UnSupported :" + TExprTools.toString(a), a.pos);
 			}
 		}
 		function extract(a: Array<ObjectField>, vec: haxe.ds.Vector<OpAssoc>, map:Map<String, OpAssoc>) {
@@ -182,7 +184,7 @@ class Parser {
 					readStarts(li);
 					continue;
 				case _:
-					Context.fatalError("UnSupported type of op assoc: " + stype, li.pos);
+					fatalError("UnSupported type of op assoc: " + stype, li.pos);
 				}
 				switch (li.expr) {
 				case EArrayDecl(a):
@@ -192,18 +194,18 @@ class Parser {
 						case EConst(CString(p)):
 							var i = this.reflect.get(p); // reflect
 							if (i == null)
-								Context.fatalError('No reflect for "' + p + '"', e.pos);
+								fatalError('No reflect for "' + p + '"', e.pos);
 							i;
 						case _: "";
 						}
 						if ( map.exists(name) )
-							Context.fatalError("Duplicate Token: " + name, e.pos);
+							fatalError("Duplicate Token: " + name, e.pos);
 						var term = udtMap.get(name);
 						if (term != null) {
 							if (term.t == false)
-								Context.fatalError("UnSupported Token: " + name, e.pos);
+								fatalError("UnSupported Token: " + name, e.pos);
 						} else if ( !R_UPPER.match(name) ) {
-							Context.fatalError("Only accept '/[A-Z][A-Z0-9_]*/' as placeholder: " + name, e.pos);
+							fatalError("Only accept '/[A-Z][A-Z0-9_]*/' as placeholder: " + name, e.pos);
 						}
 						var op = {type: type, prio: i, tval: term != null ? term.value : -1};
 						map.set(name, op);
@@ -211,7 +213,7 @@ class Parser {
 							vec.set(op.tval, op);
 					}
 				default:
-					Context.fatalError("UnSupported Type", li.pos);
+					fatalError("UnSupported Type", li.pos);
 				}
 			}
 		}
@@ -293,16 +295,16 @@ class Parser {
 		if (cases.length == 0) return;
 		for (lhs in lhsA) { // init udtMap first..
 			if (this.udtMap.exists(lhs.name))
-				Context.fatalError("Duplicate LHS: " + lhs.name, lhs.pos);
+				fatalError("Duplicate LHS: " + lhs.name, lhs.pos);
 			this.udtMap.set(lhs.name, {t: false, name: lhs.name, value: lhs.value, cset: CSet.single(lhs.value), pos: lhs.pos});
 		}
 		function setEpsilon(lhs, pos) {
-			if (lhs.epsilon) Context.fatalError('Duplicate "default:" or "case _:"', pos);
+			if (lhs.epsilon) fatalError('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
 		function getCSet(name, pos) {
 			var cset = getTermlCSet(name);
-			if (cset == null) Context.fatalError("Undefined: " + name, pos);
+			if (cset == null) fatalError("Undefined: " + name, pos);
 			return cset;
 		}
 		function opVerify(sym: Symbol):{type:OpAssocType, prio:Int} {
@@ -314,16 +316,16 @@ class Parser {
 					var op = this.opIMap.get(i);
 					if (op == null) {
 						if (prio != -1)
-							Context.fatalError("Mixed non-operator", sym.pos);
+							fatalError("Mixed non-operator", sym.pos);
 					} else {
 						if (!got) {
 							prio = op.prio;
 							type = op.type;
 						} else {
 							if (prio == -1)
-								Context.fatalError("Mixed non-operator", sym.pos);
+								fatalError("Mixed non-operator", sym.pos);
 							else if (prio != op.prio)
-								Context.fatalError("Different priority", sym.pos);
+								fatalError("Different priority", sym.pos);
 						}
 					}
 					got = true;
@@ -334,11 +336,11 @@ class Parser {
 		for (lhs in this.lhsA) {
 			for (c in cases[ index(lhs) ]) {
 				if (c.guard != null)
-					Context.fatalError("Unsupported: " + "guard", c.guard.pos);
+					fatalError("Unsupported: " + "guard", c.guard.pos);
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
-						Context.fatalError('This case is unused', pos);
+						fatalError('This case is unused', pos);
 					var g: SymbolSet = {action: c.expr, syms: [], left: null, right: null, pos: pos};
 					var len = el.length;
 					if (len == 0) {
@@ -358,7 +360,7 @@ class Parser {
 						case EConst(CString(s)):
 							var i = this.reflect.get(s);
 							if (i == null)
-								Context.fatalError("No associated token: " + s, e.pos);
+								fatalError("No associated token: " + s, e.pos);
 							firstCharChecking(i, UPPER, e.pos);
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
@@ -375,9 +377,9 @@ class Parser {
 						case EBinop(OpAssign, macro $i{v}, macro $i{nt}):  // e.g: e = expr
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
-								Context.fatalError("Undefined non-terminator: " + nt, e.pos);
+								fatalError("Undefined non-terminator: " + nt, e.pos);
 							if (el.length == 1 && nt == lhs.name)
-								Context.fatalError("Infinite recursion", e.pos);
+								fatalError("Infinite recursion", e.pos);
 							if (el[0] == e)	{ // the first item
 								if (nt != lhs.name)
 									lhs.lsubs.add(udt.value);
@@ -394,12 +396,12 @@ class Parser {
 								default: null;
 								}
 								if (i == null)
-									Context.fatalError("Unsupported: " + t.toString(), t.pos);
+									fatalError("Unsupported: " + t.toString(), t.pos);
 								firstCharChecking(i, UPPER, t.pos);
 								cset = CSet.union(cset, getCSet(i, t.pos));
 							}
 							if (cset == CSet.C_EMPTY)
-								Context.fatalError("Empty", pos);
+								fatalError("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
 						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(FOLLOW)
 							var i = switch(c) {
@@ -407,19 +409,19 @@ class Parser {
 							case CString(s):
 								var i = this.reflect.get(s);
 								if (i == null)
-									Context.fatalError("No associated token: " + s, p);
+									fatalError("No associated token: " + s, p);
 								i;
-							case _: Context.fatalError("Unsupported: " + c, p);
+							case _: fatalError("Unsupported: " + c, p);
 							}
 							var op = this.opSMap.get(i);
 							if (op == null)
-								Context.fatalError("Undefined :" + i, p);
+								fatalError("Undefined :" + i, p);
 							prec.left  = {type: op.type, prio: op.prio, lval: -1};
 							prec.right = {type: op.type, prio: op.prio, own: -1};
 							e = e2;
 							continue;
 						case _:
-							Context.fatalError("Unsupported: " + e.toString(), e.pos);
+							fatalError("Unsupported: " + e.toString(), e.pos);
 						}
 						if (++ei >= len) break;
 						e = el[ei];
@@ -457,9 +459,9 @@ class Parser {
 					setEpsilon(lhs, pos);
 					lhs.cases.push({action: c.expr, syms: [], left: null, right: null, pos: pos});
 				case [e]:
-					Context.fatalError("Expected [ patterns ]", e.pos);
+					fatalError("Expected [ patterns ]", e.pos);
 				case _:
-					Context.fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
+					fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
 		}
@@ -526,7 +528,7 @@ class Parser {
 			for (li in lhs.cases) {
 				this.vcases[index] = li;  // init this.vcases at the same time
 				if (li.action == null)
-					Context.fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
+					fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
 				texists = [];
 				texists.resize(li.syms.length);
 				texistsAll[index++] = texists;
@@ -564,7 +566,7 @@ class Parser {
 					if (sym.ex == null || sym.ex == "_")
 						continue;
 					if (row.exists(sym.ex))
-						Context.fatalError("duplicate var: " + sym.ex, sym.pos);
+						fatalError("duplicate var: " + sym.ex, sym.pos);
 					row.set(sym.ex, true);
 
 					// transform expr
@@ -573,7 +575,7 @@ class Parser {
 						var ofstr = funMap.get(sym.name);
 						if (ofstr == null) {
 							if ( sym.name != "_" && CSet.isSingle(sym.cset) ) // If you forget to add an extract function
-								Context.fatalError("Required a static function with @:rule("+ sym.name +")", sym.pos);
+								fatalError("Required a static function with @:rule("+ sym.name +")", sym.pos);
 							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
@@ -664,7 +666,7 @@ class Parser {
 				}
 			}
 			if (allFields.exists(f.name))
-				Context.fatalError("Duplicate field: " + f.name, f.pos);
+				fatalError("Duplicate field: " + f.name, f.pos);
 			allFields.set(f.name, f);
 		}
 
@@ -685,7 +687,7 @@ class Parser {
 					case EConst(CIdent(s)) | EConst(CString(s)):
 						this.funMap.set(s, {name: f.name, ct: fun.ret, args: len});
 					default:
-						Context.fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
+						fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
 					}
 				}
 				switch(len) {
@@ -719,10 +721,10 @@ class Parser {
 		var c = s.charCodeAt(0);
 		if (upper) {
 			if ( !(c >= "A".code && c <= "Z".code) )
-				Context.fatalError("Should be start with a capital letter: " + s, pos);
+				fatalError("Should be start with a capital letter: " + s, pos);
 		} else {
 			if ( !(c >= "a".code && c <= "z".code || c == "_".code) )
-				Context.fatalError("Should be start with a lowercase letter: " + s, pos);
+				fatalError("Should be start with a lowercase letter: " + s, pos);
 		}
 	}
 }
