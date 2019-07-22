@@ -36,9 +36,7 @@ class LexBuilder {
 		case TAbstract(_.get() => ab, _):
 			for (f in ab.impl.get().statics.get())
 				map.set(f.name, true);
-			true;
 		case _:
-			false;
 		}
 	}
 
@@ -52,13 +50,12 @@ class LexBuilder {
 		if (meta.eof == null)
 			Context.fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
 		var tmap = new Map();
-		var abst = false;
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					Context.fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
-				abst = absTokens(t, tmap);
+				absTokens(t, tmap);
 				lmap.set(Utils.getClsFullName(cl), reflect); // store
 				break;
 			}
@@ -103,6 +100,7 @@ class LexBuilder {
 
 		var c_all = [new lm.Charset.Char(0, meta.cmax)];
 		var apats = [];
+		var abst = !Lambda.empty(tmap);
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
@@ -134,7 +132,7 @@ class LexBuilder {
 		f.close();
 		#end
 		// checking
-		reachable(lex, groups);
+		checking(lex, groups);
 
 		// generate
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
@@ -281,16 +279,17 @@ class LexBuilder {
 		}
 	}
 
-	static function reachable(lex: lm.LexEngine, groups: Array<Group>) {
+	static function checking(lex: lm.LexEngine, groups: Array<Group>) {
 		var table = lex.table;
 		var INVALID = lex.invalid;
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
-		for (n in 0...lex.nrules)
-			exits[n] = INVALID;
+		// Init vector
+		for (n in 0...lex.nrules) exits[n] = INVALID;
+		// Scan the "exit" segment,            (state => quit)
 		for (i in table.length - lex.perExit...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
-			exits[n] = table.length - 1 - i;
+			exits[n] = table.length - 1 - i; //(quit  => state), This value(state) is not used here, could be any non-invalid value
 		}
 		function indexPattern(i):Expr {
 			for (g in groups) {
@@ -303,9 +302,21 @@ class LexBuilder {
 			}
 			throw "NotFound";
 		}
+		// reachable
 		for (n in 0...lex.nrules)
-			if (exits[n] == INVALID)
-				Context.fatalError("UnReachable pattern", indexPattern(n).pos);
+			if (exits[n] == INVALID) {
+				var pat = indexPattern(n);
+				Context.fatalError("UnReachable pattern: " + pat.toString(), pat.pos);
+			}
+
+		// epsilon
+		for (e in lex.entrys) {
+			var n = table.exits(e.begin);
+			if (n != INVALID) {
+				var pat = indexPattern(n);
+				Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
+			}
+		}
 	}
 
 	// assoc with lexEngine.parse
