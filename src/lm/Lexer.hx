@@ -14,7 +14,6 @@ interface Lexer<T> {
 	var pmin(default, null): Int;
 	var pmax(default, null): Int;
 	var current(get, never): String;
-	var extra : Dynamic; // a extra temporary variable.
 	function token(): T;
 	function getString(p:Int, len:Int):String;
 }

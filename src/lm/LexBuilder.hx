@@ -175,7 +175,6 @@ class LexBuilder {
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
 			public var current(get, never): String;
-			public var extra: Dynamic;
 			inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public inline function getString(p, len):String return input.readString(p, len);
 			public function new(s: lms.ByteData) {
@@ -207,7 +206,7 @@ class LexBuilder {
 				} else if (i >= right) {
 					return $e{meta.eof};
 				} else {
-					extra = i;  // the position of the UnMatached char
+					pmin = i;    // used for Error, the position of the UnMatached char
 				}
 				return gotos(q, this);
 			}
@@ -243,7 +242,7 @@ class LexBuilder {
 		}
 		for (c in casesExtra)
 			casesA[i++] = c;
-		var caseDef = macro throw lm.Utils.error("UnMatached char: '" + lex.input.readString((lex.extra:Int), 1) + "'" + lm.Utils.posString((lex.extra:Int), lex.input));
+		var caseDef = macro throw lm.Utils.error("UnMatached char: '" + lex.input.readString(lex.pmin, 1) + "'" + lm.Utils.posString(lex.pmin, lex.input));
 		var eSwitch = {expr: ESwitch(macro (s), casesA, caseDef), pos: pos};
 		defs.fields.push({
 			name: "cases",
