@@ -13,9 +13,9 @@ Build lexer and simple parser(LR0) in macro.
 
 NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
-* Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml). But the difference is:*
+* Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
-  All *finalStates* have been moved out for save memory/bytes,
+  - All *finalStates* have been moved out, it ont only saves memory and also makes state detection more faster.
 
 * Parser: Only LR(0) is available. (WIP)
 
@@ -117,21 +117,11 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
 ### CHANGES
 
-* `x.x.x`: Simplify
+* `0.9.0`: Simplify
   - [parser] use "%start" instead of ~~`@:side`~~
   - [lexer] Added `null => Action` when there is no match
 * `0.8.0`: Improvements
 * `0.7.0`: Removed unstable & useless code.
-* `0.6.0`:
-  - Added `Terml Reflect`
-  - Allow different LHS types
-  - Reimplemented Operator Precedence
-  - Removed useless Guard.
-* `0.5.0`: ~~Added `@:side`(ReImplement LR0 Parser)~~
-* `0.4.0`: ~~Independent LHS~~
-* `0.3.0`: Automatically grows to 16 bits when *number of States* exceeds 8bit.
-* `0.2.0`: Operator Precedence
-* `0.1.x`: init
 
 ### Defines
 
