@@ -19,18 +19,18 @@ class Utils {
 
 	static public function posString(pmin: Int, input: lms.ByteData): String {
 		var line = 1;
-		var char = 0;
+		var char = 1;
 		var i = 0;
 		while (i < pmin) {
 			var c = input.readByte(i++);
 			if (c == "\n".code) {
-				char = 0;
+				char = 1;
 				++ line;
 			} else {
 				++ char;
 			}
 		}
-		return " at line: " + line + ", char: " + char;
+		return " at line: " + line + ", column: " + char;
 	}
 #if macro
 	static public function getClsFullName(cls: haxe.macro.Type.ClassType) {

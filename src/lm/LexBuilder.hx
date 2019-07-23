@@ -8,7 +8,8 @@ using haxe.macro.Tools;
 
 private typedef Group = {
 	name: String,
-	rules: haxe.ds.Vector<{pat: Expr, action: Expr}>,
+	rules: Array<{pat: Expr, action: Expr}>,
+	unmatch: {pat: Expr, action: Expr},
 }
 
 class LexBuilder {
@@ -44,21 +45,20 @@ class LexBuilder {
 	static function fatalError(msg, p) return Context.fatalError("[lex build] " + msg , p);
 
 	static public function build():Array<Field> {
-		if (lmap == null)
-			lmap = new Map();
-		var reflect = new Map(); // patternString => TokenString, Both "lmap" and "reflect" will be used for LR0Parser
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
 		if (meta.eof == null)
 			fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
 		var tmap = new Map();
+		var reflect = new Map(); // patternString => TokenString, Both "lmap" and "reflect" will be used for LR0Parser
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (Context.unify(t, Context.typeof(meta.eof)) == false)
 					fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
 				readIntTokens(t, tmap);
+				if (lmap == null) lmap = new Map();
 				lmap.set(Utils.getClsFullName(cl), reflect); // store
 				break;
 			}
@@ -73,13 +73,16 @@ class LexBuilder {
 			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}) if (el.length > 0):
-					var i = 0;
-					var len = el.length;
-					var g:Group = {name: f.name, rules: new haxe.ds.Vector(len)};
+					var g:Group = {name: f.name, rules: [], unmatch: null};
 					for (e in el) {
 						switch (e.expr) {
 						case EBinop(OpArrow, s, e):
-							g.rules[i++] = {pat: s, action: e};
+							switch(s.expr) {
+							case EConst(CIdent("null")):
+								g.unmatch = {pat: s, action: e};
+							default:
+								g.rules.push({pat: s, action: e});
+							}
 						default:
 							fatalError("Expected pattern => function", e.pos);
 						}
@@ -135,9 +138,8 @@ class LexBuilder {
 		lex.debugWrite(f);
 		f.close();
 		#end
-		// checking
-		checking(lex, groups);
-
+		// check & hacking
+		var casesExtra = checkAHack(lex, groups);
 		// generate
 		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		// force string as table format if `-D lex_strtable` and ucs2
@@ -173,6 +175,7 @@ class LexBuilder {
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
 			public var current(get, never): String;
+			public var extra: Dynamic;
 			inline function get_current():String return input.readString(pmin, pmax - pmin);
 			public inline function getString(p, len):String return input.readString(p, len);
 			public function new(s: lms.ByteData) {
@@ -182,8 +185,6 @@ class LexBuilder {
 			}
 			function _token(state:Int, right:Int) {
 				var i = pmax;
-				pmin = i;
-				if (i >= right) return $e{meta.eof};
 				var prev = state;
 				while (i < right) {
 					var c = input.readByte(i++);
@@ -197,15 +198,16 @@ class LexBuilder {
 				}
 				if (state == INVALID) {
 					state = prev;
-					prev = 1; // use prev as dx.
-				} else {
-					prev = 0;
+					-- i;
 				}
 				var q = exits(state);
 				if (q < NRULES) {
-					pmax = i - prev;
+					pmin = pmax; // update
+					pmax = i;
+				} else if (i >= right) {
+					return $e{meta.eof};
 				} else {
-					throw lm.Utils.error("UnMatached: " + input.readString(pmin, i - pmin - prev) + lm.Utils.posString(pmin, input));
+					extra = i;  // the position of the UnMatached char
 				}
 				return gotos(q, this);
 			}
@@ -215,7 +217,9 @@ class LexBuilder {
 			var g = groups[i];
 			var seg = lex.entrys[i];
 			var sname = i == 0 ? "BEGIN" : g.name.toUpperCase() + "_BEGIN";
+
 			defs.fields.push( addInlineFVar(sname, seg.begin, pos) );
+
 			defs.fields.push({
 				name: i == 0 ? "token" : g.name,
 				access: [AInline, APublic],
@@ -228,19 +232,19 @@ class LexBuilder {
 			});
 		}
 		// build switch
-		var actions = [];
-		actions.resize(lex.nrules);
+		var casesA: Array<Case> = [];
+		casesA.resize( lex.nrules + casesExtra.length );
 		var i = 0;
-		for (g in groups)
-			for (r in g.rules)
-				actions[i++] = r.action;
-		var defCase = actions.pop();
-		var liCase: Array<Case> = [];
-		liCase.resize(actions.length);
-		for (i in 0...actions.length) {
-			liCase[i] = {values: [macro $v{i}], expr: actions[i]};
+		for (g in groups) {
+			for (rule in g.rules) {
+				casesA[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
+				++ i;
+			}
 		}
-		var eSwitch = {expr: ESwitch(macro (s), liCase, defCase), pos: pos};
+		for (c in casesExtra)
+			casesA[i++] = c;
+		var caseDef = macro throw lm.Utils.error("UnMatached char: '" + lex.input.readString((lex.extra:Int), 1) + "'" + lm.Utils.posString((lex.extra:Int), lex.input));
+		var eSwitch = {expr: ESwitch(macro (s), casesA, caseDef), pos: pos};
 		defs.fields.push({
 			name: "cases",
 			access: [AStatic],
@@ -283,7 +287,7 @@ class LexBuilder {
 		}
 	}
 
-	static function checking(lex: lm.LexEngine, groups: Array<Group>) {
+	static function checkAHack(lex: lm.LexEngine, groups: Array<Group>) : Array<Case> {
 		var table = lex.table;
 		var INVALID = lex.invalid;
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
@@ -321,6 +325,20 @@ class LexBuilder {
 				Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
 			}
 		}
+
+		// hacking for "null => Actoin", must be after epsilon checking
+		var start = lex.nrules;
+		var extra = [];
+		for (i in 0...groups.length) {
+			var g = groups[i];
+			if (g.unmatch != null) {
+				var e = lex.entrys[i];
+				lex.table.set(lex.table.exitpos(e.begin), start);
+				extra.push( {values: [macro @:pos(g.unmatch.pat.pos) $v{start}], expr: g.unmatch.action } );
+				++start;
+			}
+		}
+		return extra;
 	}
 
 	// assoc with lexEngine.parse

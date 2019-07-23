@@ -11,9 +11,10 @@ the lexBuilder will auto generate all the fields.
 #end
 interface Lexer<T> {
 	var input(default, null): lms.ByteData;
-	var pmin(default, null): Int;  // make lm.Stream works better.
-	var pmax(default, null): Int;  // Because the lms.position has size limit.
+	var pmin(default, null): Int;
+	var pmax(default, null): Int;
 	var current(get, never): String;
+	var extra : Dynamic; // a extra temporary variable.
 	function token(): T;
 	function getString(p:Int, len:Int):String;
 }

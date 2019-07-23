@@ -118,7 +118,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 ### CHANGES
 
 * `x.x.x`: Simplify
-  - use "%start" instead of ~~`@:side`~~
+  - [parser] use "%start" instead of ~~`@:side`~~
+  - [lexer] Added `null => Action` when there is no match
 * `0.8.0`: Improvements
 * `0.7.0`: Removed unstable & useless code.
 * `0.6.0`:
