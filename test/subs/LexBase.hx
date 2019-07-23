@@ -27,6 +27,7 @@ private enum Token {
 	LParen;
 	RParen;
 	CStr(s: String);
+	Exit;
 }
 
 @:rule(127, Eof) private class Lexer implements lm.Lexer<Token> {
@@ -41,14 +42,17 @@ private enum Token {
 		"(" => LParen,
 		")" => RParen,
 		r_zero + "|" + r_int => CInt(Std.parseInt(lex.current)),
-		'"' => lex.str(),
+		'"' => {
+			var i = lex.pmax;
+			var t = lex.str();
+			if (t == Eof)
+				throw "UnClosed \"" + lm.Utils.posString(lex.pmax, lex.input);
+			CStr(lex.getString(i, lex.pmax - 1 - i));
+		}
 	];
 	static var str = [
-		'[^"]*' => {
-			var s = CStr(lex.current);
-			lex.pmax++;
-			s;
-		}
+		'"'     => Exit,
+		'[^"]+' => lex.str()
 	];
 	static function s_op(o) {
 		return switch (o) {
@@ -66,6 +70,7 @@ private enum Token {
 		case LParen: "(";
 		case RParen: ")";
 		case CStr(s): s;
+		case Exit: "<error>";
 		}
 	}
 }
