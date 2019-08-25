@@ -117,6 +117,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
 ### CHANGES
 
+* `x.x.x`:
+  - [lexer] Allow `lm.Lexer<Void>`. [More...](test/subs/LexVoid.hx)
 * `0.9.0`: Simplify
   - [parser] use "%start" instead of ~~`@:side`~~
   - [lexer] Added `null => Action` when there is no match
@@ -194,7 +196,7 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
 ## Usage
 
-copy from [test/subs/Demo.hx](test/subs//Demo.hx)
+copy from [test/subs/Demo.hx](test/subs/Demo.hx)
 
 ```hx
 package;
@@ -223,7 +225,7 @@ enum abstract Token(Int) to Int {
 
 /**
 * @:rule(EOF, cmax = 255)
-*   Eof is a custom terminator. (required)
+*   Eof is a custom terminator. (required if used for Parser)
 *   127 is the char max value.  (optional, default is 255)
 *
 * and all the `static var X = "string"` will be treated as rules if no `@:skip`

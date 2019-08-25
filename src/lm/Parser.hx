@@ -134,12 +134,14 @@ class Parser {
 	function readLexerMeta(t: Type) {
 		switch(t) {
 		case TInst(_.get() => lex, _):
+			this.sEof = "null";
 			for (it in lex.interfaces) {
 				if (it.t.toString() == "lm.Lexer") {
 					var eof = @:privateAccess LexBuilder.getMeta(lex.meta.extract(":rule")).eof;
-					if (eof == null || eof.toString() == "null") // "null" is not allowed as an EOF in parser
-						fatalError("Invalid EOF value " + eof.toString(), lex.pos);
-					this.sEof = eof.toString();
+					if (eof != null)
+						this.sEof = eof.toString();
+					if (this.sEof == "null" || this.sEof == "Void")
+						fatalError("Invalid EOF value " + this.sEof, lex.pos);
 					this.reflect = LexBuilder.lmap.get( Utils.getClsFullName(lex) );
 					return it.params[0];
 				}
