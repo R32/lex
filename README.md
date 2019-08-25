@@ -117,7 +117,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
 ### CHANGES
 
-* `x.x.x`:
+* `0.9.1`:
+  - [lexer] Fixed `null => Action`
   - [lexer] Allow `lm.Lexer<Void>`. [More...](test/subs/LexVoid.hx)
 * `0.9.0`: Simplify
   - [parser] use "%start" instead of ~~`@:side`~~
