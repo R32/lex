@@ -189,8 +189,10 @@ class LexBuilder {
 				pmin = 0;
 				pmax = 0;
 			}
-			function _token(state:Int, right:Int) {
+			function _token(init:Int, right:Int) {
+				if (pmax >= right) return $e{meta.eof};
 				var i = pmax;
+				var state = init;
 				var prev = state;
 				while (i < right) {
 					var c = input.readByte(i++);
@@ -202,18 +204,17 @@ class LexBuilder {
 						break;
 					prev = state;
 				}
+				pmin = i; // if UnMatached
 				if (state == INVALID) {
 					state = prev;
 					-- i;
 				}
 				var q = exits(state);
-				if (q < NRULES) {
+				if (i > pmax && q < NRULES) {
 					pmin = pmax; // update
 					pmax = i;
-				} else if (i >= right) {
-					return $e{meta.eof};
 				} else {
-					pmin = i;    // used for Error, the position of the UnMatached char
+					q = exits(init); // goto "null => Action" or "throw"
 				}
 				$e{ meta.isVoid ? macro cases(q, this) : macro return cases(q, this) }
 			}
@@ -249,7 +250,7 @@ class LexBuilder {
 		}
 		for (c in casesExtra)
 			casesA[i++] = c;
-		var caseDef = macro throw lm.Utils.error("UnMatached char: '" + lex.input.readString(lex.pmin, 1) + "'" + lm.Utils.posString(lex.pmin, lex.input));
+		var caseDef = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
 		var eSwitch = {expr: ESwitch(macro (s), casesA, caseDef), pos: pos};
 		defs.fields.push({
 			name: "cases",
