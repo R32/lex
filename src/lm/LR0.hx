@@ -139,8 +139,8 @@ class LR0Builder extends lm.Parser {
 		}
 		inline function addAll(nodes, nfa) LexEngine.addNodes(nodes, nfa);
 		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
-		for (n in nodes) {
-			for (nc in n.trans) {
+		for (p in 0...nodes.length) { // no need to iterate the nodes added later, because "Parser::lhsClosure()" has done it.
+			for (nc in nodes[p].trans) {
 				for (c in nc.chars) {
 					if ( isNonTerm(c.min) ) {
 						var lval = c.min;     // the value of the last non-term
