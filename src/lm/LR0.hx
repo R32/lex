@@ -1,7 +1,6 @@
 package lm;
 
 #if macro
-import lm.LR0Base;
 import lm.Charset;
 import lm.LexEngine;
 import haxe.macro.Type;
@@ -14,7 +13,7 @@ class LR0Builder extends lm.LR0Base {
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;
 
-	var uid(default, null): Int;
+	var hub(default, null): LexEngine.NodeHub;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -29,7 +28,6 @@ class LR0Builder extends lm.LR0Base {
 
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	inline function isBit16() return this.invalid == U16MAX;
-	inline function isFinal(n: Node) return n.id < this.nrules;
 
 	static function fatalError(msg, p) return Context.fatalError("[LR0 build] " + msg , p);
 
@@ -43,7 +41,7 @@ class LR0Builder extends lm.LR0Base {
 		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // will compress it later.
 		this.per = (this.width() - 1 | 15 ) + 1;
-		this.uid = nrules;  // so all the finalsID must be less then nrules.
+		this.hub = new LexEngine.NodeHub(nrules);
 	}
 
 	function dump(file:String) {
@@ -59,15 +57,14 @@ class LR0Builder extends lm.LR0Base {
 	function make() {
 		if ( isEmpty() ) return [];
 		// Pattern -> NFA(nodes)
-		var i = 0;
 		var a = this.toPartern();
 		for (p in 0...a.length) {
 			var pats = a[p];
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
-				var f = new Node(i++);
-				var n = initNode(pats[j], f);
+				var f = hub.newFinal();
+				var n = hub.normalize(pats[j], f);
 				nodes[j] = n;
 			}
 			nfas[p] = nodes;
@@ -146,7 +143,7 @@ class LR0Builder extends lm.LR0Base {
 						var lval = c.min;     // the value of the last non-term
 						var i = lval - maxValue;
 						if (alt[i]) continue; // if already added to current "nodes".
-						var atLast = isFinal(nc.n);
+						var atLast = hub.isFinal(nc.n);
 						var exit = nc.n.id;
 						if (!atLast) {
 							addAll(nodes, this.nfas[i]);
@@ -200,7 +197,7 @@ class LR0Builder extends lm.LR0Base {
 
 		var exits = [];
 		for (n in nodes)
-			if ( isFinal(n) )
+			if ( hub.isFinal(n) )
 				exits.push(n.id);
 		var f = switch (exits.length) {
 		case 0: -1;
@@ -212,38 +209,6 @@ class LR0Builder extends lm.LR0Base {
 		}
 		lstates.push(new State(id, trans, targets, f));
 		return id;
-	}
-
-	inline function node() return new Node(uid++);
-
-	function initNode(p: Pattern, f: Node) {
-		return switch (p) {
-		case Empty:
-			f;
-		case Match(c):
-			var n = node();
-			n.trans.push(new NChars(c, f));
-			n;
-		case Star(p):
-			var n = node();
-			var an = initNode(p, n);
-			n.epsilon.push(an);
-			n.epsilon.push(f);
-			n;
-		case Plus(p):
-			var n = node();
-			var an = initNode(p, n);
-			n.epsilon.push(an);
-			n.epsilon.push(f);
-			an;
-		case Choice(a, b):
-			var n = node();
-			n.epsilon.push(initNode(a, f));
-			n.epsilon.push(initNode(b, f));
-			n;
-		case Next(a, b):
-			initNode( a, initNode(b, f) );
-		}
 	}
 
 	function checking() {

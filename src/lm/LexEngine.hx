@@ -9,7 +9,7 @@ class LexEngine {
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;
 
-	var uid(default, null): Int;
+	var hub(default, null): NodeHub;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -49,16 +49,15 @@ class LexEngine {
 		this.invalid = U16MAX;
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.nrules = Lambda.fold(a, (p, n) -> p.length + n, 0);
-		this.uid = this.nrules;
+		this.hub = new NodeHub(this.nrules);
 		var nodes = [];
 		var begin = 0;
-		var i = 0;
 		for (pats in a) {
 			nodes.resize(pats.length);
 			// Pattern -> NFA(nodes)
 			for (p in 0...pats.length) {
-				var f = new Node(i++);
-				var n = initNode(pats[p], f);
+				var f = hub.newFinal();
+				var n = hub.normalize(pats[p], f);
 				nodes[p] = n;
 			}
 			// NFA -> DFA
@@ -86,38 +85,6 @@ class LexEngine {
 
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	public inline function isBit16() return this.invalid == U16MAX;
-	inline function isFinal(n: Node) return n.id < this.nrules;
-	inline function node() return new Node(uid++);
-
-	function initNode(p: Pattern, f: Node) {
-		return switch (p) {
-		case Empty:
-			f;
-		case Match(c):
-			var n = node();
-			n.trans.push(new NChars(c, f));
-			n;
-		case Star(p):
-			var n = node();
-			var an = initNode(p, n);
-			n.epsilon.push(an);
-			n.epsilon.push(f);
-			n;
-		case Plus(p):
-			var n = node();
-			var an = initNode(p, n);
-			n.epsilon.push(an);
-			n.epsilon.push(f);
-			an;
-		case Choice(a, b):
-			var n = node();
-			n.epsilon.push(initNode(a, f));
-			n.epsilon.push(initNode(b, f));
-			n;
-		case Next(a, b):
-			initNode( a, initNode(b, f) );
-		}
-	}
 
 	function compile(nodes: Array<Node>): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
@@ -144,7 +111,7 @@ class LexEngine {
 
 		var f = -1;
 		for (n in nodes) {
-			if ( isFinal(n) ) {
+			if ( hub.isFinal(n) ) {
 				f = n.id;
 				break;
 			}
@@ -411,16 +378,70 @@ class NAChars {
 		return a - b;
 	}
 }
+
 class Node {
 	public var id: Int;
 	public var trans: Array<NChars>;  //  empty or .length == 1
 	public var epsilon: Array<Node>;
-	public function new(id) {
+	@:allow(lm.NodeHub) function new(id) {
 		this.id = id;
 		trans = [];
 		epsilon = [];
 	}
 }
+
+class NodeHub {
+
+	var uid: Int;   // normal uid, start at "pivot"
+	var fuid: Int;  // final uid, start at 0 and less than "pivot"
+	var pivot: Int;
+
+	inline function newNode() return new Node(uid++);
+
+	public inline function isFinal(node: Node) return node.id < this.pivot;
+
+	public function new(n) {
+		this.uid = n;
+		this.fuid = 0;
+		this.pivot = n; // const
+	}
+
+	public function newFinal(): Node {
+		if (fuid >= pivot) throw "WRONG";
+		return new Node(fuid++);
+	}
+
+	public function normalize(p: Pattern, f: Node): Node {
+		return switch (p) {
+		case Empty:
+			f;
+		case Match(c):
+			var n = newNode();
+			n.trans.push(new NChars(c, f));
+			n;
+		case Star(p):
+			var n = newNode();
+			var an = normalize(p, n);
+			n.epsilon.push(an);
+			n.epsilon.push(f);
+			n;
+		case Plus(p):
+			var n = newNode();
+			var an = normalize(p, n);
+			n.epsilon.push(an);
+			n.epsilon.push(f);
+			an;
+		case Choice(a, b):
+			var n = newNode();
+			n.epsilon.push(normalize(a, f));
+			n.epsilon.push(normalize(b, f));
+			n;
+		case Next(a, b):
+			normalize( a, normalize(b, f) );
+		}
+	}
+}
+
 class State {
 	public var id: Int;
 	public var trans: Array<Char>;
