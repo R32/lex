@@ -4,7 +4,7 @@ import StringTools.rpad;
 import StringTools.lpad;
 import lm.Charset;
 import lm.LexEngine;
-import lm.Parser;
+import lm.LR0Base;
 
 @:access(lm)
 class Print {
@@ -120,7 +120,7 @@ class Print {
 		}
 	}
 
-	static public function production(par: lm.Parser) {
+	static public function production(par: lm.LR0Base) {
 		var used = getUsed(par);
 		var buf = new StringBuf();
 		var R = 0;
@@ -233,7 +233,7 @@ class Print {
 		return buf.toString();
 	}
 
-	static function getUsed(par: lm.Parser) {
+	static function getUsed(par: lm.LR0Base) {
 		var used = new Map<Int, String>();
 		function s_token(i) {
 			var t = Lambda.find(par.termls, t -> t.value == i);

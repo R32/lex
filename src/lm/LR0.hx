@@ -1,7 +1,7 @@
 package lm;
 
 #if macro
-import lm.Parser;
+import lm.LR0Base;
 import lm.Charset;
 import lm.LexEngine;
 import haxe.macro.Type;
@@ -9,7 +9,7 @@ import haxe.macro.Expr;
 import haxe.macro.Context;
 
 @:access(lm.LexEngine)
-class LR0Builder extends lm.Parser {
+class LR0Builder extends lm.LR0Base {
 
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;

@@ -70,7 +70,7 @@ typedef OpRight = { // for stream match: [E, termls, ... ], if ( query(termls) )
 /**
  parserInfo
 */
-class Parser {
+class LR0Base {
 
 	var termls: Array<Udt>;      // all Terminators
 	var termlsAll: Charset;      // Terminators Universal Set but without EOF
@@ -729,5 +729,5 @@ class Parser {
 	}
 }
 #else
-extern class Parser {}
+extern class LR0Base {}
 #end
