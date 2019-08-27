@@ -312,7 +312,6 @@ class Parser {
 		function opVerify(sym: Symbol):{type:OpAssocType, prio:Int} {
 			var prio = -1;
 			var type = Left;
-			var got = false;
 			for (c in sym.cset) {
 				for (i in c.min...c.max + 1) {
 					var op = this.opIMap.get(i);
@@ -320,7 +319,7 @@ class Parser {
 						if (prio != -1)
 							fatalError("Mixed non-operator", sym.pos);
 					} else {
-						if (!got) {
+						if (i == c.min) { // if first item
 							prio = op.prio;
 							type = op.type;
 						} else {
@@ -330,7 +329,6 @@ class Parser {
 								fatalError("Different priority", sym.pos);
 						}
 					}
-					got = true;
 				}
 			}
 			return {type: type, prio: prio};
@@ -380,12 +378,13 @@ class Parser {
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
 								fatalError("Undefined non-terminator: " + nt, e.pos);
-							if (el.length == 1 && nt == lhs.name)
+							if (len == 1 && nt == lhs.name)
 								fatalError("Infinite recursion", e.pos);
-							if (el[0] == e)	{ // the first item
+							if (ei == 0) { // the first item
 								if (nt != lhs.name)
 									lhs.lsubs.add(udt.value);
-								g.right = {type: Left, prio: (el.length > 1 ? -1 : -2), own: udt.cset[0].min};
+								if (len == 1)
+									g.right = {type: Left, prio: -2, own: udt.value};
 							}
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 
@@ -437,7 +436,7 @@ class Parser {
 								var op = opVerify(x2);
 								if (op.prio != -1)
 									g.left = {type: op.type, prio: op.prio, lval: x1.cset[0].min};
-							} else {  // by @:prec(LEFT, )
+							} else {  // by @:prec(FOLLOW)
 								prec.left.lval = x1.cset[0].min;
 								g.left = prec.left;
 							}
@@ -450,7 +449,7 @@ class Parser {
 								var op = opVerify(x2);
 								if (op.prio != -1)
 									g.right = {type: op.type, prio: op.prio, own: x1.cset[0].min}
-							} else { // rare use by @:prec(...,RIGHT)
+							} else { // by @:prec(FOLLOW)
 								prec.right.own = x1.cset[0].min;
 								g.right = prec.right;
 							}
@@ -479,8 +478,7 @@ class Parser {
 				var i = 0;
 				var len = top.lsubs.length;
 				for (tlv in top.lsubs) {
-					if (i++ == len)
-						break;
+					if (i++ == len) break; // prevent iterating on added items
 					var sub = this.lhsA[tlv - this.maxValue];
 					for (slv in sub.lsubs) {
 						if (Lambda.indexOf(top.lsubs, slv) == -1) {
