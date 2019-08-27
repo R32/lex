@@ -177,7 +177,7 @@ class LR0Builder extends lm.LR0Base {
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		var ta: Array<NAChars> = LexEngine.getTransitions( closure(nodes) );
+		var ta = LexEngine.getTransitions( closure(nodes) );
 		var len = ta.length;
 		id = if (len == 0) {
 			final_counter--; // final state.
