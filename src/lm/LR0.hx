@@ -24,7 +24,6 @@ class LR0Builder extends lm.LR0Base {
 	var nstates: Int;
 	var invalid: Int;
 	var nfas: haxe.ds.Vector<Array<Node>>; // assoc with lhsA
-	var used: haxe.ds.Vector<Bool>;        // Does not perform reachable detection for unused LHS, ??May be removed
 
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	inline function isBit16() return this.invalid == U16MAX;
@@ -38,7 +37,6 @@ class LR0Builder extends lm.LR0Base {
 		this.segs = 0;      // state_counter
 		this.invalid = U16MAX;
 		this.nfas = new haxe.ds.Vector(lhsA.length);
-		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // will compress it later.
 		this.per = (this.width() - 1 | 15 ) + 1;
 		this.generator = new NodeGenerator(nrules);
@@ -56,10 +54,11 @@ class LR0Builder extends lm.LR0Base {
 
 	function make() {
 		if ( isEmpty() ) return [];
-		// Pattern -> NFA(nodes)
+		// String -> Pattern
 		var a = this.toPartern();
-		for (p in 0...a.length) {
-			var pats = a[p];
+		// Pattern -> NFA(nodes)
+		for (i in 0...a.length) {
+			var pats = a[i];
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
@@ -67,7 +66,7 @@ class LR0Builder extends lm.LR0Base {
 				var n = generator.normalize(pats[j], f);
 				nodes[j] = n;
 			}
-			nfas[p] = nodes;
+			nfas[i] = nodes;
 		}
 		// NFA -> DFA
 		var begin = 0;
@@ -76,7 +75,6 @@ class LR0Builder extends lm.LR0Base {
 			e.begin = begin;
 			e.width = this.segs - begin;
 			begin = this.segs;
-			this.used[e.index] = true;
 			this.h = new Map(); // reset for next
 		}
 		// properties
@@ -151,7 +149,6 @@ class LR0Builder extends lm.LR0Base {
 							mixing(nodes, i, lval, exit);
 						}
 						alt[i] = true;
-						used[i] = true;
 						// left subs.
 						for (s in lhsA[i].lsubs) {
 							var j = s - maxValue;
@@ -162,7 +159,6 @@ class LR0Builder extends lm.LR0Base {
 								mixing(nodes, j, lval, exit);
 							}
 							alt[j] = true;
-							used[j] = true;
 						}
 					}
 					break;
@@ -180,7 +176,7 @@ class LR0Builder extends lm.LR0Base {
 		var ta = LexEngine.getTransitions( closure(nodes) );
 		var len = ta.length;
 		id = if (len == 0) {
-			final_counter--; // final state.
+			final_counter--;
 		} else {
 			segs++;
 		}
@@ -202,7 +198,7 @@ class LR0Builder extends lm.LR0Base {
 		var f = switch (exits.length) {
 		case 0: -1;
 		case 1: exits[0];
-		default: // since LR(0) so the conflicts can not be resolved.
+		default:
 			for (r in exits)
 				Context.warning("conflict case: " + r, ruleToCase(r).pos);
 			fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
@@ -212,62 +208,33 @@ class LR0Builder extends lm.LR0Base {
 	}
 
 	function checking() {
+		var VALID = 1;
 		var INVALID = this.invalid;
-		// init exitN/NRule => final_state rules
-		var rules = new haxe.ds.Vector<Int>(this.nrules);
-		for (n in 0...this.nrules)
-			rules[n] = INVALID;
+		// 1. Is switch case unreachable?
+		var exits = haxe.io.Bytes.alloc(this.nrules);
 		for (i in table.length - this.perExit...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
-			// since: i = table.length - 1 - state; // table.exitpos
-			// so   : state = table.length - 1 - i;
-			rules[n] = table.length - 1 - i;
+			exits.set(n, VALID);
 		}
-		// 1. Is switch case unreachable?
-		var dup = new haxe.ds.Vector<Bool>(this.lhsA.length);
 		for (n in 0...this.nrules)
-			if (rules[n] == INVALID) {
-				var lhs = byRule(n);
-				var i = this.index(lhs);
-				var msg = "Unreachable switch case";
-				if ( this.used.get(i) ) {
-					fatalError(msg, this.ruleToCase(n).pos);
-				} else if ( !dup.get( i ) ) {
-					Context.warning(msg, lhs.pos);
-					dup.set(i, true);
-				}
-			}
-		// 2. each state
-		for (i in 0...this.segs) {
-			if (table.exits(i) != INVALID) continue; // epsilon
-			var base = i * this.per;
-			var find = false;
-			for (p in base ... base + this.maxValue) {
-				var c = table.get(p);
-				if (c != INVALID) {
-					find = true;
-					break;
-				}
-			}
-			if (!find) throw("Missing terminator in STATE: " + i);
-		}
-		// 3. The "entry" is not allowed to be epsilon
+			if (exits.get(n) != VALID)
+				fatalError("Unreachable switch case", this.ruleToCase(n).pos);
+
+		// 2. The "entry" is not allowed to be epsilon
 		for (e in this.starts)
 			if (this.table.exits(e.begin) != INVALID)
 				fatalError(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
-
-		// more?
 	}
 
 	function generate(): Array<Field> {
-		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		var forceBytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		// force string as table format if `-D lex_strtable` and ucs2
-		if (Context.defined("lex_strtable") && Context.defined("utf16")) force_bytes = false;
+		if (Context.defined("lex_strtable") && Context.defined("utf16")) forceBytes = false;
 
 		var getU:Expr = null;
 		var raw:Expr = null;
-		if (force_bytes) {
+		if (forceBytes) {
 			var bytes = this.table.toByte(isBit16());
 			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
 			Context.addResource(resname, bytes);
@@ -329,7 +296,7 @@ class LR0Builder extends lm.LR0Base {
 						var value:$ct_lval = gotos(q, stream);
 						t = stream.reduce( lvs[q] );
 						if (t.term == exp) {
-							stream.pos -= 2; // ready to discard (current + the shifted) token
+							stream.pos -= 2; // ready to discard
 							stream.junk(2);  // commit
 							return value;
 						}
@@ -345,20 +312,16 @@ class LR0Builder extends lm.LR0Base {
 				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 			}
 		}).fields;
-		// build switch
-		var actions = [];
-		actions.resize(this.nrules);
-		var i = 0;
-		for (c in this.vcases)
-			actions[i++] = c.action;
-		var here = Context.currentPos();
-		var defCase = actions.pop();
-		var liCase:Array<Case> = [];
-		liCase.resize(actions.length);
-		for (i in 0...actions.length) {
-			liCase[i] = {values: [macro $v{i}], expr: actions[i]};
+		// build siwtch
+		var last = this.nrules - 1;
+		var edef = vcases[last].action; // uses the last one as "default"
+		var ecases:Array<Case> = [];
+		ecases.resize(last);
+		for (i in 0...last) {
+			ecases[i] = {values: [macro $v{i}], expr: this.vcases[i].action};
 		}
-		var eSwitch = {expr: ESwitch(macro (q), liCase, defCase), pos: here};
+		var here = Context.currentPos();
+		var eswitch = {expr: ESwitch(macro (q), ecases, edef), pos: here};
 		fields.push({
 			name: "cases",
 			access: [AStatic],
@@ -367,7 +330,7 @@ class LR0Builder extends lm.LR0Base {
 				ret: ct_lval,
 				expr: macro {
 					@:mergeBlock $b{preDefs};
-					return $eSwitch;
+					return $eswitch;
 				}
 			}),
 			pos: here,
@@ -391,15 +354,15 @@ class LR0Builder extends lm.LR0Base {
 	}
 
 	public static function build() {
-		var allFields = new Map<String, Field>();
-		var lrb = new LR0Builder("lm.LR0", allFields);
+		var reserve = new Map<String, Field>();
+		var lrb = new LR0Builder("lm.LR0", reserve);
 		var fields = lrb.make();
 		// combine
 		var ret = [];
 		for (f in fields)
-			if (!allFields.exists(f.name))
+			if (!reserve.exists(f.name))
 				ret.push(f);
-		for (f in allFields) ret.push(f);
+		for (f in reserve) ret.push(f);
 		return ret;
 	}
 }

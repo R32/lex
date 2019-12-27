@@ -242,27 +242,27 @@ class LexBuilder {
 			});
 		}
 		// build switch
-		var allCases: Array<Case> = [];
-		allCases.resize( lex.nrules + nullCases.length );
+		var ecases: Array<Case> = [];
+		ecases.resize( lex.nrules + nullCases.length );
 		var i = 0;
 		for (g in groups) {
 			for (rule in g.rules) {
-				allCases[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
+				ecases[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
 				++ i;
 			}
 		}
 		for (c in nullCases)
-			allCases[i++] = c;
+			ecases[i++] = c;
 
-		var defaultCase = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
-		var eSwitch = {expr: ESwitch(macro (s), allCases, defaultCase), pos: pos};
+		var edef = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
+		var eswitch = {expr: ESwitch(macro (s), ecases, edef), pos: pos};
 		defs.fields.push({
 			name: "cases",
 			access: [AStatic],
 			kind: FFun({
 				args: [{name: "s", type: macro: Int}, {name: "lex", type: ct_lex}],
 				ret: null,
-				expr: meta.isVoid ? eSwitch : (macro return $eSwitch)
+				expr: meta.isVoid ? eswitch : (macro return $eswitch)
 			}),
 			pos: pos,
 		});
@@ -300,15 +300,14 @@ class LexBuilder {
 
 	static function checking(lex: lm.LexEngine, groups: Array<Group>) {
 		var table = lex.table;
+		var VALID = 1;
 		var INVALID = lex.invalid;
-		var exits = new haxe.ds.Vector<Int>(lex.nrules);
-		// Init vector
-		for (n in 0...lex.nrules) exits[n] = INVALID;
-		// Scan the "exit" segment,            (state => quit)
+
+		var exits = haxe.io.Bytes.alloc(lex.nrules);
 		for (i in table.length - lex.perExit...table.length) {
 			var n = table.get(i);
 			if (n == INVALID) continue;
-			exits[n] = table.length - 1 - i; //(quit  => state), This value(state) is not used here, could be any non-invalid value
+			exits.set(n, VALID);
 		}
 		function indexPattern(i):Expr {
 			for (g in groups) {
@@ -323,7 +322,7 @@ class LexBuilder {
 		}
 		// reachable
 		for (n in 0...lex.nrules)
-			if (exits[n] == INVALID) {
+			if (exits.get(n) != VALID) {
 				var pat = indexPattern(n);
 				Context.fatalError("UnReachable pattern: " + pat.toString(), pat.pos);
 			}
