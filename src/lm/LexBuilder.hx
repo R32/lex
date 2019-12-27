@@ -14,9 +14,12 @@ private typedef Group = {
 
 class LexBuilder {
 
-	@:persistent static public var lmap: Map<String, Map<String, String>>; // LexName => [PatternString => TokenString]
+	/**
+	 LexerClassName => [PatternString => TokenString], it will be used by LR0Parser.
+	*/
+	@:persistent static public var lmap: Map<String, Map<String, String>>;
 
-	static function getMeta(metas: Array<MetadataEntry>) {
+	static function getMeta(metas: Array<MetadataEntry>): {cmax:Int, eof:Null<Expr>, isVoid:Bool} {
 		var ret = {cmax: 255, eof: null, isVoid: true};
 		if (metas.length > 0)
 			for (meta in metas[0].params) {
@@ -32,13 +35,12 @@ class LexBuilder {
 		return ret;
 	}
 
-	// only for enum abstract XXX(Int)
-	static function readIntTokens(t: Type, map: Map<String, Bool>) {
+	static function readIntTokens(t: Type, out: Map<String, Bool>) {
 		if ( !Context.unify(t, Context.getType("Int")) ) return;
 		return switch (t) {
 		case TAbstract(_.get() => ab, _):
 			for (f in ab.impl.get().statics.get())
-				map.set(f.name, true);
+				out.set(f.name, true);
 		case _:
 		}
 	}
@@ -49,8 +51,8 @@ class LexBuilder {
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
-		var tmap = new Map();
-		var reflect = new Map(); // patternString => TokenString, Both "lmap" and "reflect" will be used for LR0Parser
+		var tmap = new Map();    // TokenString   => Bool
+		var reflect = new Map(); // PatternString => TokenString
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
@@ -62,21 +64,21 @@ class LexBuilder {
 							fatalError("\"<" + t.toString() + ">\" should be \"Void\"", cl.pos);
 						}
 					}
-					meta.eof = null;  // for "EReturn(meta.eof)"
+					meta.eof = null; // EReturn(null) if Void
 				} else {
 					if (!Context.unify(t, Context.typeof(meta.eof)))
 						fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
 					readIntTokens(t, tmap);
 				}
 				if (lmap == null) lmap = new Map();
-				lmap.set(Utils.getClsFullName(cl), reflect); // store
+				lmap.set(Utils.getClsFullName(cl), reflect);
 				break;
 			}
 		}
 		var ret = [];
 		var groups: Array<Group> = [];
-		var idmap = new Map<String,String>();
-		var all_fields = new haxe.ds.StringMap<Bool>();
+		var varmap = new Map<String,String>();        // variable name => patternString
+		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
 		for (f in Context.getBuildFields()) {
 			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
@@ -103,59 +105,60 @@ class LexBuilder {
 					groups.push(g);
 					continue;
 				case FVar(_, {expr: EConst(CString(s))}):
-					idmap.set(f.name, s);
+					varmap.set(f.name, s);
 					continue;
 				default:
 				}
 			}
-			all_fields.set(f.name, true);
+			reserve.set(f.name, true);
 			ret.push(f);
 		}
 		if (groups.length == 0) return null;
 
-		var c_all = [new lm.Charset.Char(0, meta.cmax)];
-		var apats = [];
-		var have_int_tokens = !Lambda.empty(tmap);
+		var paterns = [];
+		var charall = [new lm.Charset.Char(0, meta.cmax)];
+		var notEmpty = !Lambda.empty(tmap);
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
-				if (have_int_tokens) {
-					// if "action" is just a simple Token then store it for "reflect"
-					switch(r.action.expr) {
-					case EConst(CIdent(v)):
-						var k = unescape(r.pat, idmap);
-						if ( !tmap.exists(v) )
-							fatalError("Unknown identifier: " + v, r.action.pos);
-						reflect.set(k, v);
-					case _:
-					}
-				}
-				// String -> Pattern
 				try {
-					var pat = exprString(r.pat, idmap);
-					pats.push( LexEngine.parse(pat, c_all) );
+					var s = exprString(r.pat, varmap);
+					// reflect for LR0 Parser, if "action" is a simple Token then store it.
+					if (notEmpty) {
+						switch(r.action.expr) {
+						case EConst(CIdent(v)):
+							var k = unescape( s );
+							if ( !tmap.exists(v) )
+								fatalError("Unknown identifier: " + v, r.action.pos);
+							reflect.set(k, v);
+						case _:
+						}
+					}
+					// String -> Pattern
+					pats.push( LexEngine.parse(s, charall) );
 				} catch(err: Dynamic) {
 					fatalError(Std.string(err), r.pat.pos);
 				}
 			}
-			apats.push(pats);
+			paterns.push(pats);
 		}
 		// lexEngine
-		var lex = new LexEngine(apats, meta.cmax);
+		var lex = new LexEngine(paterns, meta.cmax);
 		#if lex_table
 		var f = sys.io.File.write("lex-table.txt");
 		lex.debugWrite(f);
 		f.close();
 		#end
 		// check & hacking
-		var casesExtra = checkAHack(lex, groups);
+		checking(lex, groups);
+		var nullCases = hackNullActions(lex, groups);
 		// generate
-		var force_bytes = !Context.defined("js") || Context.defined("lex_rawtable");
+		var forceBytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		// force string as table format if `-D lex_strtable` and ucs2
-		if (Context.defined("lex_strtable") && Context.defined("utf16")) force_bytes = false;
+		if (Context.defined("lex_strtable") && Context.defined("utf16")) forceBytes = false;
 		var getU: Expr = null;
 		var raw: Expr = null;
-		if (force_bytes) {
+		if (forceBytes) {
 			var bytes = lex.table.toByte(lex.isBit16());
 			var resname = "_" + StringTools.hex(haxe.crypto.Crc32.make(bytes)).toLowerCase();
 			Context.addResource(resname, bytes);
@@ -225,7 +228,7 @@ class LexBuilder {
 			var seg = lex.entrys[i];
 			var sname = i == 0 ? "BEGIN" : g.name.toUpperCase() + "_BEGIN";
 			var expr_token = macro _token($i{sname}, this.input.length);
-			defs.fields.push( addInlineFVar(sname, seg.begin, pos) );
+			defs.fields.push( mkInlineFVar(sname, seg.begin, pos) );
 
 			defs.fields.push({
 				name: i == 0 ? "token" : g.name,
@@ -239,19 +242,20 @@ class LexBuilder {
 			});
 		}
 		// build switch
-		var casesA: Array<Case> = [];
-		casesA.resize( lex.nrules + casesExtra.length );
+		var allCases: Array<Case> = [];
+		allCases.resize( lex.nrules + nullCases.length );
 		var i = 0;
 		for (g in groups) {
 			for (rule in g.rules) {
-				casesA[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
+				allCases[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
 				++ i;
 			}
 		}
-		for (c in casesExtra)
-			casesA[i++] = c;
-		var caseDef = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
-		var eSwitch = {expr: ESwitch(macro (s), casesA, caseDef), pos: pos};
+		for (c in nullCases)
+			allCases[i++] = c;
+
+		var defaultCase = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
+		var eSwitch = {expr: ESwitch(macro (s), allCases, defaultCase), pos: pos};
 		defs.fields.push({
 			name: "cases",
 			access: [AStatic],
@@ -264,28 +268,28 @@ class LexBuilder {
 		});
 
 		for (f in defs.fields)
-				if (!all_fields.exists(f.name))
+				if (!reserve.exists(f.name))
 					ret.push(f);
 		return ret;
 	}
 
-	static function exprString(e: Expr, map:Map<String,String>): String {
+	static function exprString(e: Expr, vmap:Map<String,String>): String {
 		return switch (e.expr) {
 		case EConst(CString(s)): s;
 		case EConst(CIdent(i)):
-			var s = map.get(i);
+			var s = vmap.get(i);
 			if (s == null)
 				fatalError("Undefined identifier: " + i, e.pos);
 			s;
 		case EBinop(OpAdd, e1, e2):
-			splitMix(exprString(e1, map), exprString(e2, map));
+			splitMix(exprString(e1, vmap), exprString(e2, vmap));
 		case EParenthesis(e):
-			exprString(e, map);
+			exprString(e, vmap);
 		default:
 			fatalError("Invalid rule", e.pos);
 		}
 	}
-	static function addInlineFVar(name, value, pos):Field {
+	static function mkInlineFVar(name, value, pos):Field {
 		return {
 			name: name,
 			access: [AStatic, AInline],
@@ -294,7 +298,7 @@ class LexBuilder {
 		}
 	}
 
-	static function checkAHack(lex: lm.LexEngine, groups: Array<Group>) : Array<Case> {
+	static function checking(lex: lm.LexEngine, groups: Array<Group>) {
 		var table = lex.table;
 		var INVALID = lex.invalid;
 		var exits = new haxe.ds.Vector<Int>(lex.nrules);
@@ -323,7 +327,6 @@ class LexBuilder {
 				var pat = indexPattern(n);
 				Context.fatalError("UnReachable pattern: " + pat.toString(), pat.pos);
 			}
-
 		// epsilon
 		for (e in lex.entrys) {
 			var n = table.exits(e.begin);
@@ -332,15 +335,20 @@ class LexBuilder {
 				Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
 			}
 		}
+	}
 
-		// hacking for "null => Actoin", must be after epsilon checking
-		var start = lex.nrules;
+	/**
+	 hack lex.table for "null => Actoin", Must be called after "checking"
+	*/
+	static function hackNullActions(lex: lm.LexEngine, groups: Array<Group>) : Array<Case> {
 		var extra = [];
+		var table = lex.table;
+		var start = lex.nrules;
 		for (i in 0...groups.length) {
 			var g = groups[i];
 			if (g.unmatch != null) {
 				var e = lex.entrys[i];
-				lex.table.set(lex.table.exitpos(e.begin), start);
+				table.set(table.exitpos(e.begin), start);
 				extra.push( {values: [macro @:pos(g.unmatch.pat.pos) $v{start}], expr: g.unmatch.action } );
 				++start;
 			}
@@ -349,8 +357,7 @@ class LexBuilder {
 	}
 
 	// assoc with lexEngine.parse
-	static function unescape(es: Expr, idmap:Map<String,String>) {
-		var s = exprString(es, idmap);
+	static function unescape(s: String) {
 		var i = 0;
 		var p = 0;
 		var len = s.length;
@@ -358,7 +365,9 @@ class LexBuilder {
 		while (i < len) {
 			var c = StringTools.fastCodeAt(s, i++);
 			if (c == "\\".code) {
-				buf.addSub(s, p, i - p - 1);
+				var w = i - p - 1;
+				if (w > 0)
+					buf.addSub(s, p, w);
 				c = StringTools.fastCodeAt(s, i++);
 				switch(c) {
 				case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
@@ -368,14 +377,18 @@ class LexBuilder {
 					buf.addChar(c);
 					i += 2;
 				case _:
-					Context.fatalError("Invalid hexadecimal escape sequence", es.pos);
+					throw "Invalid hexadecimal escape sequence";
 				}
 				p = i;
 			}
 		}
-		if (p < i)
-			buf.addSub(s, p, i - p);
-		return buf.toString();
+		if (p == 0) {
+			return s;
+		} else {
+			if (p < i)
+				buf.addSub(s, p, i - p);
+			return buf.toString();
+		}
 	}
 
 	// ("a", "0")  => "a0"

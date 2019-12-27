@@ -13,7 +13,7 @@ class LR0Builder extends lm.LR0Base {
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;
 
-	var hub(default, null): LexEngine.NodeHub;
+	var generator(default, null): NodeGenerator;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -41,7 +41,7 @@ class LR0Builder extends lm.LR0Base {
 		this.used = new haxe.ds.Vector(lhsA.length);
 		this.final_counter = U16MAX - 1; // will compress it later.
 		this.per = (this.width() - 1 | 15 ) + 1;
-		this.hub = new LexEngine.NodeHub(nrules);
+		this.generator = new NodeGenerator(nrules);
 	}
 
 	function dump(file:String) {
@@ -63,8 +63,8 @@ class LR0Builder extends lm.LR0Base {
 			var len = pats.length;
 			var nodes = [];
 			for (j in 0...len) {
-				var f = hub.newFinal();
-				var n = hub.normalize(pats[j], f);
+				var f = generator.newFinal();
+				var n = generator.normalize(pats[j], f);
 				nodes[j] = n;
 			}
 			nfas[p] = nodes;
@@ -143,7 +143,7 @@ class LR0Builder extends lm.LR0Base {
 						var lval = c.min;     // the value of the last non-term
 						var i = lval - maxValue;
 						if (alt[i]) continue; // if already added to current "nodes".
-						var atLast = hub.isFinal(nc.n);
+						var atLast = generator.isFinal(nc.n);
 						var exit = nc.n.id;
 						if (!atLast) {
 							addAll(nodes, this.nfas[i]);
@@ -197,7 +197,7 @@ class LR0Builder extends lm.LR0Base {
 
 		var exits = [];
 		for (n in nodes)
-			if ( hub.isFinal(n) )
+			if ( generator.isFinal(n) )
 				exits.push(n.id);
 		var f = switch (exits.length) {
 		case 0: -1;

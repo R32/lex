@@ -9,7 +9,7 @@ class LexEngine {
 	public static inline var U8MAX = 0xFF;
 	public static inline var U16MAX = 0xFFFF;
 
-	var hub(default, null): NodeHub;
+	var generator(default, null): NodeGenerator;
 	var h: Map<String, Int>;
 	var final_counter: Int;
 	var lstates: List<State>;
@@ -49,15 +49,15 @@ class LexEngine {
 		this.invalid = U16MAX;
 		this.final_counter = U16MAX - 1; // compress it later.
 		this.nrules = Lambda.fold(a, (p, n) -> p.length + n, 0);
-		this.hub = new NodeHub(this.nrules);
+		this.generator = new NodeGenerator(this.nrules);
 		var nodes = [];
 		var begin = 0;
 		for (pats in a) {
 			nodes.resize(pats.length);
 			// Pattern -> NFA(nodes)
 			for (p in 0...pats.length) {
-				var f = hub.newFinal();
-				var n = hub.normalize(pats[p], f);
+				var f = generator.newFinal();
+				var n = generator.normalize(pats[p], f);
 				nodes[p] = n;
 			}
 			// NFA -> DFA
@@ -111,7 +111,7 @@ class LexEngine {
 
 		var f = -1;
 		for (n in nodes) {
-			if ( hub.isFinal(n) ) {
+			if ( generator.isFinal(n) ) {
 				f = n.id;
 				break;
 			}
@@ -383,14 +383,14 @@ class Node {
 	public var id: Int;
 	public var trans: Array<CNode>;  //  empty or .length == 1
 	public var epsilon: Array<Node>;
-	@:allow(lm.NodeHub) function new(id) {
+	@:allow(lm.NodeGenerator) function new(id) {
 		this.id = id;
 		trans = [];
 		epsilon = [];
 	}
 }
 
-class NodeHub {
+class NodeGenerator {
 
 	var uid: Int;   // normal uid, start at "pivot"
 	var fuid: Int;  // final uid, start at 0 and less than "pivot"
