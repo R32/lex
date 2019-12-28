@@ -411,8 +411,7 @@ Parser._entry = function(stream,state,exp) {
             q = Parser.raw.charCodeAt(159 - prev);
         }
     }
-    t = stream.cached[stream.pos + (-1)];
-    throw stream.error("Unexpected \"" + (t.term != 0 ? stream.lex.getString(t.pmin,t.pmax - t.pmin) : "Eof") + "\"",t);
+    return Parser.cases(7,stream);
 };
 Parser.cases = function(q,s) {
     switch(q) {
@@ -435,8 +434,11 @@ Parser.cases = function(q,s) {
         return s.cached[s.pos + (-2)].val;
     case 5:
         return -s.cached[s.pos + (-1)].val;
-    default:
+    case 6:
         return Std.parseInt(s.stri(-1));
+    default:
+        var t = s.cached[s.pos + (-1)];
+        throw s.error("Unexpected \"" + (t.term != 0 ? s.lex.getString(t.pmin,t.pmax - t.pmin) : "Eof") + "\"",t);
     }
 };
 var Std = function() { };

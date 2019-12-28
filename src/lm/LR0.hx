@@ -308,16 +308,17 @@ class LR0Builder extends lm.LR0Base {
 						q = exits(prev);
 					}
 				}
-				t = stream.offset( -1);
-				throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
+				return gotos(NRULES, stream); // error will be thrown.
 			}
 		}).fields;
 		// build siwtch
-		var last = this.nrules - 1;
-		var edef = vcases[last].action; // uses the last one as "default"
+		var edef = macro {
+			var t = @:privateAccess s.offset( -1);
+			throw s.error('Unexpected "' + (t.term != $i{sEof} ? s.str(t): $v{sEof}) + '"', t);
+		}
 		var ecases:Array<Case> = [];
-		ecases.resize(last);
-		for (i in 0...last) {
+		ecases.resize(this.nrules);
+		for (i in 0...this.nrules) {
 			ecases[i] = {values: [macro $v{i}], expr: this.vcases[i].action};
 		}
 		var here = Context.currentPos();
