@@ -39,10 +39,11 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
     // Different from the normal LR parser, the behavior of "nonassoc" is same as "left". Since
     // this parser is not very necessary to refer the operator precedence definitions.
     ```
-<details>
-    <summary>details...</summary>
-    ```haxe
-    // Refer to the following stream matching cases: UPPERCASE is "non-terml" and LOWERCASE is "terml"
+
+<pre><details>
+    <summary>details...</summary><p>
+    ```
+    // Refer to the following stream matching cases: UPPERCASE is "non-terml" and LOWERCASE is "terml"</span>
     [..., op, E]: if defined(op)     then case.left.lval = E.value // the left type is OpLeft
     [..., op, E]: if not defined(op) then case.left = null
     [..., T, E] | [E] | [..., t]:    then case.left = null
@@ -61,7 +62,7 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
     // for a string: "var a:Array<Int>=[]", the close token ">" will be parsed as ">=" by Lexer. so:
     [@:prec(">=")   e1 = expr, ">", "=", e2 = expr]: if (_t2.pmax == _t3.pmin) ...
     ```
-</details>
+</p></details></pre>
 
   - **Position**: Inside the actions, you could use `_t1~_tN` to access the position, which is the instance of `lm.Stream.Tok`
 
