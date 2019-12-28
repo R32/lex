@@ -1,5 +1,6 @@
 package subs;
 
+@:analyzer(no_optimize)
 class Demo {
 	static function main() {
 		var str = '1 - 2 * (3 + 4) + 5 * 6';
@@ -20,51 +21,36 @@ private enum abstract Token(Int) to Int {
 	var OpDiv;
 	var LParen;
 	var RParen;
-	var CStr;
 }
 
 /**
-* @:rule(EOF, cmax = 255)
-*   Eof is a custom terminator. (required)
-*   127 is the char max value.  (optional, default is 255)
-*
-* and all the `static var X = "string"` will be treated as rules if no `@:skip`
+* @:rule(EOF, cmax = 255) See the example below:
+*	Eof is a custom terminator which is defined in "<Token>" (required)
+*	127 is the custom maximum char value. (optional, default is 255)
 */
 @:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
-	static var r_zero = "0";             // a pattern can be used in rule sets if there is no @:skip
+	static var r_zero = "0";             // static variable will be treated as rules if there is no `@:skip`
 	static var r_int = "[1-9][0-9]*";
 	static var tok =  [                  // a rule set definition
 		"[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
-		r_zero + "|" + r_int => CInt,    //
+		r_zero + "|" + r_int => CInt,    // +
 		"+" => OpPlus,
 		"-" => OpMinus,
 		"*" => OpTimes,
 		"/" => OpDiv,
 		"(" => LParen,
 		")" => RParen,
-		'"' => {
-			var pmin = lex.pmin;
-			var t = lex.str(); // maybe Eof.
-			lex.pmin = pmin;   // punion
-			t;
-		}
-	];
-
-	static var str = [
-		'\\\\"' => lex.str(),
-		'[^\\\\"]+' => lex.str(),
-		'"' => CStr,          // do escape in Parser @:rule(CStr)
 	];
 }
 
 @:rule({
 	start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
 	left: ["+", "-"],         // The parser could auto reflect(str) => Token
-	left: [OpTimes, OpDiv],   // The lower have higher Priority.
-	nonassoc: [UMINUS],       // All characters of the placeholder must be capitalized
-}) private class Parser implements lm.LR0<Lexer, Int> {
+	left: [OpTimes, OpDiv],   // The lower have higher priority.
+	nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
+}) class Parser implements lm.LR0<Lexer, Int> {
 
-	static var main = switch(s) {
+	static var main = switch(s) {  // the "s" is instance of lm.Stream
 		case [e = expr, Eof]: e;
 	}
 
@@ -77,12 +63,10 @@ private enum abstract Token(Int) to Int {
 		case [CInt(n)]: n;
 	}
 
-	// for extract n from CInt(n)
+	// define custom extract function for CInt(n)
 	@:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
-
-	// if the @:rule function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
-	// Note: This function does not handle escape
-	@:rule(CStr) static function unescape(input: lms.ByteData, t):String {
-		return input.readString(t.pmin + 1, t.pmax - t.pmin - 2);
-	}
+	// if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
+	// @:rule(CInt) static inline function int_of_string(input:lms.ByteData, t):Int {
+	//	  return input.readString(t.pmin, t.pmax - t.pmin);
+	//}
 }
