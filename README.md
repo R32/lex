@@ -3,19 +3,21 @@ Lex
 
 Build lexer and simple parser(LR0) in macro.
 
-## example
+## Samples
 
-* [hscript parser(*As an example only*)](/demo/)
+* [hello world](#Usage)
+
+* [hscript parser](/demo/)
 
 * [css selector](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
 
-## status
+## Status
 
-NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
+LIMIT: you can't use it in macro since [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
 * Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
-  - All *finalStates* have been moved out, it ont only saves memory and also makes state detection more faster.
+  - All *finalStates* have been moved out, it not only saves memory and also makes state detection more faster.
 
 * Parser: Only LR(0) is available. (WIP)
 
@@ -25,7 +27,45 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 
     2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
 
-  Since there is no *action table*, so some conflicts that can be resolved in normal *LALR/LR1* but here an error will be thrown directly.
+  Some conflicts may be resolved in normal *LALR/LR1*, but since there is no *action table* here, so it will throw an error directly
+
+  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position, which is the instance of `lm.Stream.Tok`
+
+    ```hx
+    _t1.pmax - _t1.pmin;
+    ```
+
+    And also inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
+
+    ```hx
+    var tok = s.peek(0);
+    if (tok.term == SomeToken) s.junk(1);
+    ```
+
+  - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
+
+    ```haxe
+    // 1. the same prefix(At least 2 characters).
+    switch(s) {
+    case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
+    }
+
+    // 2. uses "[]"
+    switch(s) {
+    case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+    }
+    ```
+
+    **NOTE**: if you put tokens together with **different priorities**, you will get a conflict error.
+
+  - You can use string literals instead of simple terminators in stream match.
+
+    ```haxe
+    switch(s) {
+    case [e1=expr, t=["+", "-"], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+    case ["(", e = expr, ")"]: e;
+    }
+    ```
 
   - Operator Precedence:
 
@@ -64,60 +104,6 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
     ```
 </p></details></pre>
 
-  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position, which is the instance of `lm.Stream.Tok`
-
-    ```hx
-    _t1.pmax - _t1.pmin;
-    ```
-
-    And also inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
-
-    ```hx
-    var tok = s.peek(0);
-    if (tok.term == SomeToken) s.junk(1);
-    ```
-
-  - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
-
-    ```haxe
-    // 1. same prefix(At least 2 characters).
-    switch(s) {
-    case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
-    }
-
-    // 2. []
-    switch(s) {
-    case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
-    }
-    ```
-
-    NOTE: if you put tokens together with **different priorities**, you will get a conflict error.
-
-  - **Terml Reflect**: You can use string literals instead of simple terminators in stream match.
-
-    ```haxe
-    switch(s) {
-    case [e1=expr, t=["+", "-"], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
-    case ["(", e = expr, ")"]: e;
-    }
-    ```
-
-  - **different LHS types**: When the LHS type cannot be unified then the `Dynamic` is used as the type of `Stream.Tok`
-
-    ```haxe
-    class Parser implements lm.LR0<Lexer, Int> {  // "Int" indicates that all LHS types default to "Int"
-        static var main = switch(s) {
-            case [e = expr, Eof]: Std.int(e);
-        }
-        static var expr:Float = switch(s) {       // Explicit declaration "expr" type is "Float"
-            case [e1 = expr, "+", e2 = expr]: e1 + e2;
-            case [CFloat(f)]: f;
-        }
-
-        // extract CFloat(f) => float
-        @:rule(CFloat) static inline function float_of_string(s: String):Float return Std.parseFloat(s);
-    }
-    ```
 
 ### CHANGES
 
@@ -131,6 +117,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 * `0.7.0`: Removed unstable & useless code.
 
 ### Defines
+
+<pre><details><summary>minor...</summary><p>
 
 * `-D lex_charmax`: to simply handle for utf16 char, Because the State Transition Table is 8-bit
 
@@ -149,6 +137,8 @@ NOTE: you can't use it in macro since the limit of [`macro-in-macro`](https://gi
 * `-D lex_rawinput`: then force use `Bytes` as the input format, default is `String`. see `lms.ByteData`
 
   actually you can use `--remap <package:target>` to override `lms.*`.
+
+</p></details></pre>
 
 * `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
 
