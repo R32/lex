@@ -1,11 +1,11 @@
 {
   "name": "lex",
   "classPath": "src",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "url": "https://github.com/R32/lex/",
   "license": "MIT",
-  "tags": ["lex","lexer", "parser", "LR0"],
+  "tags": ["lexer", "parser", "LR0"],
   "description": "Build lexer and simple parser(LR0) in macro",
-  "releasenote": "Fixed 'null => Action'",
+  "releasenote": "Some Improvements",
   "contributors": ["r32"]
 }

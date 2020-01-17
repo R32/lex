@@ -13,7 +13,7 @@ Build lexer and simple parser(LR0) in macro.
 
 ## Status
 
-LIMIT: you can't use it in macro since [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
+LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
 * Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
@@ -35,7 +35,7 @@ LIMIT: you can't use it in macro since [`macro-in-macro`](https://github.com/Hax
     _t1.pmax - _t1.pmin;
     ```
 
-    And also inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
+    And inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
 
     ```hx
     var tok = s.peek(0);
@@ -67,7 +67,21 @@ LIMIT: you can't use it in macro since [`macro-in-macro`](https://github.com/Hax
     }
     ```
 
-  - Operator Precedence:
+  - different types:
+
+    ```haxe
+    class Parser implements lm.LR0<MyLexer, Int> { // "Int" indicates that all LHS types default to "Int"
+        static var main = switch(s) {
+            case [e = expr, Eof]: Std.int(e);
+        }
+        static var expr:Float = switch(s) {       // Explicit declaration "expr" type is "Float"
+            case [e1 = expr, "+", e2 = expr]: e1 + e2;
+            case [CFloat(f)]: f;
+        }
+    }
+    ```
+
+  - **Operator Precedence**:
 
     ```haxe
     // the operator precedence definitions:
@@ -107,14 +121,13 @@ LIMIT: you can't use it in macro since [`macro-in-macro`](https://github.com/Hax
 
 ### CHANGES
 
+* `0.9.2`: Some Improvements.
 * `0.9.1`:
   - [lexer] Fixed `null => Action`
   - [lexer] Allow `lm.Lexer<Void>`. [More...](test/subs/LexVoid.hx)
 * `0.9.0`: Simplify
   - [parser] use "%start" instead of ~~`@:side`~~
   - [lexer] Added `null => Action` when there is no match
-* `0.8.0`: Improvements
-* `0.7.0`: Removed unstable & useless code.
 
 ### Defines
 
@@ -204,7 +217,7 @@ class Demo {
     }
 }
 
-// NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"
+// The lm.LR0 Parser only works with "enum abstract (Int) to Int"
 enum abstract Token(Int) to Int {
     var Eof = 0;
     var CInt;
@@ -224,9 +237,9 @@ enum abstract Token(Int) to Int {
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
     static var r_zero = "0";             // static variable will be treated as rules if there is no `@:skip`
     static var r_int = "[1-9][0-9]*";
-    static var tok =  [                  // a rule set definition
-        "[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
-        r_zero + "|" + r_int => CInt,    // +
+    static var tok =  [                  // a rule set definition, the first definition will become .token()
+        "[ \t]+" => lex.token(),         // "lex" is an instance of this class.
+        r_zero + "|" + r_int => CInt,    //
         "+" => OpPlus,
         "-" => OpMinus,
         "*" => OpTimes,
@@ -256,11 +269,11 @@ enum abstract Token(Int) to Int {
         case [CInt(n)]: n;
     }
 
-    // define custom extract function for CInt(n)
+    // Define custom extract function for CInt(n)
     @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
     // if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
     // @:rule(CInt) static inline function int_of_string(input:lms.ByteData, t):Int {
-    //    return input.readString(t.pmin, t.pmax - t.pmin);
+    //    return Std.parseInt( input.readString(t.pmin, t.pmax - t.pmin) );
     //}
 }
 

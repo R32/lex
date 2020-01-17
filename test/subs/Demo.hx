@@ -11,7 +11,7 @@ class Demo {
 	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw lm.Utils.error("ERROR in " + pos);
 }
 
-// NOTICE: the lm.LR0 only works with "enum abstract (Int) to Int"
+// The lm.LR0 Parser only works with "enum abstract (Int) to Int"
 private enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;
@@ -31,9 +31,9 @@ private enum abstract Token(Int) to Int {
 @:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
 	static var r_zero = "0";             // static variable will be treated as rules if there is no `@:skip`
 	static var r_int = "[1-9][0-9]*";
-	static var tok =  [                  // a rule set definition
-		"[ \t]+" => lex.token(),         // and the "lex" is an instance of this class.
-		r_zero + "|" + r_int => CInt,    // +
+	static var tok =  [                  // a rule set definition, the first definition will become .token()
+		"[ \t]+" => lex.token(),         // "lex" is an instance of this class.
+		r_zero + "|" + r_int => CInt,    //
 		"+" => OpPlus,
 		"-" => OpMinus,
 		"*" => OpTimes,
@@ -67,6 +67,6 @@ private enum abstract Token(Int) to Int {
 	@:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
 	// if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
 	// @:rule(CInt) static inline function int_of_string(input:lms.ByteData, t):Int {
-	//	  return input.readString(t.pmin, t.pmax - t.pmin);
+	//	  return Std.parseInt( input.readString(t.pmin, t.pmax - t.pmin) );
 	//}
 }
