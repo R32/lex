@@ -6,7 +6,7 @@ the lexBuilder will auto generate all the fields.
 #if !macro
 @:autoBuild(lm.LexBuilder.build())
 #end
-#if !flash
+#if !(flash || cpp)
 @:remove
 #end
 interface Lexer<T> {

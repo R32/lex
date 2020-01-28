@@ -6,7 +6,9 @@ class LexTest {
 		 subs.Sets.main();
 		// lexer
 		subs.LexBase.main();
+		#if !cpp
 		subs.LexVoid.main();
+		#end
 		subs.LexVarIdent.main();
 		// parser
 		subs.Demo.main();
