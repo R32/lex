@@ -27,21 +27,19 @@ class Tok<LHS> {
 #end
 class Stream<LHS> {
 
-	var h(get, never): Tok<LHS>;   // used to link the recycled tok
-	inline function get_h() return cached[0];
+	var h : Tok<LHS>;
 
-	function recycle(tok: Tok<LHS>) {
-		tok.nxt = h.nxt;
-		h.nxt = tok;
+	function reclaim(tok: Tok<LHS>) {
+		tok.nxt = h;
+		h = tok;
 	}
 
 	function newTok(term, min, max): Tok<LHS> {
-		return if ( h.nxt == null ) {
+		return if ( h == null ) {
 			new Tok(term, min, max);
 		} else {
-			var t = h.nxt;
-			h.nxt = t.nxt;
-			t.nxt = null;
+			var t = h;
+			h = h.nxt;
 			//
 			t.term = term;
 			t.pmin = min;
@@ -61,9 +59,8 @@ class Stream<LHS> {
 	function new(l: lm.Lexer<Int>) {
 		lex = l;
 		cached = new haxe.ds.Vector<Tok<LHS>>(128);
-		cached[0] = new Tok<LHS>(0, 0, 0); // list head
-		right = 1;
-		pos = 1;
+		right = 0;
+		pos = 0;
 	}
 
 	/**
@@ -85,7 +82,7 @@ class Stream<LHS> {
 		if (rest >= n) {
 			var i = n;
 			while (i-- > 0)
-				recycle( cached[pos + i] );
+				reclaim(cached[pos + i]);
 
 			i = pos;
 			right -= n;
@@ -98,7 +95,7 @@ class Stream<LHS> {
 			while (n-- > 0)
 				lex.token();
 			while (right > pos)
-				recycle( cached[--right] );
+				reclaim(cached[--right]);
 		}
 	}
 
@@ -133,7 +130,7 @@ class Stream<LHS> {
 		-- w;
 		var i = w;
 		while (i-- > 0)
-			recycle(cached[pos + i]);
+			reclaim(cached[pos + i]);
 		// fast junk(w - 1)
 		right -= w;
 		i = pos;
