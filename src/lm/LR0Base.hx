@@ -84,7 +84,6 @@ class LR0Base {
 	var ct_lval: ComplexType;    // if "ct_lhs" can no be unified with any "LHS.ctype" then its value is ":Dynamic"
 	var ct_stream: ComplexType;  // :lm.Stream<ct_lval>
 	var ct_stream_tok: ComplexType;
-	var preDefs: Array<Expr>;    // for function cases()
 	var opIMap: haxe.ds.Vector<OpAssoc>;   // term value => OpAssoc
 	var opSMap: Map<String, OpAssoc>;      // (term name | placeholder) => OpAssoc
 	var lvalues: haxe.ds.Vector<Int>;      // [(lhsValue << 8) | syms.length]. (used for stream.reduce)
@@ -117,7 +116,6 @@ class LR0Base {
 		termls = [];
 		termlsAll = [];
 		lhsA = [];
-		preDefs = [];
 		starts = [];
 		udtMap = new Map();
 		funMap = new Map();
@@ -492,74 +490,51 @@ class LR0Base {
 	}
 
 	function organize() {
-		// the value of N for _t1~_tN
-		var tmax = 0;
-		for (lhs in lhsA) {
-			for (li in lhs.cases) {
-				if (li.syms.length > tmax)
-					tmax = li.syms.length;
-			}
-		}
-		//
-		var tacc = [for (i in 0...tmax) 0];
-		var texists: Array<Null<Bool>> = [];
+		// Scanning _t1~_tN from action
+		var thas = [];
 		function loop(e: Expr) {
 			switch(e.expr) {
 			case EConst(CIdent(s)):
 				if ( StringTools.startsWith(s, "_t") ) {
 					var i = Std.parseInt( s.substr(2, s.length - 2) );
-					if (i == null) return;
-					-- i;
-					if (i >= 0 && i < texists.length) {
-						tacc[i] += 1;
-						texists[i] = true;
-					}
+					if (i != null && i >= 1 && i <= thas.length)
+						thas[i-1] = true;
 				}
+			case EVars(_):
+			case EField(_,_):
 			default:
 				e.iter(loop);
 			}
 		}
-
 		var index = 0;
-		this.vcases = new haxe.ds.Vector(nrules);
-		// Scanning for reduce the temp varialbes from _t1~_tN
-		var texistsAll = new haxe.ds.Vector<Array<Null<Bool>>>(nrules); //
+		var thasAll = new haxe.ds.Vector(nrules);
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
-				this.vcases[index] = li;  // init this.vcases at the same time
 				if (li.action == null)
 					fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
-				texists = [];
-				texists.resize(li.syms.length);
-				texistsAll[index++] = texists;
-				li.action.iter(loop);     // update tacc & texists
+				thas = [];
+				thas.resize(li.syms.length);
+				thasAll[index++] = thas;
+				li.action.iter(loop);
 			}
 		}
-		// Add "_t1~_tN"
-		for (i in 0...tmax)
-			if (tacc[i] > 1) {
-				var stok = "_t" + (i + 1);
-				this.preDefs.push(macro var $stok: $ct_stream_tok);
-			}
-
 		// duplicate var checking. & transform expr
+		this.vcases = new haxe.ds.Vector(nrules);
 		this.lvalues = new haxe.ds.Vector<Int>(this.nrules);
-		index = 0;
+		var index = 0;
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
+				this.vcases[index] = li; // init for ruleToCase()
 				var row = ["s" => true]; // reserve "s" as stream
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				this.lvalues[index] = lhs.value << 8 | len;
 				for (i in 0...len) {
 					var dx = -(len - i); // negative
-					if ( texistsAll[index][i] ) {
+					if ( thasAll[index][i] ) {
 						var stok = "_t" + (i + 1);
 						var expr = macro @:privateAccess s.offset($v{dx});
-						if (tacc[i] > 1)
-							a.push( macro $i{stok} = $expr );
-						else
-							a.push( macro var $stok: $ct_stream_tok = $expr );
+						a.push( macro var $stok: $ct_stream_tok = $expr );
 					}
 					var sym = li.syms[i];
 					// checking...

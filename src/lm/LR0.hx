@@ -329,10 +329,7 @@ class LR0Builder extends lm.LR0Base {
 			kind: FFun({
 				args: [{name: "q", type: macro: Int}, {name: "s", type: ct_stream}],
 				ret: ct_lval,
-				expr: macro {
-					@:mergeBlock $b{preDefs};
-					return $eswitch;
-				}
+				expr: macro return $eswitch,
 			}),
 			pos: here,
 		});
