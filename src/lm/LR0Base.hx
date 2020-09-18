@@ -494,7 +494,7 @@ class LR0Base {
 		var thas = [];
 		function loop(e: Expr) {
 			switch(e.expr) {
-			case EConst(CIdent(s)):
+			case EConst(CIdent(s)) | EField({expr: EConst(CIdent(s))},_):
 				if ( StringTools.startsWith(s, "_t") ) {
 					var i = Std.parseInt( s.substr(2, s.length - 2) );
 					if (i != null && i >= 1 && i <= thas.length)
