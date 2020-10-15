@@ -35,7 +35,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
     _t1.pmax - _t1.pmin;
     ```
 
-    And inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in `case [....]`
+    And inside the actions, the varialbe `s` is the instance of `lm.Stream`, so you can't use `s` as variable in *stream match*
 
     ```hx
     var tok = s.peek(0);
@@ -58,7 +58,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
     **NOTE**: if you put tokens together with **different priorities**, you will get a conflict error.
 
-  - You can use string literals instead of simple terminators in stream match.
+  - You can use string literals instead of simple terminators in *stream match*.
 
     ```haxe
     switch(s) {
@@ -97,7 +97,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 <pre><details>
     <summary>details...</summary><p>
     ```
-    // Refer to the following stream matching cases: UPPERCASE is "non-terml" and LOWERCASE is "terml"</span>
+    // UPPERCASE == "non-terml", LOWERCASE == "terml"
     [..., op, E]: if defined(op)     then case.left.lval = E.value // the left type is OpLeft
     [..., op, E]: if not defined(op) then case.left = null
     [..., T, E] | [E] | [..., t]:    then case.left = null
@@ -155,7 +155,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
 * `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
 
-  > You may need to modify the `mmap` field in `debug.Print`
+  > You may have to modify the `mmap` field in `debug.Print`
 
   ```
   Production:
@@ -253,7 +253,7 @@ enum abstract Token(Int) to Int {
     start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
     left: ["+", "-"],         // The parser could auto reflect(str) => Token
     left: [OpTimes, OpDiv],   // The lower have higher priority.
-    nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
+    nonassoc: [UMINUS],       // The placeholder must be uppercase
 }) class Parser implements lm.LR0<Lexer, Int> {
 
     static var main = switch(s) {  // the "s" is instance of lm.Stream

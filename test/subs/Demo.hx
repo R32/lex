@@ -47,7 +47,7 @@ private enum abstract Token(Int) to Int {
 	start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
 	left: ["+", "-"],         // The parser could auto reflect(str) => Token
 	left: [OpTimes, OpDiv],   // The lower have higher priority.
-	nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
+	nonassoc: [UMINUS],       // The placeholder must be uppercase
 }) class Parser implements lm.LR0<Lexer, Int> {
 
 	static var main = switch(s) {  // the "s" is instance of lm.Stream
