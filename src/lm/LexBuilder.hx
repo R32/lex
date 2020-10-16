@@ -254,7 +254,11 @@ class LexBuilder {
 		for (c in nullCases)
 			ecases[i++] = c;
 
-		var edef = macro throw("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
+		var edef = if (groups[0].unmatch == null) {
+			macro throw("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
+		} else {
+			groups[0].unmatch.action;
+		}
 		var eswitch = {expr: ESwitch(macro (s), ecases, edef), pos: pos};
 		defs.fields.push({
 			name: "cases",
@@ -343,7 +347,7 @@ class LexBuilder {
 		var extra = [];
 		var table = lex.table;
 		var start = lex.nrules;
-		for (i in 0...groups.length) {
+		for (i in 1...groups.length) { // the null-case of the first rule-set will be "switch-default"
 			var g = groups[i];
 			if (g.unmatch != null) {
 				var e = lex.entrys[i];
