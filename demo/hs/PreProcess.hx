@@ -22,7 +22,7 @@ import hscript.Expr;
 		case EParent(e):              eval(e);
 		case EBinop("&&", e1, e2):    eval(e1) && eval(e2);
 		case EBinop("||", e1, e2):    eval(e1) || eval(e2);
-		default:                      throw lm.Utils.error("TODO");
+		default:                      throw("TODO");
 		}
 	}
 
@@ -79,7 +79,7 @@ import hscript.Expr;
 		var t = lex.token();
 		while (obj == stack[spos]) {
 			if (t == Eof)
-				throw lm.Utils.error( "Unclosed: " + "#if/else" + lm.Utils.posString(lex.pmin, lex.input) );
+				throw( "Unclosed: " + "#if/else" + lm.Utils.posString(lex.pmin, lex.input) );
 			t = lex.token();
 		}
 		return t;

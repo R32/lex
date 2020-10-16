@@ -13,7 +13,7 @@ class LexVarIdent {
 		}
 		eq(a[0] == KwdVar && a[1] == CIdent);
 	}
-	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw lm.Utils.error("ERROR in " + pos);
+	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw("ERROR in " + pos);
 }
 
 private enum abstract Token(Int) to Int {

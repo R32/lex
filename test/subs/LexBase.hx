@@ -9,7 +9,7 @@ class LexBase {
 			a.push(Lexer.s_token(t));
 			t = lex.token();
 		}
-		if (a.join("") != "123+456*23+hello world+1") throw lm.Utils.error("TODO");
+		if (a.join("") != "123+456*23+hello world+1") throw("TODO");
 	}
 }
 

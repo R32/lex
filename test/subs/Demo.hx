@@ -8,7 +8,7 @@ class Demo {
 		var par = new Parser(lex);
 		eq(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
 	}
-	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw lm.Utils.error("ERROR in " + pos);
+	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw("ERROR in " + pos);
 }
 
 // The lm.LR0 Parser only works with "enum abstract (Int) to Int"

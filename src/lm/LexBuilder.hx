@@ -254,7 +254,7 @@ class LexBuilder {
 		for (c in nullCases)
 			ecases[i++] = c;
 
-		var edef = macro throw lm.Utils.error("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
+		var edef = macro throw("UnMatached: '" + lex.input.readString(lex.pmax, lex.pmin - lex.pmax) + "'" + lm.Utils.posString(lex.pmax, lex.input));
 		var eswitch = {expr: ESwitch(macro (s), ecases, edef), pos: pos};
 		defs.fields.push({
 			name: "cases",

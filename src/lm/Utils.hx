@@ -3,18 +3,9 @@ package lm;
 class Utils {
 	static public inline function imin(a: Int, b: Int) return a < b ? a: b;
 	static public inline function imax(a: Int, b: Int) return a > b ? a: b;
-	static public inline function error(s: String) {
-		return
-		#if js
-			#if haxe4
-				new js.lib.Error(s)
-			#else
-				new js.Error(s)
-			#end
-		#else
-			s
-		#end
-		;
+
+	@:deprecated static public inline function error( s : String ) {
+		return s;
 	}
 
 	static public function posString(pmin: Int, input: lms.ByteData): String {

@@ -3,7 +3,7 @@ package;
 class LexTest {
 	@:access(subs) static function main()  {
 		// Sets
-		 subs.Sets.main();
+		subs.Sets.main();
 		// lexer
 		subs.LexBase.main();
 		#if !cpp

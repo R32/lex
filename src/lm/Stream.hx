@@ -18,8 +18,6 @@ class Tok<LHS> {
 	}
 
 	var nxt: Tok<LHS>;
-
-	public inline function pstr():String return '$pmin-$pmax';
 }
 
 #if static
@@ -101,7 +99,7 @@ class Stream<LHS> {
 
 	function stri(dx):String return str( offset(dx) );
 
-	public function error(msg:String, t: Tok<LHS>) return lm.Utils.error(msg + lm.Utils.posString(t.pmin, lex.input));
+	public function error(msg:String, t: Tok<LHS>) return msg + lm.Utils.posString(t.pmin, lex.input);
 
 	public inline function UnExpected(t: Tok<LHS>) return error('Unexpected "' + str(t) + '"', t);
 

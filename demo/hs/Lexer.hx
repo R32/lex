@@ -203,7 +203,7 @@ enum abstract Token(Int) to Int {
 			var pmin = lex.pmin;
 			var t = lex.comment();
 			if (t == Eof)
-				throw lm.Utils.error("Unclosed " + "comment" + lex.strpos(pmin));
+				throw("Unclosed " + "comment" + lex.strpos(pmin));
 			lex.token();             // skip Comment
 		},
 		// string
@@ -212,7 +212,7 @@ enum abstract Token(Int) to Int {
 			buff = new StringBuf();
 			var t = lex.str();
 			if (t == Eof)
-				throw lm.Utils.error("Unclosed " + "string" + lex.strpos(pmin));
+				throw("Unclosed " + "string" + lex.strpos(pmin));
 			lex.pmin = pmin; // punion
 			smap.set(pmin, buff.toString());
 			t;
@@ -222,7 +222,7 @@ enum abstract Token(Int) to Int {
 			buff = new StringBuf();
 			var t = lex.qstr();
 			if (t == Eof)
-				throw lm.Utils.error("Unclosed " + "string" + lex.strpos(pmin));
+				throw("Unclosed " + "string" + lex.strpos(pmin));
 			lex.pmin = pmin;
 			smap.set(pmin, buff.toString());
 			t;

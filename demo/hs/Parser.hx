@@ -231,7 +231,7 @@ import hscript.Expr;
 			optSemicolon(s);
 			switch(f) {
 			case EIf(c, e, _): EIf(c, e, se);
-			case _: throw lm.Utils.error("TODO");
+			case _: throw("TODO");
 			}
 		case ["if", "(", c = expr, ")", e = item]:
 			optSemicolon(s);
