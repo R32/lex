@@ -534,7 +534,7 @@ class LR0Base {
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
 				this.vcases[index] = li; // init for ruleToCase()
-				var row = ["s" => true]; // reserve "s" as stream
+				var row = new Map();
 				var a:Array<Expr> = [];
 				var len = li.syms.length;
 				this.lvalues[index] = lhs.value << 8 | len;
@@ -542,7 +542,7 @@ class LR0Base {
 					var dx = -(len - i); // negative
 					if ( thasAll[index][i] ) {
 						var stok = "_t" + (i + 1);
-						var expr = macro @:privateAccess s.offset($v{dx});
+						var expr = macro @:privateAccess __s.offset($v{dx});
 						a.push( macro var $stok: $ct_stream_tok = $expr );
 					}
 					var sym = li.syms[i];
@@ -560,22 +560,22 @@ class LR0Base {
 						if (ofstr == null) {
 							if ( sym.name != "_" && CSet.isSingle(sym.cset) ) // If you forget to add an extract function
 								fatalError("Required a static function with @:rule("+ sym.name +")", sym.pos);
-							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess s.offset($v{dx}).term);
+							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess __s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
 							case 1:  // (string)
-								a.push(macro @:pos(sym.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess s.stri($v{dx}) ));
+								a.push(macro @:pos(sym.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess __s.stri($v{dx}) ));
 							case 2:  // (input, tok)
-								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}))));
+								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(__s.lex.input, __s.offset($v{dx}))));
 							default: // (input, pmin, pmax)
-								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(s.lex.input, s.offset($v{dx}).pmin, s.offset($v{dx}).pmax)));
+								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(__s.lex.input, __s.offset($v{dx}).pmin, __s.offset($v{dx}).pmax)));
 							}
 						}
 					} else {
 						var lhsValue = sym.cset[0].min; // NON-TERML
 						var ct = lhsA[lhsValue - maxValue].ctype;
-						a.push( macro @:pos(sym.pos) var $name: $ct = @:privateAccess (cast s.offset($v{dx}).val: $ct) );
+						a.push( macro @:pos(sym.pos) var $name: $ct = @:privateAccess (cast __s.offset($v{dx}).val: $ct) );
 					}
 				}
 				switch(li.action.expr) {

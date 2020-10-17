@@ -251,31 +251,34 @@ class LR0Builder extends lm.LR0Base {
 		}
 		var lvs = this.lvalues.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var fields = (macro class {
+			@:deprecated("uses __s|stream instead of s") var s(get, never) : $ct_stream;
+			@:dce inline function get_s() return stream;
 			static var raw = $raw;
 			static var lvs:Array<Int> = [$a{lvs}];
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
 			static inline var NSEGS   = $v{this.segs};
 			static inline var MAXVALUE = $v{this.maxValue};     // see .isNonTerm(v)/.isTerm(v)
-			static inline function getU(i:Int):Int return $getU;
-			static inline function trans(s:Int, c:Int):Int return getU($v{this.per} * s + c);
-			static inline function exits(s:Int):Int return getU($v{this.table.length - 1} - s);
-			static inline function gotos(fid:Int, s:$ct_stream):$ct_lval return cases(fid, s);
+			static inline function getU(raw, i) return $getU;
+			static inline function trans(r, s, c) return getU(r, $v{this.per} * s + c);
+			static inline function exits(r, s) return getU(r, $v{this.table.length - 1} - s);
+			inline function gotos(fid:Int):$ct_lval return cases(fid);
 			var stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex);
 			}
 			@:access(lm.Stream, lm.Tok)
-			static function _entry(stream: $ct_stream, state:Int, exp:Int):$ct_lval {
+			function _entry(state:Int, exp:Int):$ct_lval {
 				var t = stream.newTok($i{sEof}, 0, 0);
 				t.state = state;
 				stream.unshift(t); // should be removed when returning
+				var raw = raw;     // fast reference
 				var prev = state;
 				var dx = 0;
 				while (true) {
 					while (true) {
 						t = stream.next();
-						state = trans(prev, t.term);
+						state = trans(raw, prev, t.term);
 						t.state = state;
 						if (state >= NSEGS)
 							break;
@@ -285,7 +288,7 @@ class LR0Builder extends lm.LR0Base {
 						state = prev;
 						dx = 1;
 					}
-					var q = exits(state);
+					var q = exits(raw, state);
 					if (q < NRULES) {
 						stream.pos -= dx;
 					} else {
@@ -293,7 +296,7 @@ class LR0Builder extends lm.LR0Base {
 					}
 					dx = 0;     // reset dx
 					while (true) {
-						var value:$ct_lval = gotos(q, stream);
+						var value:$ct_lval = gotos(q);
 						t = stream.reduce( lvs[q] );
 						if (t.term == exp) {
 							stream.pos -= 2; // ready to discard
@@ -301,20 +304,20 @@ class LR0Builder extends lm.LR0Base {
 							return value;
 						}
 						t.val = value;
-						t.state = trans(stream.offset( -2).state, t.term);
+						t.state = trans(raw, stream.offset( -2).state, t.term);
 						prev = t.state;
 						if (prev < NSEGS)
 							break;
-						q = exits(prev);
+						q = exits(raw, prev);
 					}
 				}
-				return gotos(NRULES, stream); // error will be thrown.
+				return gotos(NRULES); // error will be thrown.
 			}
 		}).fields;
 		// build siwtch
 		var edef = this.unMatched != null ? this.unMatched : (macro {
-			var t = @:privateAccess s.offset( -1);
-			throw s.error('Unexpected "' + (t.term != $i{sEof} ? s.str(t): $v{sEof}) + '"', t);
+			var t = @:privateAccess __s.offset( -1);
+			throw __s.error('Unexpected "' + (t.term != $i{sEof} ? __s.str(t): $v{sEof}) + '"', t);
 		});
 		var ecases:Array<Case> = [];
 		ecases.resize(this.nrules);
@@ -325,11 +328,11 @@ class LR0Builder extends lm.LR0Base {
 		var eswitch = {expr: ESwitch(macro (q), ecases, edef), pos: here};
 		fields.push({
 			name: "cases",
-			access: [AStatic],
+			access: [],
 			kind: FFun({
-				args: [{name: "q", type: macro: Int}, {name: "s", type: ct_stream}],
+				args: [{name: "q", type: macro: Int}],
 				ret: ct_lval,
-				expr: macro return $eswitch,
+				expr: macro { var __s = stream; return $eswitch; },
 			}),
 			pos: here,
 		});
@@ -343,7 +346,7 @@ class LR0Builder extends lm.LR0Base {
 				kind: FFun({
 					args: [],
 					ret: lhs.ctype,
-					expr: macro return _entry(stream, $v{en.begin}, $v{lhs.value})
+					expr: macro return _entry($v{en.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});

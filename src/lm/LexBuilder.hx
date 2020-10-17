@@ -178,9 +178,9 @@ class LexBuilder {
 			static inline var INVALID = $v{lex.invalid};
 			static inline var NRULES = $v{lex.nrules};
 			static inline var NSEGS = $v{lex.segs};
-			static inline function getU(i:Int):Int return $getU;
-			static inline function trans(s:Int, c:Int):Int return getU($v{lex.per} * s + c);
-			static inline function exits(s:Int):Int return getU($v{lex.table.length - 1} - s);
+			static inline function getU(raw, i) return $getU;
+			static inline function trans(r, s, c):Int return getU(r, $v{lex.per} * s + c);
+			static inline function exits(r, s):Int return getU(r, $v{lex.table.length - 1} - s);
 			public var input(default, null): lms.ByteData;
 			public var pmin(default, null): Int;
 			public var pmax(default, null): Int;
@@ -194,15 +194,17 @@ class LexBuilder {
 			}
 			function _token(init:Int, right:Int) {
 				if (pmax >= right) return $e{meta.eof};
+				var raw = raw;
 				var i = pmax;
 				var state = init;
 				var prev = state;
+				var c : Int;
 				while (i < right) {
-					var c = input.readByte(i++);
+					c = input.readByte(i++);
 				#if lex_charmax
 					if (c > $v{meta.cmax}) c = $v{meta.cmax};
 				#end
-					state = trans(state, c);
+					state = trans(raw, state, c);
 					if (state >= NSEGS)
 						break;
 					prev = state;
@@ -212,14 +214,14 @@ class LexBuilder {
 					state = prev;
 					-- i;
 				}
-				var q = exits(state);
+				var q = exits(raw, state);
 				if (i > pmax && q < NRULES) {
 					pmin = pmax; // update
 					pmax = i;
 				} else {
-					q = exits(init); // goto "null => Action" or "throw"
+					q = exits(raw, init); // goto "null => Action" or "throw"
 				}
-				$e{ meta.isVoid ? macro cases(q, this) : macro return cases(q, this) }
+				$e{ meta.isVoid ? macro cases(q) : macro return cases(q) }
 			}
 		}// class end
 		var pos = Context.currentPos();
@@ -262,11 +264,11 @@ class LexBuilder {
 		var eswitch = {expr: ESwitch(macro (s), ecases, edef), pos: pos};
 		defs.fields.push({
 			name: "cases",
-			access: [AStatic],
+			access: [],
 			kind: FFun({
-				args: [{name: "s", type: macro: Int}, {name: "lex", type: ct_lex}],
+				args: [{name: "s", type: macro: Int}],
 				ret: null,
-				expr: meta.isVoid ? eswitch : (macro return $eswitch)
+				expr: meta.isVoid ? (macro {var lex = this; $eswitch; }) : (macro {var lex = this; return $eswitch; })
 			}),
 			pos: pos,
 		});
