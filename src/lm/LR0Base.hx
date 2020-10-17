@@ -509,7 +509,6 @@ class LR0Base {
 					if (i != null && i >= 1 && i <= thas.length)
 						thas[i-1] = true;
 				}
-			case EVars(_):
 			case EField(_,_):
 			default:
 				e.iter(loop);
