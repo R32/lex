@@ -232,14 +232,23 @@ class LR0Base {
 		if (this.starts.length == 0) this.starts.push({index: this.index(this.lhsA[0]), begin: -1, width: -1});
 	}
 
+	function stripECast( e : Expr ) {
+		return switch(e.expr) {
+		case ECast(e, _):
+			stripECast(e);
+		case _:
+			e;
+		}
+	}
+
 	function readLexerTermls(tk: Type) {
-		switch (tk) {
+		switch (tk.follow()) {
 		case TAbstract(_.get() => ab, _):
 			for (field in ab.impl.get().statics.get()) {
 				for (meta in field.meta.get()) {
 					if (meta.name != ":value") continue;
-					switch(meta.params[0].expr) {
-					case ECast({expr: EConst(CInt(i))}, _):
+					switch( stripECast(meta.params[0]).expr ) {
+					case EConst(CInt(i)):
 						var n = Std.parseInt(i);
 						if (n >= maxValue)
 							maxValue = n + 1;
