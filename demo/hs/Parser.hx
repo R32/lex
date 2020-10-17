@@ -77,11 +77,11 @@ import hscript.Expr;
 
 	static var list: Array<Expr> = switch(s) {
 		case [l = list, i = item]:
-			autoSemicolon(s, i);
+			autoSemicolon(__s, i);
 			l.push(i);
 			l;
 		case [i = item]:
-			autoSemicolon(s, i);
+			autoSemicolon(__s, i);
 			[i];
 	}
 
@@ -117,21 +117,21 @@ import hscript.Expr;
 	}
 
 	static var expr = switch (s) {
-		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]: EBinop(s.str(_t2), e1, e2);
-		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(s, [_t2, _t3, _t4]);      EBinop(">>=", e1, e2);
-		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
-		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(s, [_t2, _t3]);           EBinop(">=", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(s, [_t2, _t3]);           EBinop(">>", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(s, [_t2, _t3, _t4]);      EBinop(">>>", e1, e2);
-		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(s.str(_t2), e1, e2);
+		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]:     EBinop(__s.str(_t2), e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(__s, [_t2, _t3, _t4]);      EBinop(">>=", e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(__s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
+		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(__s, [_t2, _t3]);           EBinop(">=", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(__s, [_t2, _t3]);           EBinop(">>", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(__s, [_t2, _t3, _t4]);      EBinop(">>>", e1, e2);
+		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(__s.str(_t2), e1, e2);
 		case [e1 = expr, "<<", e2 = expr]:                     EBinop("<<", e1, e2);
 		case [e1 = expr, "||", e2 = expr]:                     EBinop("||", e1, e2);
 		case [e1 = expr, "&&", e2 = expr]:                     EBinop("&&", e1, e2);
-		case [e1 = expr, op = ["|", "&", "^"], e2 = expr]:     EBinop(s.str(_t2), e1, e2);
-		case [e1 = expr, op = ["+", "-"], e2 = expr]:          EBinop(s.str(_t2), e1, e2);
-		case [e1 = expr, op = ["*", "/"], e2 = expr]:          EBinop(s.str(_t2), e1, e2);
+		case [e1 = expr, op = ["|", "&", "^"], e2 = expr]:     EBinop(__s.str(_t2), e1, e2);
+		case [e1 = expr, op = ["+", "-"], e2 = expr]:          EBinop(__s.str(_t2), e1, e2);
+		case [e1 = expr, op = ["*", "/"], e2 = expr]:          EBinop(__s.str(_t2), e1, e2);
 		case [e1 = expr, "%", e2 = expr]:                      EBinop("%", e1, e2);
-		case [@:prec("~") op = ["-", "~", "!"], e = expr]:     EUnop(s.str(_t1), true, e);
+		case [@:prec("~") op = ["-", "~", "!"], e = expr]:     EUnop(__s.str(_t1), true, e);
 		case [l = left]:     l;
 		case [b = block]:    b;
 		case [c = constant]: c;
@@ -147,8 +147,8 @@ import hscript.Expr;
 	}
 
 	static var left = switch(s) {
-		case [op = ["++", "--"], l = left]:         EUnop(s.str(_t1), true, l);
-		case [l = left, op = ["++", "--"]]:         EUnop(s.str(_t2), false, l);
+		case [op = ["++", "--"], l = left]:         EUnop(__s.str(_t1), true, l);
+		case [l = left, op = ["++", "--"]]:         EUnop(__s.str(_t2), false, l);
 		case [l = left, ".", CIdent(i)]:            EField(l, i);
 		case [l = left, "[", e = expr , "]"]:       EArray(l, e);
 		case ["[", "]"]:                            EArrayDecl([]);  // []
@@ -228,13 +228,13 @@ import hscript.Expr;
 
 	static var ifelse = switch(s) {
 		case [f = ifelse, "else", se = item]:
-			optSemicolon(s);
+			optSemicolon(__s);
 			switch(f) {
 			case EIf(c, e, _): EIf(c, e, se);
 			case _: throw("TODO");
 			}
 		case ["if", "(", c = expr, ")", e = item]:
-			optSemicolon(s);
+			optSemicolon(__s);
 			EIf(c, e);
 	}
 
@@ -302,7 +302,7 @@ import hscript.Expr;
 		case [b = switch_block, x = switch_case]:
 			if (x.v.length == 0) {
 				if (b.def != null)
-					throw s.UnExpected(_t2);
+					throw __s.UnExpected(_t2);
 				b.def = x.e;
 			} else {
 				b.cases.push({values: x.v, expr: x.e});

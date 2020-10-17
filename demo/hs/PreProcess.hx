@@ -90,13 +90,14 @@ import hscript.Expr;
 	// %start parse
 	static var parse = switch(s) {
 		case [e = cond]:
+			var s = stream;
 			if (s.rest > 0) @:privateAccess {
 				s.lex.pmax = s.peek(0).pmin; // FORCE rollback, since the next token was parsered in stream.
 				s.junk(s.rest);              // then clear stream cache
 			}
 			e;
 		case [Eof]:
-			throw s.error("Unclosed: " + "#if/else", _t1);
+			throw stream.error("Unclosed: " + "#if/else", _t1);
 	}
 	static var cond = switch(s) {
 		case [c1 = cond, "&&", c2 = cond]:    EBinop("&&", c1, c2);
