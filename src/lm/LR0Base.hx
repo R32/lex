@@ -269,7 +269,7 @@ class LR0Base {
 			for (t in termls)
 				if (StringTools.startsWith(t.name, name))
 					cset = CSet.union(cset, t.cset);
-			if ( !CSet.isSingle(cset) ) // to prevent abuse
+			if ( cset.length > 0 && !CSet.isSingle(cset) ) // to prevent abuse
 				return cset;
 		}
 		return null;
