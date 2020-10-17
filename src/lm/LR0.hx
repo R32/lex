@@ -312,10 +312,10 @@ class LR0Builder extends lm.LR0Base {
 			}
 		}).fields;
 		// build siwtch
-		var edef = macro {
+		var edef = this.unMatched != null ? this.unMatched : (macro {
 			var t = @:privateAccess s.offset( -1);
 			throw s.error('Unexpected "' + (t.term != $i{sEof} ? s.str(t): $v{sEof}) + '"', t);
-		}
+		});
 		var ecases:Array<Case> = [];
 		ecases.resize(this.nrules);
 		for (i in 0...this.nrules) {

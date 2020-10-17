@@ -91,6 +91,7 @@ class LR0Base {
 	var nrules: Int;                       // length(all switch cases)
 	var vcases: haxe.ds.Vector<SymbolSet>; // flatten(all lhs.cases)
 	var starts: Array<{index:Int, begin:Int, width:Int}>; //
+	var unMatched : Null<Expr>;
 
 	public inline function isEmpty() return this.lhsA.length == 0;
 	public inline function isNonTerm(v) return v >= this.maxValue;
@@ -642,6 +643,10 @@ class LR0Base {
 						});
 						continue;
 					case _:
+						if (f.name == "__default__") {
+							this.unMatched = e;
+							continue;
+						}
 					}
 				case FFun(fun):
 					flazy.add({f: f, fun: fun});
