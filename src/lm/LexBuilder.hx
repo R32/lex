@@ -90,7 +90,7 @@ class LexBuilder {
 						switch (e.expr) {
 						case EBinop(OpArrow, s, e):
 							switch(s.expr) {
-							case EConst(CIdent("null")):
+							case EConst(CIdent(i)) if(i == "null" || i == "_"):
 								g.unmatch = {pat: s, action: e};
 							default:
 								g.rules.push({pat: s, action: e});
