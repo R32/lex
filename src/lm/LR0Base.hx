@@ -619,11 +619,11 @@ class LR0Base {
 		var ret = [];
 		this.nrules = 0;
 		for (f in fields) {
-			if (f.access.indexOf(AStatic) > -1) {
+			//if (f.access.indexOf(AStatic) > -1) {
 				switch (f.kind) {
 				case FVar(ct, e) if (e != null):
 					switch(e.expr) {
-					case ESwitch(macro ($i{"s"}), ecases, edef):
+					case ESwitch(_, ecases, edef):
 						if (ecases.length == 0 && edef == null) continue;
 						if (edef != null)
 							ecases.push({values: [macro @:pos(edef.pos) _], expr: edef});
@@ -652,7 +652,7 @@ class LR0Base {
 					flazy.add({f: f, fun: fun});
 				default:
 				}
-			}
+			//}
 			if (allFields.exists(f.name))
 				fatalError("Duplicate field: " + f.name, f.pos);
 			allFields.set(f.name, f);
