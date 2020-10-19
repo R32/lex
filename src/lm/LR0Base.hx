@@ -619,40 +619,38 @@ class LR0Base {
 		var ret = [];
 		this.nrules = 0;
 		for (f in fields) {
-			//if (f.access.indexOf(AStatic) > -1) {
-				switch (f.kind) {
-				case FVar(ct, e) if (e != null):
-					switch(e.expr) {
-					case ESwitch(_, ecases, edef):
-						if (ecases.length == 0 && edef == null) continue;
-						if (edef != null)
-							ecases.push({values: [macro @:pos(edef.pos) _], expr: edef});
-						firstCharChecking(f.name, LOWER, f.pos);
-						if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), lhsType) )
-							this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
-						ret.push(ecases);
-						this.nrules += ecases.length;
-						this.lhsA.push({
-							name: f.name,
-							value: lhsValue++,
-							epsilon: false,
-							cases: [],
-							lsubs: new List(),
-							ctype: ct == null ? this.ct_ldef : ct,
-							pos: f.pos,
-						});
+			switch (f.kind) {
+			case FVar(ct, e) if (e != null):
+				switch(e.expr) {
+				case ESwitch(_, ecases, edef):
+					if (ecases.length == 0 && edef == null) continue;
+					if (edef != null)
+						ecases.push({values: [macro @:pos(edef.pos) _], expr: edef});
+					firstCharChecking(f.name, LOWER, f.pos);
+					if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), lhsType) )
+						this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
+					ret.push(ecases);
+					this.nrules += ecases.length;
+					this.lhsA.push({
+						name: f.name,
+						value: lhsValue++,
+						epsilon: false,
+						cases: [],
+						lsubs: new List(),
+						ctype: ct == null ? this.ct_ldef : ct,
+						pos: f.pos,
+					});
+					continue;
+				case _:
+					if (f.name == "__default__") {
+						this.unMatched = e;
 						continue;
-					case _:
-						if (f.name == "__default__") {
-							this.unMatched = e;
-							continue;
-						}
 					}
-				case FFun(fun):
-					flazy.add({f: f, fun: fun});
-				default:
 				}
-			//}
+			case FFun(fun):
+				flazy.add({f: f, fun: fun});
+			default:
+			}
 			if (allFields.exists(f.name))
 				fatalError("Duplicate field: " + f.name, f.pos);
 			allFields.set(f.name, f);
