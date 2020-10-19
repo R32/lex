@@ -40,7 +40,7 @@ class LConter { //
 			if (pos < p) {
 				j = k - 1;
 			} else {
-				if (k < j && pos > a[k + 1]) {
+				if (k < j && pos >= a[k + 1]) {
 					i = k + 1;
 					continue;
 				}
