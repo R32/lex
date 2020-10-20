@@ -12,3 +12,8 @@ release
 *.o
 *.obj
 *.jpg
+*.dll
+*.hdll
+*.exe
+*.lib
+cpp/

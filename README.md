@@ -7,6 +7,10 @@ Build lexer and simple parser(LR0) in macro.
 
 * [hello world](#Usage)
 
+* [Lexer tool for c langauge](/tools/CLexer.hx) *alpha, I usually use it as a regexp in c langauge*
+
+  > run `haxelib run lex test.lex` and then you will get a `test.c` file
+
 * [hscript parser](/demo/)
 
 * [css selector](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
@@ -17,7 +21,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
 * Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
-  - All *finalStates* have been moved out, it not only saves memory and also makes state detection more faster.
+  - It also provides a lexer tool for c language
 
 * Parser: Only LR(0) is available. (WIP)
 

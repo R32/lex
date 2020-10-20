@@ -1,0 +1,95 @@
+
+static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
+::table::
+};
+
+::if (bit16)::
+#define LEX_EXIT(s)      (((unsigned short*)_lextable)[(::tabsize:: - 1) - (s)])
+#define LEX_TRANS(s, c)  (((unsigned short*)_lextable)[((s) * ::per::) + (c)])
+::else::
+#define LEX_EXIT(s)      (_lextable[(::tabsize:: - 1) - (s)])
+#define LEX_TRANS(s, c)  (_lextable[((s) * ::per::) + (c)])
+::end::
+
+::if (utf8)::
+#define LEX_CHAR(i)      (lex->src[i])
+::else::
+#define LEX_CHAR(i)      (((unsigned short*)lex->src)[i])
+::end::
+
+#define LEX_TABSIZE      ::tabsize::
+#define LEX_TABSPAN      ::per::
+typedef          ::if (eof) :: int  ::else:: void  ::end:: lex_toktype;
+typedef unsigned ::if (utf8):: char ::else:: short ::end:: lex_srctype;
+
+static lex_toktype _entry(struct rlex*, int);
+::foreach entrys::
+#define ::name::_BEGIN    ::begin::
+#define ::name::()        (_entry(lex, ::begin::))
+::end::
+
+static lex_toktype _cases(struct rlex* lex, int _q) {
+	::if (eof)::
+	int _ret = ::eof::;
+	::end::
+	switch(_q) {
+	::foreach cases::
+	case ::index:::
+		::if (!faildown)::
+		{
+		::action::
+		}
+		break;
+		::end::
+	::end::
+	default:
+		{
+		::epsilon::
+		}
+	}
+	::if (eof)::return _ret;::end::
+}
+
+static lex_toktype _entry(struct rlex* lex, int begin) {
+	if (lex->pmax >= lex->size)
+		return ::if (eof):: ::eof:: ::end::;
+	int c;
+	int i = lex->pmax;
+	int state = begin;
+	int prev = begin;
+	while(i < lex->size) {
+		c = LEX_CHAR(i++);
+		state = LEX_TRANS(state, c);
+		if (state >= ::nsegs::)
+			break;
+		prev = state;
+	}
+	lex->pmin = i; // if UnMatached then pmin >= pmax
+	if (state == ::invalid::) {
+		state = prev;
+		i--;
+	}
+	int q = LEX_EXIT(state);
+	if (i > lex->pmax && q < ::nrules::) {
+		lex->pmin = lex->pmax;
+		lex->pmax = i;
+	} else {
+		q = LEX_EXIT(begin);
+	}
+	::if (eof)::return::end:: _cases(lex, q);
+}
+static lex_toktype __token(struct rlex* lex) {
+	::if (eof)::return::end:: _entry(lex, ::entrybegin::);
+}
+
+// public function
+void ::path.file::_init(struct rlex* lex, lex_srctype *input, int size) {
+	lex->pmin = lex->pmax = 0;
+	lex->src = (unsigned char*)input;
+	lex->size = size;
+	::if (eof)::
+	lex->token = __token;
+	::else::
+	lex->vtoken = __token;
+	::end::
+}
