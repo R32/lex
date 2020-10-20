@@ -266,7 +266,7 @@ class LexEngine {
 				c = Std.parseInt("0x" + b.getString(i, 2));
 				i += 2;
 			default:
-				throw "\\";
+				throw new PError("Unexpected: " + "\\", i-1);
 			}
 			return c;
 		}
@@ -283,17 +283,17 @@ class LexEngine {
 			case '|'.code if (r != Empty && i < len):
 				var inner = parseInner(b, i, len, c_all);
 				if (inner == Empty)
-					throw 'The right side of "|" is empty';
+					throw new PError("?????", i);
 				return Choice(r, inner);
 			case "[".code if (i < len):
 				var not = b.get(i) == "^".code;
 				if (not) ++i;
-				var range = 0;
+				var range = -1;
 				var acc = [];
 				while (i < len) {
 					var c = b.get(i++);
 					if (c == "]".code) {
-						if (range != 0) {
+						if (range != -1) {
 							acc.push(new Char(range, range));
 							acc.push(new Char("-".code, "-".code));
 						}
@@ -301,20 +301,19 @@ class LexEngine {
 					} else if (c == "-".code) {
 						if (acc.length == 0) {
 							acc.push(new Char(c, c)); // add('-')
-						} else if (range == 0) {
+						} else if (range == -1) {
 							var last: Char = acc.pop();
-							if (last.min != last.max) throw "todo";
+							if (last.min != last.max) throw new PError("Unexpected: " + "-", i-1);
 							range = last.min;
 						}
 					} else {
-						if (c == "\\".code)
+						if (c == "\\".code && i < len)
 							c = readChar();
-						if (range == 0) {
+						if (range == -1) {
 							acc.push(new Char(c, c));
 						} else {
-							if (range > c) throw "Range out of order: -" + String.fromCharCode(c);
-							acc.push(new Char(range, c));
-							range = 0;
+							acc.push(range < c ? new Char(range, c) : new Char(c, range));
+							range = -1;
 						}
 					}
 				}
@@ -324,7 +323,7 @@ class LexEngine {
 						acc = CSet.complement(acc, c_all);
 					r = next(r, Match(acc));
 				} else {
-					throw "Empty range: []";
+					throw new PError("UnClosed: " + "[", i-1);
 				}
 			case "\\".code:
 				c = readChar();
@@ -334,6 +333,18 @@ class LexEngine {
 			}
 		}
 		return r;
+	}
+}
+
+class PError {
+	public var message(default, null) : String;
+	public var offset(default, null) : Int;
+	public function new(s, i) {
+		message = s;
+		offset = i;
+	}
+	public function toString() {
+		return '[message: $message, offset: $offset]';
 	}
 }
 
