@@ -71,6 +71,7 @@ private enum Expr {
 		this.lines = new LConter(file);
 		this.pmin = 0;
 		this.pmax = 0;
+		footer = "";
 	}
 
 	inline function char(i) return this.input.readByte(i);
