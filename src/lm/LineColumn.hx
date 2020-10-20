@@ -2,13 +2,12 @@ package lm;
 
 class LineColumn {
 	public var line(default, null) : Int;
+	public var base(default, null) : Int;   // the position of current line
 	public var column(default, null) : Int;
-	public function new(a, b) {
+	public function new(a, b, c) {
 		line = a;
-		column = b;
-	}
-	public function toString() {
-		return 'line: $line, column: $column';
+		base = b;
+		column = c;
 	}
 }
 
@@ -30,7 +29,7 @@ class LConter { //
 		}
 	}
 	public function get( pos : Int ) : LineColumn {
-		var ret = new LineColumn(1, pos + 1);
+		var ret = new LineColumn(1, 0, pos + 1);
 		var a = cache;
 		var i = 0;
 		var j = a.length - 1;
@@ -46,6 +45,7 @@ class LConter { //
 				}
 				ret.column = pos - p + 1;
 				ret.line = k + 1;
+				ret.base = p;
 				break;
 			}
 		}
@@ -84,7 +84,7 @@ class Multiple {
 
 	public function get( source : String, pos : Int ) : LineColumn {
 		if (!choise(source)) {
-			return new LineColumn(1, pos + 1);
+			return new LineColumn(1, 0, pos + 1);
 		}
 		return current.get(pos);
 	}
