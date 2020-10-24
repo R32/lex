@@ -91,7 +91,7 @@ class LexEngine {
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		var ta: Array<CANode> = getTransitions(nodes);
+		var ta: Array<FMArrow> = getTransitions(nodes);
 		var len = ta.length;
 		id = if (len == 0) {
 			final_counter--; // final state.
@@ -162,20 +162,20 @@ class LexEngine {
 
 	static function getTransitions(nodes: Array<Node>) {
 		// Merge transition with the same target
-		var tl: Array<CNode> = [];
-		var states: Array<CANode> = [];
+		var tl: Array<Arrow> = [];
+		var states: Array<FMArrow> = [];
 		for (n in nodes)
-			for (t in n.trans)
+			for (t in n.arrows)
 				tl.push(t);
 		if (tl.length == 0)
 			return states;
-		tl.sort( CNode.onSort );
+		tl.sort( Arrow.onSort );
 		var a = tl[0];
 		for (i in 1...tl.length) {
 			var b = tl[i];
 			if (a.n == b.n) {
 				tl[i - 1] = null;
-				b = new CNode(CSet.union(a.chars, b.chars), b.n);
+				b = new Arrow(CSet.union(a.chars, b.chars), b.n);
 				tl[i] = b;
 			}
 			a = b;
@@ -183,11 +183,11 @@ class LexEngine {
 		while ( tl.remove(null) ) {
 		}
 		// Split char sets so as to make them disjoint
-		inline function addState(l: List<CANode>, chars: Charset, ns: Array<Node>) {
-			if (chars.length > 0) l.push(new CANode(chars, ns));
+		inline function addState(l: List<FMArrow>, chars: Charset, ns: Array<Node>) {
+			if (chars.length > 0) l.push(new FMArrow(chars, ns));
 		}
 		var all_chars = CSet.C_EMPTY;
-		var all_state = new List<CANode>();
+		var all_state = new List<FMArrow>();
 		for (t in tl) {
 			var ls = new List();
 			addState(ls, CSet.diff(t.chars, all_chars), [t.n]);
@@ -204,10 +204,10 @@ class LexEngine {
 		states.resize(all_state.length);
 		var i = 0;
 		for (s in all_state) {
-			states[i++] = new CANode(s.chars, addNodes([], s.ns));
+			states[i++] = new FMArrow(s.chars, addNodes([], s.ns));
 		}
 		// Canonical ordering
-		states.sort(CANode.onSort);
+		states.sort(FMArrow.onSort);
 		return states;
 	}
 
@@ -357,24 +357,25 @@ enum Pattern {
 	Next(p1: Pattern, p2: Pattern);
 }
 
-class CNode {
+private class Arrow {
 	public var chars: Charset;
 	public var n: Node;  // target, if the chars is matched then goto "n".
 	public function new(cs, n) {
 		this.chars = cs;
 		this.n = n;
 	}
-	public static function onSort(a: CNode, b: CNode) return a.n.id - b.n.id;
+	public static function onSort(a: Arrow, b: Arrow) return a.n.id - b.n.id;
 }
 
-class CANode {
+// Transformed Arrow
+private class FMArrow {
 	public var chars: Charset;
 	public var ns: Array<Node>;
 	public function new(cs, ns) {
 		this.chars = cs;
 		this.ns = ns;
 	}
-	public static function onSort(s1: CANode, s2: CANode) {
+	public static function onSort(s1: FMArrow, s2: FMArrow) {
 		var a = s1.chars.length;
 		var b = s2.chars.length;
 		var len = Utils.imin(a, b);
@@ -390,13 +391,14 @@ class CANode {
 	}
 }
 
+// DFA Node
 class Node {
 	public var id: Int;
-	public var trans: Array<CNode>;  //  empty or .length == 1
+	public var arrows: Array<Arrow>;  //  empty or .length == 1
 	public var epsilon: Array<Node>;
 	@:allow(lm.NodeGenerator) function new(id) {
 		this.id = id;
-		trans = [];
+		arrows = [];
 		epsilon = [];
 	}
 }
@@ -428,7 +430,7 @@ class NodeGenerator {
 			f;
 		case Match(c):
 			var n = newNode();
-			n.trans.push(new CNode(c, f));
+			n.arrows.push(new Arrow(c, f));
 			n;
 		case Star(p):
 			var n = newNode();
