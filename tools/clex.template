@@ -3,13 +3,10 @@ static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
 ::table::
 };
 
-::if (bit16)::
-#define LEX_EXIT(s)      (((unsigned short*)_lextable)[(::tabsize:: - 1) - (s)])
-#define LEX_TRANS(s, c)  (((unsigned short*)_lextable)[((s) * ::per::) + (c)])
-::else::
-#define LEX_EXIT(s)      (_lextable[(::tabsize:: - 1) - (s)])
-#define LEX_TRANS(s, c)  (_lextable[((s) * ::per::) + (c)])
-::end::
+#define LEX_TABSIZE      ::tabsize::
+#define LEX_TABSPAN      ::per::
+#define LEX_EXIT(s)      (_lextable[(LEX_TABSIZE - 1) - (s)])
+#define LEX_TRANS(s, c)  (_lextable[((s) * LEX_TABSPAN) + (c)])
 
 ::if (utf8)::
 #define LEX_CHAR(i)      (lex->src[i])
@@ -17,8 +14,7 @@ static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
 #define LEX_CHAR(i)      (((unsigned short*)lex->src)[i])
 ::end::
 
-#define LEX_TABSIZE      ::tabsize::
-#define LEX_TABSPAN      ::per::
+
 typedef          ::if (eof) :: int  ::else:: void  ::end:: lex_toktype;
 typedef unsigned ::if (utf8):: char ::else:: short ::end:: lex_srctype;
 
@@ -85,11 +81,7 @@ static lex_toktype __token(struct rlex* lex) {
 // public function
 void ::path.file::_init(struct rlex* lex, lex_srctype *input, int size) {
 	lex->pmin = lex->pmax = 0;
-	lex->src = (unsigned char*)input;
 	lex->size = size;
-	::if (eof)::
-	lex->token = __token;
-	::else::
-	lex->vtoken = __token;
-	::end::
+	lex->src = (unsigned char*)input;
+	lex->token = (int(*)(struct rlex*))__token;
 }

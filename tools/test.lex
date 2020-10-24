@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
 	test_init(&lex, text, strlen(text)); // filename_init
 
 	while(1) {
-		int tok = lex.token(&lex);
+		int tok = rlex_token(&lex);
 		switch(tok) {
 		case Eof:
 			goto Endloop;

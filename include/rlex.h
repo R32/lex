@@ -71,6 +71,9 @@ struct rlex {
 	};
 };
 
+
+#define rlex_token(rlex)     ((rlex)->token(rlex))
+#define rlex_vtoken(rlex)    ((rlex)->vtoken(rlex))
 //
 #define rlex_end(rlex)       ((rlex)->pmax >= (rlex)->size)
 
