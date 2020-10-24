@@ -40,7 +40,7 @@ class LexEngine {
 
 	public var invalid(default, null): Int;
 
-	public function new(a: Array<PatternSet>, cmax = Char.MAX) {
+	public function new(a: Array<PatternSet>, cmax = 255) {
 		this.entrys = [];
 		this.per = cmax + 1;
 		this.h = new Map();
@@ -92,22 +92,19 @@ class LexEngine {
 		if (id != null)
 			return id;
 		var ta: Array<FMArrow> = getTransitions(nodes);
-		var len = ta.length;
-		id = if (len == 0) {
+		id = if (ta.length == 0) {
 			final_counter--; // final state.
 		} else {
 			segs++;
 		}
 		h.set(sid, id);
 
-		var trans: Array<Char> = [];
-		for (i in 0...len)
-			for (c in ta[i].chars)
-				trans.push(Char.c3(c.min, c.max, i));
-
-		var targets = []; targets.resize(len);
-		for (i in 0...len)
-			targets[i] = compile(ta[i].ns);
+		var sets = [];
+		var targets = [];
+		for (r in ta) {
+			sets.push(r.chars);
+			targets.push( compile(r.ns) );
+		}
 
 		var f = -1;
 		for (n in nodes) {
@@ -116,7 +113,7 @@ class LexEngine {
 				break;
 			}
 		}
-		lstates.push(new State(id, trans, targets, f));
+		lstates.push(new State(id, sets, targets, f));
 		return id;
 	}
 
@@ -129,19 +126,21 @@ class LexEngine {
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID); // Reverse write checking table
 			if (s.id < segs)
-				makeTrans(tbls, s.id * per, s.trans, s.targets);
+				makeTrans(tbls, s.id * per, s.sets, s.targets);
 		}
 		this.table = tbls;
 	}
 
-	static function makeTrans(tbls: Table, start: Int, trans: Array<Char>, targets: Array<Int>) {
-		for (c in trans) {
-			var i = c.min + start;
-			var max = c.max + start;
-			var s = targets[c.ext];
-			while (i <= max) {
-				tbls.set(i, s);
-				++ i;
+	static function makeTrans(tbls: Table, start: Int, sets: Array<Charset>, targets: Array<Int>) {
+		for (q in 0...sets.length) {
+			var s = targets[q];
+			for (c in sets[q]) {
+				var i = c.min + start;
+				var max = c.max + start;
+				while (i <= max) {
+					tbls.set(i, s);
+					++ i;
+				}
 			}
 		}
 	}
@@ -457,13 +456,13 @@ class NodeGenerator {
 
 class State {
 	public var id: Int;
-	public var trans: Array<Char>;
+	public var sets: Array<Charset>;
 	public var targets: Array<Int>;
 	public var finalID: Int;
-	public function new(i, ts, tar, f) {
+	public function new(i, a, t, f) {
 		id = i;
-		trans = ts;
-		targets = tar;
+		sets = a;
+		targets = t;
 		finalID = f;
 	}
 	public static function onSort(a: State, b: State) return a.id - b.id;

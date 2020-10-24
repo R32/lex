@@ -108,7 +108,7 @@ class LR0Builder extends lm.LR0Base {
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID);
 			if (s.id < segs)
-				LexEngine.makeTrans(tbls, s.id * per, s.trans, s.targets);
+				LexEngine.makeTrans(tbls, s.id * per, s.sets, s.targets);
 		}
 		this.table = tbls;
 	}
@@ -174,22 +174,19 @@ class LR0Builder extends lm.LR0Base {
 		if (id != null)
 			return id;
 		var ta = LexEngine.getTransitions( closure(nodes) );
-		var len = ta.length;
-		id = if (len == 0) {
+		id = if (ta.length == 0) {
 			final_counter--;
 		} else {
 			segs++;
 		}
 		h.set(sid, id);
 
-		var trans: Array<Char> = [];
-		for (i in 0...len)
-			for (c in ta[i].chars)
-				trans.push(Char.c3(c.min, c.max, i));
-
-		var targets = []; targets.resize(len);
-		for (i in 0...len)
-			targets[i] = compile(ta[i].ns);
+		var sets = [];
+		var targets = [];
+		for (r in ta) {
+			sets.push(r.chars);
+			targets.push( compile(r.ns) );
+		}
 
 		var exits = [];
 		for (n in nodes)
@@ -203,7 +200,7 @@ class LR0Builder extends lm.LR0Base {
 				Context.warning("conflict case: " + r, ruleToCase(r).pos);
 			fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
 		}
-		lstates.push(new State(id, trans, targets, f));
+		lstates.push(new State(id, sets, targets, f));
 		return id;
 	}
 

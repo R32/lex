@@ -3,14 +3,11 @@ package lm;
 typedef Charset = Array<Char>;
 
 extern abstract Char(Int) {
-	var min(get, never):Int; // 0~7
-	private inline function get_min():Int return this & MAX;
+	var min(get, never):Int; // 0~16
+	private inline function get_min():Int return this & 0xFFFF;
 
 	var max(get, never):Int; // 16~23
 	private inline function get_max():Int return (this >>> 16);
-
-	var ext(get, never):Int; // 8~15
-	private inline function get_ext():Int return (this >> 8) & MAX;
 
 	inline function new(min: Int, max: Int) this = min | max << 16;
 
@@ -19,8 +16,6 @@ extern abstract Char(Int) {
 	inline function toString():String return '[$min, $max]';
 
 	static inline function ofInt(i: Int):Char return cast i;
-	static inline function c3(min: Int, max: Int, ext:Int):Char return cast min | ext << 8 | max << 16;
-	static inline var MAX = 255;
 }
 
 /**
@@ -30,7 +25,7 @@ class CSet {
 
 	static public var C_EMPTY: Charset = [];
 
-	static public var C_255: Charset = [new Char(0, Char.MAX)]; // [0-255]
+	static public var C_255: Charset = [new Char(0, 255)]; // [0-255]
 
 	static public inline function single(c: Int):Charset return [new Char(c, c)];
 
