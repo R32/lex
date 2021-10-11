@@ -248,7 +248,7 @@ class LR0Builder extends lm.LR0Base {
 		}
 		var lvs = this.lvalues.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var fields = (macro class {
-			@:deprecated("uses __s|stream instead of s") var s(get, never) : $ct_stream;
+			var s(get, never) : $ct_stream;
 			@:dce inline function get_s() return stream;
 			static var raw = $raw;
 			static var lvs:Array<Int> = [$a{lvs}];
@@ -260,7 +260,7 @@ class LR0Builder extends lm.LR0Base {
 			static inline function trans(r, s, c) return getU(r, $v{this.per} * s + c);
 			static inline function exits(r, s) return getU(r, $v{this.table.length - 1} - s);
 			inline function gotos(fid:Int):$ct_lval return cases(fid);
-			var stream: $ct_stream;
+			final stream: $ct_stream;
 			public function new(lex: lm.Lexer<Int>) {
 				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex);
 			}
@@ -329,7 +329,7 @@ class LR0Builder extends lm.LR0Base {
 			kind: FFun({
 				args: [{name: "q", type: macro: Int}],
 				ret: ct_lval,
-				expr: macro { var __s = stream; return $eswitch; },
+				expr: macro { final __s = stream; return $eswitch; },
 			}),
 			pos: here,
 		});
