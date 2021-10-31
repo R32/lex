@@ -17,10 +17,10 @@ class LexBuilder {
 	/**
 	 LexerClassName => [PatternString => TokenString], it will be used by LR0Parser.
 	*/
-	@:persistent static public var lmap: Map<String, Map<String, String>>;
+	@:persistent static public var lmap : Map<String, Map<String, String>>;
 
-	static function getMeta(metas: Array<MetadataEntry>): {cmax:Int, eof:Null<Expr>, isVoid:Bool} {
-		var ret = {cmax: 255, eof: null, isVoid: true};
+	static function getMeta( metas : Array<MetadataEntry> ) : {cmax : Int, eof : Null<Expr>} {
+		var ret = {cmax : 255, eof : null};
 		if (metas.length > 0)
 			for (meta in metas[0].params) {
 				switch (meta.expr) {
@@ -28,14 +28,13 @@ class LexBuilder {
 					ret.cmax = Std.parseInt(i) & 255 | 15;
 				case EConst(CIdent(i)):
 					ret.eof = meta;
-					ret.isVoid = i == "Void";
 				default:
 				}
 			}
 		return ret;
 	}
 
-	static function readIntTokens(t: Type, out: Map<String, Bool>) {
+	static function readIntTokens( t : Type, out : Map<String, Bool> ) {
 		if ( !Context.unify(t, Context.getType("Int")) ) return;
 		return switch (t) {
 		case TAbstract(_.get() => ab, _):
@@ -47,7 +46,7 @@ class LexBuilder {
 
 	static function fatalError(msg, p) return Context.fatalError("[lex build] " + msg , p);
 
-	static public function build():Array<Field> {
+	static public function build() : Array<Field> {
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
@@ -56,27 +55,16 @@ class LexBuilder {
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
-				if (meta.isVoid) {
-					if (!Context.unify(t, Context.getType("Void"))) {
-						if (meta.eof == null) {
-							fatalError("Need an identifier as the Token terminator by \"@:rule\"", cl.pos);
-						} else {
-							fatalError("\"<" + t.toString() + ">\" should be \"Void\"", cl.pos);
-						}
-					}
-					meta.eof = null; // EReturn(null) if Void
-				} else {
-					if (!Context.unify(t, Context.typeof(meta.eof)))
-						fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
-					readIntTokens(t, tmap);
-				}
+				if (!Context.unify(t, Context.typeof(meta.eof)))
+					fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
+				readIntTokens(t, tmap);
 				if (lmap == null) lmap = new Map();
-				lmap.set(Utils.getClsFullName(cl), reflect);
+				lmap.set(Utils.getClassFullName(cl), reflect);
 				break;
 			}
 		}
 		var ret = [];
-		var groups: Array<Group> = [];
+		var groups : Array<Group> = [];
 		var varmap = new Map<String,String>();        // variable name => patternString
 		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
@@ -192,7 +180,7 @@ class LexBuilder {
 				pmin = 0;
 				pmax = 0;
 			}
-			function _token(init:Int, right:Int) {
+			function _token( init : Int, right : Int ) {
 				if (pmax >= right) return $e{meta.eof};
 				var raw = raw;
 				var i = pmax;
@@ -221,7 +209,7 @@ class LexBuilder {
 				} else {
 					q = exits(raw, init); // goto "null => Action" or "throw"
 				}
-				$e{ meta.isVoid ? macro cases(q) : macro return cases(q) }
+				return cases(q);
 			}
 		}// class end
 		var pos = Context.currentPos();
@@ -238,7 +226,7 @@ class LexBuilder {
 				kind: FFun({
 					args: [],
 					ret: null,
-					expr: meta.isVoid ? expr_token : (macro return $expr_token)
+					expr: macro return $expr_token
 				}),
 				pos: pos,
 			});
@@ -268,7 +256,7 @@ class LexBuilder {
 			kind: FFun({
 				args: [{name: "s", type: macro: Int}],
 				ret: null,
-				expr: meta.isVoid ? (macro {var lex = this; $eswitch; }) : (macro {var lex = this; return $eswitch; })
+				expr: macro { final lex = this; return $eswitch; }
 			}),
 			pos: pos,
 		});
@@ -279,7 +267,7 @@ class LexBuilder {
 		return ret;
 	}
 
-	static function exprString(e: Expr, vmap:Map<String,String>): String {
+	static function exprString( e : Expr, vmap : Map<String,String> ) : String {
 		return switch (e.expr) {
 		case EConst(CString(s)): s;
 		case EConst(CIdent(i)):
@@ -295,7 +283,7 @@ class LexBuilder {
 			fatalError("Invalid rule", e.pos);
 		}
 	}
-	static function mkInlineFVar(name, value, pos):Field {
+	static function mkInlineFVar(name, value, pos) : Field {
 		return {
 			name: name,
 			access: [AStatic, AInline],
@@ -304,7 +292,7 @@ class LexBuilder {
 		}
 	}
 
-	static function checking(lex: lm.LexEngine, groups: Array<Group>) {
+	static function checking( lex : lm.LexEngine, groups : Array<Group> ) {
 		var table = lex.table;
 		var VALID = 1;
 		var INVALID = lex.invalid;
@@ -345,7 +333,7 @@ class LexBuilder {
 	/**
 	 hack lex.table for "null => Actoin", Must be called after "checking"
 	*/
-	static function hackNullActions(lex: lm.LexEngine, groups: Array<Group>) : Array<Case> {
+	static function hackNullActions( lex : lm.LexEngine, groups : Array<Group>) : Array<Case> {
 		var extra = [];
 		var table = lex.table;
 		var start = lex.nrules;
@@ -362,7 +350,7 @@ class LexBuilder {
 	}
 
 	// assoc with lexEngine.parse
-	static function unescape(s: String) {
+	static function unescape( s : String ) {
 		var i = 0;
 		var p = 0;
 		var len = s.length;
@@ -400,7 +388,7 @@ class LexBuilder {
 	// ("a|b","0") => "a0|b0"
 	// ("a","0|1") => "a0|a1"
 	// ("a|b","0|1") => "a0|a1|b0|b1"
-	static function splitMix(s1:String, s2:String): String {
+	static function splitMix( s1 : String, s2 : String ) : String {
 		function split(s:String): Array<String> {
 			var i = 0;
 			var left = 0;

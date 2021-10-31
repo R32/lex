@@ -125,10 +125,12 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
 ### CHANGES
 
+* `x.x.x`:
+  - [lexer] Removed support for `lm.Lexer<Void>`
 * `0.9.2`: Some Improvements.
 * `0.9.1`:
   - [lexer] Fixed `null => Action`
-  - [lexer] Allow `lm.Lexer<Void>`. [More...](test/subs/LexVoid.hx)
+  - [lexer] ~~Allow `lm.Lexer<Void>`~~
 * `0.9.0`: Simplify
   - [parser] use "%start" instead of ~~`@:side`~~
   - [lexer] Added `null => Action` when there is no match

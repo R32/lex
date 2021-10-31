@@ -24,7 +24,7 @@ class Utils {
 		return " at line: " + line + ", column: " + char;
 	}
 #if macro
-	static public function getClsFullName(cls: haxe.macro.Type.ClassType) {
+	static public function getClassFullName(cls: haxe.macro.Type.ClassType) {
 		if (StringTools.endsWith(cls.module, cls.name))
 			return cls.module;
 		return cls.module + "." + cls.name;
