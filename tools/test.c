@@ -14,7 +14,13 @@ enum token {
 	OpDiv,
 	OpAdd,
 	OpSub,
+	UnMathed,
 };
+
+
+typedef unsigned char rlexsrc;
+#define rlex_char(lex, i)     ((lex)->src[i])
+#define rlex_current(lex)     ((lex)->src + (lex)->pmin)
 
 
 static unsigned  char  _lextable[] = {
@@ -118,30 +124,20 @@ static unsigned  char  _lextable[] = {
 #define LEX_EXIT(s)      (_lextable[(LEX_TABSIZE - 1) - (s)])
 #define LEX_TRANS(s, c)  (_lextable[((s) * LEX_TABSPAN) + (c)])
 
+static int _entry(struct rlex*, int);
 
-#define LEX_CHAR(i)      (lex->src[i])
+static int _cases(struct rlex* lex, int _q) {
 
+#   define TOKEN_BEGIN    0
+#   define TOKEN()        (_entry(lex, 0))
 
+#   define STR_BEGIN    4
+#   define STR()        (_entry(lex, 4))
 
-typedef           int   lex_toktype;
-typedef unsigned  char  lex_srctype;
+#   define QSTR_BEGIN    7
+#   define QSTR()        (_entry(lex, 7))
 
-static lex_toktype _entry(struct rlex*, int);
-
-#define TOKEN_BEGIN    0
-#define TOKEN()        (_entry(lex, 0))
-
-#define STR_BEGIN    4
-#define STR()        (_entry(lex, 4))
-
-#define QSTR_BEGIN    7
-#define QSTR()        (_entry(lex, 7))
-
-
-static lex_toktype _cases(struct rlex* lex, int _q) {
-	
 	int _ret = Eof;
-	
 	switch(_q) {
 	
 	case 0:
@@ -299,25 +295,22 @@ static lex_toktype _cases(struct rlex* lex, int _q) {
 	
 	default:
 		{
-		printf("UnMathed : %c\n", LEX_CHAR(lex->pmax));
-		// if error then pmin >= pmax
-	exit(-1);
-		_ret = Eof;
+		_ret = UnMathed;
 
 		}
 	}
 	return _ret;
 }
 
-static lex_toktype _entry(struct rlex* lex, int begin) {
-	if (lex->pmax >= lex->size)
-		return  Eof ;
+static int _entry(struct rlex* lex, int begin) {
+	if (rlex_end(lex))
+		return Eof;
 	int c;
 	int i = lex->pmax;
 	int state = begin;
 	int prev = begin;
 	while(i < lex->size) {
-		c = LEX_CHAR(i++);
+		c = rlex_char(lex, i++);
 		state = LEX_TRANS(state, c);
 		if (state >= 10)
 			break;
@@ -337,25 +330,25 @@ static lex_toktype _entry(struct rlex* lex, int begin) {
 	}
 	return _cases(lex, q);
 }
-static lex_toktype __token(struct rlex* lex) {
-	return _entry(lex, 0);
+static int __token(struct rlex* lex) {
+	return _entry(lex, 0 );
 }
 
 // public function
-void test_init(struct rlex* lex, lex_srctype *input, int size) {
+void test_lexinit(struct rlex* lex, rlexsrc *src, int size) {
 	lex->pmin = lex->pmax = 0;
 	lex->size = size;
-	lex->src = (unsigned char*)input;
-	lex->token = (int(*)(struct rlex*))__token;
+	lex->src = (unsigned char*)src;
+	lex->token = __token;
 }
 
 
 int main(int argc, char** argv) {
 	char buff[256];
-	char* text = "1 + 2 - \"string\" * _ident_ / 101";
+	char* text = "1 + 2 - \"string\" * ident / 101 [";
 	struct rlex lex;
 
-	test_init(&lex, text, strlen(text)); // filename_init
+	test_lexinit(&lex, text, strlen(text)); // filename + "lexinit"
 
 	while(1) {
 		int tok = rlex_token(&lex);
@@ -397,8 +390,12 @@ int main(int argc, char** argv) {
 		case OpSub:
 			printf("-\n");
 			break;
+		case UnMathed:
+			printf("UnMathed : %c\n", rlex_char(&lex, lex.pmax)); // if error then pmin >= pmax
+			goto Endloop;
+			break;
 		default:
-			printf("something is wroing, tok: %d\n", tok);
+			break;
 		}
 	}
 	Endloop:

@@ -13,13 +13,13 @@ enum token {
 	OpDiv,
 	OpAdd,
 	OpSub,
+	UnMathed,
 };
 
 %%         // lexer starts,
            // NOTE: only line comments are accepted in this area
 
-%EOF(Eof)  // Specify the return value when EOF.
-           // If not provided then `void` means no value will be returned
+%EOF(Eof)  // (Required) Specify the EOF Token.
 
 %SRC(UTF8) // Specify the encoding format of the input source. (UTF8|UCS2)
            // If not provided the default is UTF8. (WARINNING: only acill chars even UCS2)
@@ -31,6 +31,7 @@ let ident = "[a-zA-Z_][a-zA-Z0-9_]*"
 
 let integer = "0|[1-9][0-9]*"
 
+//  "|" must be on the leftmost side of Line
 let token = function
 | "[ \t\n]+"     -> TOKEN()
 | ident          -> CIdent
@@ -59,9 +60,7 @@ let token = function
 	lex->pmin = min;
 	t
 | _ ->
-	printf("UnMathed : %c\n", LEX_CHAR(lex->pmax)); // if error then pmin >= pmax
-	exit(-1);
-	Eof
+	UnMathed
 
 let str = function
 | '"'            -> CString
@@ -77,10 +76,10 @@ let qstr = function
 
 int main(int argc, char** argv) {
 	char buff[256];
-	char* text = "1 + 2 - \"string\" * _ident_ / 101";
+	char* text = "1 + 2 - \"string\" * ident / 101 [";
 	struct rlex lex;
 
-	test_init(&lex, text, strlen(text)); // filename_init
+	test_lexinit(&lex, text, strlen(text)); // filename + "lexinit"
 
 	while(1) {
 		int tok = rlex_token(&lex);
@@ -122,8 +121,12 @@ int main(int argc, char** argv) {
 		case OpSub:
 			printf("-\n");
 			break;
+		case UnMathed:
+			printf("UnMathed : %c\n", rlex_char(&lex, lex.pmax)); // if error then pmin >= pmax
+			goto Endloop;
+			break;
 		default:
-			printf("something is wroing, tok: %d\n", tok);
+			break;
 		}
 	}
 	Endloop:

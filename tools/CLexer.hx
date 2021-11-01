@@ -238,7 +238,7 @@ private enum Expr {
 	// HACK
 	static var s_action = [
 		"let|%%"     => ActExit,
-		"\r?\n\\|"   => { lines.add(pmax - 1); ActExit; },
+		"\r?\n\\|"   => ActExit,        // token will be re-read, so there is no lines.add(pmax - 1)
 		"\r?\n"      => { lines.add(pmax); lex.s_action(); },
 		"[^l%\r\n]+" => lex.s_action(), // might going to _
 		_ => {
@@ -252,7 +252,7 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 	// custom
 	static var __default__ = @:privateAccess {
 		var t = stream.offset( -1);
-		CLexer.fatalError('Unexpected "' + (t.term != Eof ? __s.str(t): "Eof") + '"', t.pmin, t.pmax);
+		CLexer.fatalError('Unexpected "' + (t.term != Eof ? stream.str(t): "Eof") + '"', t.pmin, t.pmax);
 	}
 
 	static var begin = switch(s) {
@@ -291,9 +291,9 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 
 	static var line : RuleCase = switch(s) {
 	case [OpOr, p = pat, OpArrow]:
-		stream.junk(stream.rest); // if you want hack lex.pmin/.pmax
+		stream.junk(stream.rest);
 		var pmax = _t3.pmax;
-		var lex = @:privateAccess __s.lex;
+		var lex = @:privateAccess stream.lex;
 		var act = (cast lex).skipAction(pmax);
 		{ patten : p, action : act,  faildown : false, pos : pmax, index : -1 }
 	case [OpOr, p = pat]:
@@ -302,7 +302,7 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 			CLexer.fatalError("Expected: " + "->", pmax, pmax);
 		var tok = stream.peek(0);
 		if (tok.term != OpOr)
-			CLexer.fatalError("Unexpected: " + "action", pmax, tok.pmin);
+			CLexer.fatalError("Unexpected: " + "actions", pmax, tok.pmin);
 		{ patten : p, action : "\n", faildown : true, pos : pmax, index : -1 }
 	}
 
@@ -420,6 +420,8 @@ class CLexer {
 				list.push(r);
 			}
 		}
+		if (cfg.eof == null)
+			fatalError("%EOF() is required.", 0, 0);
 		var paterns = toPattens(list, cfg, idmap);
 		var leg = new lm.LexEngine(paterns, cfg.per - 1);
 		checking(leg, list);
@@ -437,7 +439,7 @@ class CLexer {
 	}
 
 	// TODO:
-	function actionSimple( code : String, isvoid : Bool ) : String {
+	function actionSimple( code : String ) : String {
 		var LN = "\n";
 		var TAB = "\t\t";
 		var a = [];
@@ -448,7 +450,7 @@ class CLexer {
 		}
 		var i = a.length - 1;
 		if (i >= 0) {
-			a[i] = (isvoid ? "" : "_ret = ") + a[i] + ";" + LN;
+			a[i] = "_ret = " + a[i] + ";" + LN;
 		}
 		return a.join(";" + LN + TAB);
 	}
@@ -466,7 +468,6 @@ class CLexer {
 	function toPattens( list : Array<RuleSet>, cfg : Config, idmap : Map<String,String> ) {
 		var cset = [new lm.Charset.Char(0, cfg.per - 1)];
 		var ret = [];
-		var isvoid = cfg.eof == null;
 		var index = 0;
 		for (g in list) {
 			var a = [];
@@ -481,12 +482,12 @@ class CLexer {
 				case PString(s):
 					a.push( parse(s, cset, r.patten.pos) );
 				}
-				r.action = actionSimple(r.action, isvoid);
+				r.action = actionSimple(r.action);
 				r.index = index++;
 				cfg.cases.push(r);
 			}
 			if (g.epslon != null) {
-				g.epslon.action = actionSimple(g.epslon.action, isvoid);
+				g.epslon.action = actionSimple(g.epslon.action);
 			}
 			ret.push(a);
 		}
@@ -590,9 +591,3 @@ class CLexer {
 		return null;
 	}
 }
-
-
-
-
-
-

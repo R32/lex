@@ -61,29 +61,19 @@ struct rlex {
 	int pmax;
 	int size;  // src size in characters
 	int _pad;  // x64 align
-	union {
-		unsigned char* src;
-		unsigned short* wsrc;
-	};
-	union {
-		int (*token)(struct rlex* lex);
-		void (*vtoken)(struct rlex* lex);
-	};
+	unsigned char* src;
+	int (*token)(struct rlex* lex);
 };
 
-
-#define rlex_token(rlex)     ((rlex)->token(rlex))
-#define rlex_vtoken(rlex)    ((rlex)->vtoken(rlex))
+#define rlex_token(lex)     ((lex)->token(lex))
 //
-#define rlex_end(rlex)       ((rlex)->pmax >= (rlex)->size)
+#define rlex_end(lex)       ((lex)->pmax >= (lex)->size)
 
 // Call it after executing .token()
-#define rlex_error(rlex)     ((rlex)->pmin >= (rlex)->pmax)
+#define rlex_error(lex)     ((lex)->pmin >= (lex)->pmax)
 
 // Only works if there is no error
-#define rlex_cursize(rlex)   (((rlex)->pmax) - (rlex)->pmin)
-#define rlex_current(rlex)   ((rlex)->src + (rlex)->pmin)
-#define rlex_wcurrent(rlex)  ((rlex)->wsrc + (rlex)->pmin)
+#define rlex_cursize(lex)   ((lex)->pmax - (lex)->pmin)
 
-
+// rlexsrc, rlex_char(lex, i), rlex_current(lex) are now defined in "lex.template"
 #endif
