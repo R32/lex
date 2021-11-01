@@ -1,6 +1,5 @@
 #ifndef r32_stream
 #define r32_stream
-#include <string.h>
 #include "rlex.h"
 
 struct rstream_tok {

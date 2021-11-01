@@ -21,11 +21,13 @@ static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
 
 static int _entry(struct rlex*, int);
 
-static int _cases(struct rlex* lex, int _q) {
 ::foreach entrys::
-#   define ::name::_BEGIN    ::begin::
-#   define ::name::()        (_entry(lex, ::begin::))
+#define ::name::_BEGIN    ::begin::
+#define ::name::()        (_entry(lex, ::begin::))
 ::end::
+static int _cases(struct rlex* lex, int _q) {
+
+
 	int _ret = ::eof::;
 	switch(_q) {
 	::foreach cases::
@@ -44,6 +46,9 @@ static int _cases(struct rlex* lex, int _q) {
 	}
 	return _ret;
 }
+::foreach entrys::
+#undef ::name::
+::end::
 
 static int _entry(struct rlex* lex, int begin) {
 	if (rlex_end(lex))

@@ -8,7 +8,7 @@ all: $(TARGET)
 	@./$<
 
 clean:
-	$(TARGET) $(OBJS)
+	@rm -f $(TARGET) $(OBJS)
 
 .PHONY: clean all
 
@@ -19,7 +19,7 @@ $(TARGET): $(OBJS)
 vpath %.h ../../include
 vpath %.c ../../include
 
-test.o: test.c rstream.c rstream.h rlex.h
+test.o: test.c ../clex.template rstream.c rstream.h rlex.h
 	$(CC) $(INCLUDES) -c $< -o $@
 
 rstream.o: rstream.c rstream.h rlex.h

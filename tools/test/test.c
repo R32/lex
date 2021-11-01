@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
+
 #include "rlex.h"
+#include "rstream.h"
 
 enum token {
 	Eof = 0,
@@ -16,6 +19,8 @@ enum token {
 	OpSub,
 	UnMathed,
 };
+
+// For template variables, please check CLexer.Config
 
 
 typedef unsigned char rlexsrc;
@@ -126,16 +131,18 @@ static unsigned  char  _lextable[] = {
 
 static int _entry(struct rlex*, int);
 
+
+#define TOKEN_BEGIN    0
+#define TOKEN()        (_entry(lex, 0))
+
+#define STR_BEGIN    4
+#define STR()        (_entry(lex, 4))
+
+#define QSTR_BEGIN    7
+#define QSTR()        (_entry(lex, 7))
+
 static int _cases(struct rlex* lex, int _q) {
 
-#   define TOKEN_BEGIN    0
-#   define TOKEN()        (_entry(lex, 0))
-
-#   define STR_BEGIN    4
-#   define STR()        (_entry(lex, 4))
-
-#   define QSTR_BEGIN    7
-#   define QSTR()        (_entry(lex, 7))
 
 	int _ret = Eof;
 	switch(_q) {
@@ -302,6 +309,13 @@ static int _cases(struct rlex* lex, int _q) {
 	return _ret;
 }
 
+#undef TOKEN
+
+#undef STR
+
+#undef QSTR
+
+
 static int _entry(struct rlex* lex, int begin) {
 	if (rlex_end(lex))
 		return Eof;
@@ -343,13 +357,27 @@ void test_lexinit(struct rlex* lex, rlexsrc *src, int size) {
 }
 
 
-int main(int argc, char** argv) {
+
+void test_lexer() {
 	char buff[256];
 	char* text = "1 + 2 - \"string\" * ident / 101 [";
 	struct rlex lex;
-
 	test_lexinit(&lex, text, strlen(text)); // filename + "lexinit"
+	#undef TOKEN
+	#define TOKEN() rlex_token(&lex)
+	assert(TOKEN() == CInt);     // 1
+	assert(TOKEN() == OpAdd);    // +
+	assert(TOKEN() == CInt);     // 2
+	assert(TOKEN() == OpSub);    // -
+	assert(TOKEN() == CString);  // ""
+	assert(TOKEN() == OpMul);    // *
+	assert(TOKEN() == CIdent);   // ident
+	assert(TOKEN() == OpDiv);    // /
+	assert(TOKEN() == CInt);     // 101
+	assert(TOKEN() == UnMathed); // [, means error
+	assert(lex.pmin > lex.pmax); // if error you will get pmin > pmax
 
+/*
 	while(1) {
 		int tok = rlex_token(&lex);
 		switch(tok) {
@@ -399,5 +427,56 @@ int main(int argc, char** argv) {
 		}
 	}
 	Endloop:
+*/
+}
+
+void test_stream() {
+	struct rlex lex;
+	struct rstream_tok *pt = NULL;
+	struct rstream stream = { // same as rstram_init(&stream)
+		.head = 0,
+		.tail = 0,
+		.lex = &lex,
+	};
+	char* text = "id 1 + 2 * 3 / 4 - id";
+	test_lexinit(&lex, text, strlen(text));
+	#undef TOKEN
+	#define TOKEN()     (rstream_next(&stream))
+	#define TERM(t)     ((t)->term)
+	#define PEEK(i)     (rstream_peek(&stream, i))
+	#define JUNK(n)     (rstream_junk(&stream, n))
+	#define REDUCE(w)   (rstream_reduce(&stream, w))
+	#define UNSHIFT(t)  (rstream_unshift(&stream, t))
+
+	assert(TERM(TOKEN()) == CIdent); // next <= id
+	assert(TERM(TOKEN()) == CInt);   // next <= 1
+	assert(TERM(TOKEN()) == OpAdd);  // next <= +
+	assert(TERM(TOKEN()) == CInt);   // next <= 2
+
+	assert(stream.tail - stream.head == 0 && stream.head == 4);
+	pt = REDUCE(4);
+	assert(pt->pmin == 0 && pt->pmax == lex.pmax);
+	assert(stream.tail - stream.head == 0 && stream.head == 1);
+
+	assert(TERM(PEEK(0)) == OpMul);  // peek <= *
+	assert(TERM(PEEK(1)) == CInt);   // peek <= 3
+	assert(TERM(PEEK(2)) == OpDiv);  // peek <= /
+	assert(stream.tail - stream.head == 3 && stream.head == 1);
+	JUNK(2);
+	assert(stream.tail - stream.head == 1 && stream.head == 1);
+	assert(TERM(PEEK(0)) == OpDiv);
+
+	UNSHIFT(PEEK(0));
+	assert(stream.tail - stream.head == 1 && stream.head == 2);
+	assert(TERM(PEEK(-1)) == OpDiv);  // unsafe
+	assert(TERM(PEEK( 0)) == OpDiv);
+	JUNK(1);
+	assert(stream.tail - stream.head == 0 && stream.head == 2);
+	// TODO: more
+}
+
+int main(int argc, char** argv) {
+	test_lexer();
+	test_stream();
 	return 0;
 }
