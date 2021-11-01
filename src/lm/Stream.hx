@@ -115,22 +115,22 @@ class Stream<LHS> {
 		return cached[pos++];
 	}
 
-	function reduce(lvw): Tok<LHS> { // lvw == lv << 8 | w;
+	function reduce(lvw) : Tok<LHS> {// lvw == lv << 8 | w;
 		var w = lvw & 0xFF;
 		if (w == 0)
 			return reduceEP(lvw >>> 8);
-		var pmax = offset(-1).pmax;
-		pos -= w;
-		var t = cached[pos];
+		var pmax = offset( -1).pmax; // save pmax before update stream->pos
+		w--;                         // reserve 1 block
+		pos -= w;                    // update
+		right -= w;
+		var t = offset( -1);         // related to the reserved block
 		t.term = lvw >>> 8;
 		t.pmax = pmax;
-		++ pos;
-		-- w;
+		if (w == 0)
+			return t;
 		var i = w;
 		while (i-- > 0)
 			reclaim(cached[pos + i]);
-		// fast junk(w - 1)
-		right -= w;
 		i = pos;
 		while (i < right) {
 			cached[i] = cached[i + w];
@@ -138,6 +138,7 @@ class Stream<LHS> {
 		}
 		return t;
 	}
+
 	function reduceEP(lv): Tok<LHS> {
 		var prev = cached[pos - 1];
 		var t = newTok(lv, prev.pmax, prev.pmax);
