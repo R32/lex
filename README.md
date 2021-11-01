@@ -7,9 +7,9 @@ Build lexer and simple parser(LR0) in macro.
 
 * [hello world](#Usage)
 
-* [Lexer tool for c langauge](/tools/CLexer.hx) *alpha, I usually use it as a regexp in c langauge*
+* [Lexer tool for c langauge](/tools/CLexer.hx) *alpha, I usually use it as a regexp for c langauge*
 
-  > run `haxelib run lex` [test.lex](/tools/test.lex) and then you will get a [`test.c`](/tools/test.c) file
+  > run `haxelib run lex` [test.lex](/tools/test/test.lex) and then you will get a [`test.c`](/tools/test/test.c) file
 
 * [hscript parser](/demo/)
 
