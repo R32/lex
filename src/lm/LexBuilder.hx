@@ -35,8 +35,9 @@ class LexBuilder {
 	}
 
 	static function readIntTokens( t : Type, out : Map<String, Bool> ) {
-		if ( !Context.unify(t, Context.getType("Int")) ) return;
-		return switch (t) {
+		if ( !Context.unify(t, Context.getType("Int")) )
+			return;
+		switch (t) {
 		case TAbstract(_.get() => ab, _):
 			for (f in ab.impl.get().statics.get())
 				out.set(f.name, true);
@@ -50,8 +51,8 @@ class LexBuilder {
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
-		var tmap = new Map();    // TokenString   => Bool
-		var reflect = new Map(); // PatternString => TokenString
+		var tmap = new Map();    // TokenString   => Bool, used for LR0Parser
+		var reflect = new Map(); // PatternString => TokenString, used for LR0Parser
 		for (it in cl.interfaces) {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
@@ -276,13 +277,14 @@ class LexBuilder {
 				fatalError("Undefined identifier: " + i, e.pos);
 			s;
 		case EBinop(OpAdd, e1, e2):
-			splitMix(exprString(e1, vmap), exprString(e2, vmap));
+			exprString(e1, vmap) + exprString(e2, vmap);
 		case EParenthesis(e):
 			exprString(e, vmap);
 		default:
 			fatalError("Invalid rule", e.pos);
 		}
 	}
+
 	static function mkInlineFVar(name, value, pos) : Field {
 		return {
 			name: name,
@@ -382,48 +384,6 @@ class LexBuilder {
 				buf.addSub(s, p, i - p);
 			return buf.toString();
 		}
-	}
-
-	// ("a", "0")  => "a0"
-	// ("a|b","0") => "a0|b0"
-	// ("a","0|1") => "a0|a1"
-	// ("a|b","0|1") => "a0|a1|b0|b1"
-	static function splitMix( s1 : String, s2 : String ) : String {
-		function split(s:String): Array<String> {
-			var i = 0;
-			var left = 0;
-			var len = s.length;
-			var ret = [];
-			// Ignore all "|" at the beginning
-			while (i < len) {
-				var c = StringTools.fastCodeAt(s, i);
-				if (c == "|".code)
-					++ i;
-				else
-					break;
-			}
-			while (i < len) {
-				var c = StringTools.fastCodeAt(s, i++);
-				if (c == "|".code && i < len && StringTools.fastCodeAt(s, i - 2) != "\\".code) {
-					ret.push( s.substr(left, i - left - 1) );
-					left = i;
-				}
-			}
-			if (left == 0) {
-				ret.push(s);
-			} else if (i > left) {
-				ret.push( s.substr(left, i - left) );
-			}
-			return ret;
-		}
-		function mix(a1: Array<String>, a2: Array<String>): Array<String>{
-			var ret = [];
-			for (x in a1)
-				for (y in a2)
-					ret.push(x + y);
-			return ret;
-		}
-		return mix(split(s1), split(s2)).join("|");
 	}
 }
 #else
