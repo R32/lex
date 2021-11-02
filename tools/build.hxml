@@ -1,7 +1,3 @@
 -cp ../
 -cp ../src
--D old-error-format
--D test
--D lex_charmax
--main tools.Run
---interp
+--run "tools.Run test/test.lex"

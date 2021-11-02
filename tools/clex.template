@@ -26,8 +26,6 @@ static int _entry(struct rlex*, int);
 #define ::name::()        (_entry(lex, ::begin::))
 ::end::
 static int _cases(struct rlex* lex, int _q) {
-
-
 	int _ret = ::eof::;
 	switch(_q) {
 	::foreach cases::

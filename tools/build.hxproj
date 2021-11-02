@@ -20,12 +20,12 @@
   </classpaths>
   <!-- Build options -->
   <build>
-    <option directives="old-error-format&#xA;test&#xA;lex_charmax" />
+    <option directives="" />
     <option flashStrict="False" />
     <option noInlineOnDebug="False" />
-    <option mainClass="tools.Run" />
+    <option mainClass="" />
     <option enabledebug="False" />
-    <option additional="" />
+    <option additional="--run &quot;tools.Run test/test.lex&quot;" />
   </build>
   <!-- haxelib libraries -->
   <haxelib>

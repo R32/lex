@@ -67,9 +67,6 @@ class Run {
 				isParser = true;
 			}
 		}
-		#if test
-		files = ["test.lex"];
-		#end
 		// run
 		if (isParser) {
 			doParser();

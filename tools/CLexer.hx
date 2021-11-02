@@ -93,11 +93,11 @@ private enum Expr {
 	}
 
 	public function skipAction( i : Int ) {
-		this.pmax = this.pmin = i; // reset
-		var t = this.s_action();
+		this.pmax = i;
+		var t = this.codes();
 		if (t == ActExit) {
 			this.pmax = this.pmin;
-		} // else Eof
+		}
 		this.pmin = i;
 		return this.current;
 	}
@@ -236,14 +236,14 @@ private enum Expr {
 	];
 
 	// HACK
-	static var s_action = [
+	static var codes = [
 		"let|%%"     => ActExit,
-		"\r?\n\\|"   => ActExit,        // token will be re-read, so there is no lines.add(pmax - 1)
-		"\r?\n"      => { lines.add(pmax); lex.s_action(); },
-		"[^l%\r\n]+" => lex.s_action(), // might going to _
+		"\r?\n[ \t]*|" => ActExit, // token will be re-read, so there is no lines.add(pmax - 1)
+		"\r?\n"      => { lines.add(pmax); lex.codes(); },
+		"[^l%\r\n]+" => lex.codes(),
 		_ => {
-			lex.pmax++;     // skip current char
-			lex.s_action(); // restart
+			lex.pmax++;  // skip current char
+			lex.codes(); // restart
 		},
 	];
 }
