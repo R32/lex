@@ -13,7 +13,7 @@ class LexTest {
 		// parser
 		subs.Demo.main();
 
-		var conter = new LConter("test");
+		var conter = new LineCounter("test");
 		conter.add(15); // line 2
 		conter.add(20); // line 3
 		conter.add(30); // line 4

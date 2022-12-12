@@ -12,10 +12,10 @@ class LineColumn {
 }
 
 /**
-* line conter for single file in Lexer
+* line counter for single file in Lexer
 */
 @:access(lm.LineColumn)
-class LConter { //
+class LineCounter { //
 	public var owner : String;
 	public var cache : Array<Int>;
 	public function new( source : String ) {
@@ -54,11 +54,11 @@ class LConter { //
 }
 
 class Multiple {
-	public var current : LConter;
-	public var all : Array<LConter>;
+	public var current : LineCounter;
+	public var all : Array<LineCounter>;
 
 	public function new() {
-		current = new LConter("");
+		current = new LineCounter("");
 		all = [];
 	}
 	function choise( source : String ) {
@@ -75,7 +75,7 @@ class Multiple {
 
 	public function add( source : String, pos : Int ) {
 		if (!choise(source)) {
-			var c = new LConter(source);
+			var c = new LineCounter(source);
 			all.push(c);
 			current = c;
 		}

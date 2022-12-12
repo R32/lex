@@ -58,7 +58,7 @@ private enum Expr {
 
 	public var footer : String;
 
-	public var lines : LConter;
+	public var lines : LineCounter;
 
 	public var parray : lm.PosArray;
 
@@ -68,7 +68,7 @@ private enum Expr {
 		var text = sys.io.File.getContent(file);
 		this.input = lms.ByteData.ofString(text);
 		this.parray = new lm.PosArray();
-		this.lines = new LConter(file);
+		this.lines = new LineCounter(file);
 		this.pmin = 0;
 		this.pmax = 0;
 		footer = "";
