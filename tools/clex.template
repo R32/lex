@@ -3,11 +3,11 @@
 ::if (utf8)::
 typedef unsigned char rlexsrc;
 #define rlex_char(lex, i)     ((lex)->src[i])
-#define rlex_current(lex)     ((lex)->src + (lex)->pmin)
+#define rlex_current(lex)     ((lex)->src + (lex)->pos.min)
 ::else::
 typedef unsigned short rlexsrc;
 #define rlex_char(lex, i)     (((unsigned short*)(lex)->src)[i])
-#define rlex_current(lex)     (((unsigned short*)(lex)->src) + (lex)->pmin)
+#define rlex_current(lex)     (((unsigned short*)(lex)->src) + (lex)->pos.min)
 ::end::
 
 static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
@@ -52,7 +52,7 @@ static int _entry(struct rlex* lex, int begin) {
 	if (rlex_end(lex))
 		return ::eof::;
 	int c;
-	int i = lex->pmax;
+	int i = lex->pos.max;
 	int state = begin;
 	int prev = begin;
 	while(i < lex->size) {
@@ -62,15 +62,15 @@ static int _entry(struct rlex* lex, int begin) {
 			break;
 		prev = state;
 	}
-	lex->pmin = i; // if UnMatached then pmin >= pmax
+	lex->pos.min = i; // if UnMatached then pmin >= pmax
 	if (state == ::invalid::) {
 		state = prev;
 		i--;
 	}
 	int q = LEX_EXIT(state);
-	if (i > lex->pmax && q < ::nrules::) {
-		lex->pmin = lex->pmax;
-		lex->pmax = i;
+	if (i > lex->pos.max && q < ::nrules::) {
+		lex->pos.min = lex->pos.max;
+		lex->pos.max = i;
 	} else {
 		q = LEX_EXIT(begin);
 	}
@@ -82,7 +82,7 @@ static int __token(struct rlex* lex) {
 
 // public function
 void ::path.file::_lexinit(struct rlex* lex, rlexsrc *src, int size) {
-	lex->pmin = lex->pmax = 0;
+	lex->pos = (struct rlex_position){0, 0};
 	lex->size = size;
 	lex->src = (unsigned char*)src;
 	lex->token = __token;

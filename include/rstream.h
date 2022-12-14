@@ -5,8 +5,7 @@
 struct rstream_tok {
 	int state;         // for internal of parser tool,
 	int term;
-	int pmin;
-	int pmax;
+	struct rlex_position pos;
 	union {
 		struct {
 			int   i4;  // low

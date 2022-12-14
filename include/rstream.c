@@ -16,8 +16,7 @@ struct rstream_tok* rstream_peek(struct rstream *stream, int i) {
 		int term = TOKEN();
 		struct rstream_tok* tok = &stream->cached[stream->tail++];
 		tok->term = term;
-		tok->pmin = stream->lex->pmin;
-		tok->pmax = stream->lex->pmax;
+		tok->pos = stream->lex->pos;
 	}
 	return OFFSET(i);
 }
@@ -57,8 +56,7 @@ struct rstream_tok* rstream_next(struct rstream *stream) {
 	if(stream->head == stream->tail) { // LENGTH() == 0
 		stream->tail++;
 		tok->term = TOKEN();
-		tok->pmin = stream->lex->pmin;
-		tok->pmax = stream->lex->pmax;
+		tok->pos = stream->lex->pos;
 	}
 	stream->head++;
 	return tok;
@@ -79,9 +77,9 @@ static void move(struct rstream *stream, int n) {
 
 static struct rstream_tok* rstream_reduceEP(struct rstream *stream) {
 	struct rstream_tok *curr = OFFSET(0);
-	int pmax = (curr - 1)->pmax;
+	int pmax = (curr - 1)->pos.max;
 	move(stream, 1);
-	curr->pmax = curr->pmin = pmax;
+	curr->pos = (struct rlex_position){pmax, pmax};
 	return curr;
 }
 
@@ -95,12 +93,12 @@ void rstream_unshift(struct rstream *stream, struct rstream_tok* src) {
 struct rstream_tok* rstream_reduce(struct rstream *stream, int width) {
 	if (width == 0)
 		return rstream_reduceEP(stream);
-	int pmax = OFFSET(-1)->pmax; // save "pmax" before update stream->head
-	width--;                     // reserve 1 block
-	stream->head -= width;       // update stream->head
+	int pmax = OFFSET(-1)->pos.max; // save "pmax" before update stream->head
+	width--;                        // reserve 1 block
+	stream->head -= width;          // update stream->head
 	stream->tail -= width;
 	struct rstream_tok* const tok = OFFSET(-1); // related to the reserved block
-	tok->pmax = pmax;
+	tok->pos.max = pmax;
 	if (width) {
 		// fast junk(width)
 		int len = LENGTH();

@@ -45,22 +45,22 @@ let token = function
 | "*"            -> OpMul
 | "/"            -> OpDiv
 | '"'            ->
-	int min = lex->pmin;
+	int min = lex->pos.min;
 	enum token t = STR();
 	if (t == Eof) {
-		printf("UnClosed String: %d-%d",min, lex->pmax);
+		printf("UnClosed String: %d-%d",min, lex->pos.max);
 		exit(-1);
 	}
-	lex->pmin = min; // position union
+	lex->pos.min = min; // position union
 	t
 | "'" ->
-	int min = lex->pmin;
+	int min = lex->pos.min;
 	enum token t = QSTR();
 	if (t == Eof) {
-		printf("UnClosed String: %d-%d",min, lex->pmax);
+		printf("UnClosed String: %d-%d",min, lex->pos.max);
 		exit(-1);
 	}
-	lex->pmin = min;
+	lex->pos.min = min;
 	t
 | _ ->
 	UnMathed
@@ -95,8 +95,11 @@ void test_lexer() {
 	assert(TOKEN() == OpDiv);    // /
 	assert(TOKEN() == CInt);     // 101
 	assert(TOKEN() == UnMathed); // [, means error
-	assert(lex.pmin > lex.pmax); // if error you will get pmin > pmax
+	assert(lex.pos.min > lex.pos.max); // if error you will get pmin > pmax
 
+	struct rlex_position p1 = {20, 80}, p2 = {10, 60};
+	struct rlex_position p3 = rlex_position_union(p1, p2);
+	assert(p3.min == p2.min && p3.max == p1.max);
 /*
 	while(1) {
 		int tok = rlex_token(&lex);
@@ -139,7 +142,7 @@ void test_lexer() {
 			printf("-\n");
 			break;
 		case UnMathed:
-			printf("UnMathed : %c\n", rlex_char(&lex, lex.pmax)); // if error then pmin >= pmax
+			printf("UnMathed : %c\n", rlex_char(&lex, lex.pos.max)); // if error then pmin >= pmax
 			goto Endloop;
 			break;
 		default:
@@ -175,7 +178,7 @@ void test_stream() {
 
 	assert(stream.tail - stream.head == 0 && stream.head == 4);
 	pt = REDUCE(4);
-	assert(pt->pmin == 0 && pt->pmax == lex.pmax);
+	assert(pt->pos.min == 0 && pt->pos.max == lex.pos.max);
 	assert(stream.tail - stream.head == 0 && stream.head == 1);
 
 	assert(TERM(PEEK(0)) == OpMul);  // peek <= *

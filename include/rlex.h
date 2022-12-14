@@ -30,16 +30,16 @@ let token = function
 | "0x[a-fA-F0-9]+" ->
 	CInt
 | "'"        ->
-	int min = rlex->pmin;
+	int min = rlex->pos.min;
 	enum token tok = qstr();
 	if (tok == Eof) {
-		printf("UnClosed String: %d-%d",min, lex->pmax);
+		printf("UnClosed String: %d-%d",min, lex->pos.max);
 		exit(-1);
 	}
-	rlex->pmin = min; // union
+	rlex->pos.min = min; // union
 	tok
 | _ ->
-	printf("UnMathed : %c\n", lex->src[lex->pmax]); // if error then pmin >= pmax
+	printf("UnMathed : %c\n", lex->src[lex->pos.max]); // if error then pmin >= pmax
 	exit(-1);
 	Eof
 
@@ -56,9 +56,17 @@ let str = function
 %%  // lex Ends
 */
 
+struct rlex_position {
+	int min, max;
+};
+
 struct rlex {
-	int pmin;
-	int pmax;
+	union {
+		struct rlex_position pos;
+		struct {
+			int pmin, pmax;	// Compatible for old style
+		};
+	};
 	int size;  // src size in characters
 	int _pad;  // x64 align
 	unsigned char* src;
@@ -67,13 +75,20 @@ struct rlex {
 
 #define rlex_token(lex)     ((lex)->token(lex))
 //
-#define rlex_end(lex)       ((lex)->pmax >= (lex)->size)
+#define rlex_end(lex)       ((lex)->pos.max >= (lex)->size)
 
 // Call it after executing .token()
-#define rlex_error(lex)     ((lex)->pmin >= (lex)->pmax)
+#define rlex_error(lex)     ((lex)->pos.min >= (lex)->pos.max)
 
 // Only works if there is no error
-#define rlex_cursize(lex)   ((lex)->pmax - (lex)->pmin)
+#define rlex_cursize(lex)   ((lex)->pos.max - (lex)->pos.min)
 
 // rlexsrc, rlex_char(lex, i), rlex_current(lex) are now defined in "lex.template"
+
+#define rlex_position_union(p1, p2) \
+	((struct rlex_position) { \
+		(p1).min < (p2).min ? (p1).min : (p2).min, \
+		(p1).max > (p2).max ? (p1).max : (p2).max  \
+	})
+
 #endif
