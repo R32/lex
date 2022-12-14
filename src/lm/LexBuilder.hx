@@ -70,7 +70,9 @@ class LexBuilder {
 		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
 		for (f in Context.getBuildFields()) {
-			if (f.access.indexOf(AStatic) > -1 && f.access.indexOf(AInline) == -1
+			if (f.access.indexOf(AStatic) >= 0
+			&& f.access.indexOf(AInline) == -1
+			&& f.access.indexOf(AFinal) == -1
 			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}) if (el.length > 0):
@@ -79,7 +81,7 @@ class LexBuilder {
 						switch (e.expr) {
 						case EBinop(OpArrow, s, e):
 							switch(s.expr) {
-							case EConst(CIdent(i)) if(i == "null" || i == "_"):
+							case EConst(CIdent(i)) if (i == "null" || i == "_"):
 								g.unmatch = {pat: s, action: e};
 							default:
 								g.rules.push({pat: s, action: e});
