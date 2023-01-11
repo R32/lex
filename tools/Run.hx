@@ -10,11 +10,19 @@ import tools.CLexer;
 */
 class Run {
 
+	static inline var version = "0.3";
+
 	var files : Array<String>;
 	var libPath : String;
+	var outdir : String;
 
 	function usage() {
-		Sys.print("build lexer for c langauge\n");
+		Sys.print('Lexer Tool v$version
+Usage : haxelib run lex [options] <files>
+ Options :
+  -o, --out <dir> : specify output directory
+  -h, --help      : print help infomation
+');
 	}
 
 	function doLexer() {
@@ -29,7 +37,7 @@ class Run {
 		var mt = new Template(smt);
 		for (f in files) {
 			if (EXISTS(f)) {
-				new CLexer(f, mt);
+				new CLexer(f, mt, outdir);
 			}
 		}
 	}
@@ -41,6 +49,7 @@ class Run {
 	public function new( args : Array<String> ) {
 
 		files = [];
+		outdir = "";
 
 		if (Sys.getEnv("HAXELIB_RUN") == "1") {
 			libPath = Sys.getCwd();
@@ -59,14 +68,19 @@ class Run {
 				files.push(v);
 				continue;
 			}
+			if (v == "-o" || v == "--out") {
+				outdir = args[i++];
+				continue;
+			}
 			if (v == "-h" || v == "--help") {
-				usage();
-				return;
+				return usage();
 			}
 			if (v == "-p" || v == "--parser") {
 				isParser = true;
 			}
 		}
+		if (files.length == 0)
+			return usage();
 		// run
 		if (isParser) {
 			doParser();

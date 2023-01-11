@@ -339,7 +339,7 @@ private class Config {
 	public var entrybegin : Int; // entrys[0].begin
 	public var path    : haxe.io.Path;
 
-	public function new( file : String ) {
+	public function new( file : String, outdir : String ) {
 		per = 128;
 		eof = null;
 		utf8 = true;
@@ -348,6 +348,8 @@ private class Config {
 		epsilon = "";
 		entrys = [];
 		path = new haxe.io.Path(file);
+		if (outdir != null && outdir != "")
+			path.dir = haxe.io.Path.removeTrailingSlashes(outdir);
 		path.ext = "c"; // change
 	}
 	public function update( leg : lm.LexEngine, list : Array<RuleSet> ) {
@@ -396,14 +398,14 @@ private class Config {
 */
 class CLexer {
 
-	public function new( file : String, mt : Template ) {
+	public function new( file : String, mt : Template, outdir : String ) {
 		var lexer = new Lexer(file);
 		lastLexer = lexer;
 		lexer.skipBegin();
 		var list = [];
 		var idmap = new Map();
 		var parser = new Parser(lexer);
-		var cfg = new Config(file);
+		var cfg = new Config(file, outdir);
 		// parse file
 		var aexpr = parser.begin();
 		for (e in aexpr) {
