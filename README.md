@@ -1,7 +1,7 @@
 Lex
 ------
 
-Build lexer and simple parser(LR0) in macro.
+Build lexer and simple parser(SimpleLR) in macro.
 
 ## Samples
 
@@ -23,7 +23,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
   - It also provides a lexer tool for c language
 
-* Parser: Only LR(0) is available. (WIP)
+* Parser: Only SimpleLR is available. (WIP)
 
   Unlike normal LR parser, there is no *action table*(just *jump table*), So how did it *shift/reduce*?
 
@@ -159,7 +159,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
 </p></details></pre>
 
-* `-D lex_lr0table`: for debug. it will generate a LR0 table save as `lr0-table.txt`. for example:
+* `-D lex_lr0table`: for debug. it will generate a SimpleLR table save as `lr0-table.txt`. for example:
 
   > You may have to modify the `mmap` field in `debug.Print`
 
