@@ -445,16 +445,17 @@ class CLexer {
 		var LN = "\n";
 		var TAB = "\t\t";
 		var a = [];
-		for (s1 in code.split(";")) {
+		for (s1 in code.split("\n")) {
 			var s2 = trim(s1);
-			if (s2 != "")
-				a.push(s2);
+			if (s2 == "" || (s2.charCodeAt(0) == "/".code && s2.charCodeAt(0) == "/".code))
+				continue;
+			a.push(s2);
 		}
 		var i = a.length - 1;
 		if (i >= 0) {
-			a[i] = "_ret = " + a[i] + ";" + LN;
+			a[i] = "_ret = " + a[i] + ";";
 		}
-		return a.join(";" + LN + TAB);
+		return a.join(LN + TAB);
 	}
 
 	function parse( s , cset, min) {
