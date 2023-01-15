@@ -25,5 +25,5 @@ test.o: test.c ../clex.template rstream.c rstream.h rlex.h
 rstream.o: rstream.c rstream.h rlex.h
 	$(CC) $(INCLUDES) -c $< -o $@
 
-test.c: test.lex ../clex.template rstream.c rstream.h rlex.h
+test.c: test.lex ../clex.template ../CLexer.hx rstream.c rstream.h rlex.h
 	haxelib run lex $<

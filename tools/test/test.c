@@ -28,6 +28,8 @@ typedef unsigned char rlexsrc;
 #define rlex_current(lex)     ((lex)->src + (lex)->pos.min)
 
 
+
+
 static unsigned  char  _lextable[] = {
 // STATE 0
 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x01,0x01,0xFF,0xFF,0xFF,0xFF,0xFF,
@@ -144,165 +146,118 @@ static int _entry(struct rlex*, int);
 static int _cases(struct rlex* lex, int _q) {
 	int _ret = Eof;
 	switch(_q) {
-	
+
 	case 0:
-		
-		{
+	{
 		_ret = TOKEN();
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 1:
-		
-		{
+	{
 		_ret = CIdent;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 2:
-		
-	
+
 	case 3:
-		
-		{
+	{
 		_ret = CInt;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 4:
-		
-		{
+	{
 		_ret = OpAdd;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 5:
-		
-		{
+	{
 		_ret = OpSub;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 6:
-		
-		{
+	{
 		_ret = OpMul;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 7:
-		
-		{
+	{
 		_ret = OpDiv;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 8:
-		
-		{
+	{
 		int min = lex->pos.min;
 		enum token t = STR();
 		if (t == Eof) {
 		printf("UnClosed String: %d-%d",min, lex->pos.max);
 		exit(-1);
 		}
-	lex->pos.min = min;
-		_ret = // position union
-	t;
+		lex->pos.min = min;
+		_ret = t;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 9:
-		
-		{
+	{
 		int min = lex->pos.min;
 		enum token t = QSTR();
 		if (t == Eof) {
 		printf("UnClosed String: %d-%d",min, lex->pos.max);
 		exit(-1);
 		}
-	lex->pos.min = min;
+		lex->pos.min = min;
 		_ret = t;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 10:
-		
-		{
+	{
 		_ret = CString;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 11:
-		
-		{
+	{
 		_ret = STR();
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 12:
-		
-		{
+	{
 		_ret = STR();
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 13:
-		
-		{
+	{
 		_ret = CQString;
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 14:
-		
-		{
+	{
 		_ret = QSTR();
+	}
+	break;
 
-		}
-		break;
-		
-	
 	case 15:
-		
-		{
+	{
 		_ret = QSTR();
+	}
+	break;
 
-		}
-		break;
-		
-	
 	default:
-		{
+	{
 		_ret = UnMathed;
-
-		}
+	}
+	break;
 	}
 	return _ret;
 }
@@ -323,6 +278,10 @@ static int _entry(struct rlex* lex, int begin) {
 	int prev = begin;
 	while(i < lex->size) {
 		c = rlex_char(lex, i++);
+
+		if (c > 127)
+			c = 127;
+
 		state = LEX_TRANS(state, c);
 		if (state >= 10)
 			break;
@@ -439,8 +398,9 @@ void test_stream() {
 		.tail = 0,
 		.lex = &lex,
 	};
-	char* text = "id 1 + 2 * 3 / 4 - id";
+	char *text = "id 1 + 2 * 3 / 4 - id";
 	test_lexinit(&lex, text, strlen(text));
+
 	#undef TOKEN
 	#define TOKEN()     (rstream_next(&stream))
 	#define TERM(t)     ((t)->term)

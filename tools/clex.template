@@ -8,6 +8,11 @@ typedef unsigned char rlexsrc;
 typedef unsigned short rlexsrc;
 #define rlex_char(lex, i)     (((unsigned short*)(lex)->src)[i])
 #define rlex_current(lex)     (((unsigned short*)(lex)->src) + (lex)->pos.min)
+#define LEX_UCS2_SRC
+::end::
+
+::if bit16::
+#define LEX_UCS2_TABLE
 ::end::
 
 static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
@@ -28,19 +33,18 @@ static int _entry(struct rlex*, int);
 static int _cases(struct rlex* lex, int _q) {
 	int _ret = ::eof::;
 	switch(_q) {
-	::foreach cases::
-	case ::index:::
-		::if (!faildown)::
-		{
+::foreach cases::
+	case ::index:::::if (!faildown)::
+	{
 		::action::
-		}
-		break;
-		::end::
-	::end::
+	}
+	break;::end::
+::end::
 	default:
-		{
+	{
 		::epsilon::
-		}
+	}
+	break;
 	}
 	return _ret;
 }
@@ -57,6 +61,10 @@ static int _entry(struct rlex* lex, int begin) {
 	int prev = begin;
 	while(i < lex->size) {
 		c = rlex_char(lex, i++);
+::if ((per == 128) || (!utf8))::
+		if (c > ::(per - 1)::)
+			c = ::(per - 1)::;
+::end::
 		state = LEX_TRANS(state, c);
 		if (state >= ::nsegs::)
 			break;
