@@ -163,6 +163,10 @@ private enum Expr {
 			parray.add(min + 1, sbuf.toString());
 			t;
 		},
+		"/\\*" => {
+			lex.commentblock();
+			lex.token();
+		},
 		_ => {
 			var s = "UnMatached: '" + lex.getString(pmax, pmin - pmax) + "'";
 			CLexer.fatalError(s, pmax, pmin);
@@ -247,6 +251,22 @@ private enum Expr {
 		},
 	];
 
+	static var commentblock = [
+		"*/" => {
+			Exit;
+		},
+		CRLF => {
+			lines.add(pmax);
+			lex.commentblock();
+		},
+		"*" => {
+			lex.commentblock();
+		},
+		"[^*\n]+" => {
+			lex.commentblock();
+		}
+	];
+
 	// HACK
 	static var clblock = [
 		"let|%%" => {
@@ -260,6 +280,10 @@ private enum Expr {
 			lines.add(pmax);
 			lex.trimbeginning();
 			char(pmax) == "|".code ? Exit : lex.clblock();
+		},
+		"/\\*" => {
+			lex.commentblock();
+			clblock();
 		},
 		";" => {
 			sbuf.addChar(";".code);
