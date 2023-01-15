@@ -8,7 +8,8 @@ import lm.LineColumn;
 
 private enum abstract Token(Int) to Int {
 	var Eof = 0;
-	var ActExit;
+	var Exit;
+	var ActRollback;
 	var CString;
 	var CInt;
 	var CIdent;
@@ -62,6 +63,8 @@ private enum Expr {
 
 	public var parray : lm.PosArray;
 
+	public var ccodes : Array<String>;
+
 	var sbuf : StringBuf;
 
 	public function new( file : String ) {
@@ -92,21 +95,30 @@ private enum Expr {
 		}
 	}
 
-	public function skipAction( i : Int ) {
+	public function copyAction( i : Int ) {
 		this.pmax = i;
-		var t = this.codes();
-		if (t == ActExit) {
+		this.ccodes = [];
+		this.sbuf = new StringBuf();
+		var t = this.clblock();
+		if (t == ActRollback) {
 			this.pmax = this.pmin;
 		}
 		this.pmin = i;
-		return this.current;
+		// add "ret = ..." to
+		var LN = "\n";
+		var TAB = "\t\t";
+		var i = ccodes.length - 1;
+		if (i < 0)
+			return "";
+		ccodes[i] = "_ret = " + ccodes[i] + ";";
+		return ccodes.join(LN + TAB);
 	}
 
-	//inline function strpos( p ) return lm.Utils.posString(p, this.input);
-	//
 	static var ident = "[a-zA-Z_][a-zA-Z0-9_]*";
 
 	static var integer = "0|[1-9][0-9]*";
+
+	static var CRLF = "\r?\n";
 
 	static var token = [
 		"%%" => {
@@ -114,7 +126,7 @@ private enum Expr {
 			Eof;
 		},
 
-		"\r?\n"       => { lines.add(pmax); lex.token(); },
+		CRLF          => { lines.add(pmax); lex.token(); },
 		"[ \t]+"      => lex.token(),
 		"//[^\n]*"    => lex.token(), // skip CommentLine
 
@@ -188,7 +200,7 @@ private enum Expr {
 			sbuf.addChar("\\".code);
 			lex.str();
 		},
-		"\r?\n"      => {
+		CRLF         => {
 			lines.add(pmax);
 			CLexer.fatalError("Unexpected: " + "\\n", pmin, pmax);
 		},
@@ -228,7 +240,7 @@ private enum Expr {
 			sbuf.addChar("\\".code);
 			lex.qstr();
 		},
-		"\r?\n"      => { lines.add(pmax); CLexer.fatalError("Unexpected: " + "\\n", pmin, pmax); },
+		CRLF         => { lines.add(pmax); CLexer.fatalError("Unexpected: " + "\\n", pmin, pmax); },
 		"[^'\r\n\\\\]+"  => {
 			sbuf.add(lex.current);
 			lex.qstr();
@@ -236,15 +248,40 @@ private enum Expr {
 	];
 
 	// HACK
-	static var codes = [
-		"let|%%"     => ActExit,
-		"\r?\n[ \t]*|" => ActExit, // token will be re-read, so there is no lines.add(pmax - 1)
-		"\r?\n"      => { lines.add(pmax); lex.codes(); },
-		"[^l%\r\n]+" => lex.codes(),
-		_ => {
-			lex.pmax++;  // skip current char
-			lex.codes(); // restart
+	static var clblock = [
+		"let|%%" => {
+			ActRollback; // Reserve for next
 		},
+		CRLF => {
+			if (sbuf.length > 0) {
+				ccodes.push(sbuf.toString());
+				sbuf = new StringBuf();
+			}
+			lines.add(pmax);
+			lex.trimbeginning();
+			char(pmax) == "|".code ? Exit : lex.clblock();
+		},
+		";" => {
+			sbuf.addChar(";".code);
+			lex.trimbeginning();
+			lex.clblock();
+		},
+		"//[^\n]*" => {
+			lex.clblock();
+		},
+		"[ \t]+" => {
+			if (sbuf.length > 0)
+				sbuf.addChar(" ".code);
+			lex.clblock();
+		},
+		"[^ ;\r\t\n]+" => {
+			sbuf.add(lex.current);
+			lex.clblock();
+		}
+	];
+
+	static var trimbeginning = [
+		"[ \t]*" => Exit
 	];
 }
 
@@ -294,8 +331,8 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 		stream.junk(stream.rest);
 		var pmax = _t3.pmax;
 		var lex = @:privateAccess stream.lex;
-		var act = (cast lex).skipAction(pmax);
-		{ patten : p, action : act,  faildown : false, pos : pmax, index : -1 }
+		var act = Std.downcast(lex, Lexer).copyAction(pmax);
+		{ patten : p, action : act, faildown : false, pos : pmax, index : -1 }
 	case [OpOr, p = pat]:
 		var pmax = _t2.pmax;
 		if (p.pat == PNull)
@@ -440,24 +477,6 @@ class CLexer {
 		Sys.print("> " + cfg.path.toString() + "\n");
 	}
 
-	// TODO:
-	function actionSimple( code : String ) : String {
-		var LN = "\n";
-		var TAB = "\t\t";
-		var a = [];
-		for (s1 in code.split("\n")) {
-			var s2 = trim(s1);
-			if (s2 == "" || (s2.charCodeAt(0) == "/".code && s2.charCodeAt(0) == "/".code))
-				continue;
-			a.push(s2);
-		}
-		var i = a.length - 1;
-		if (i >= 0) {
-			a[i] = "_ret = " + a[i] + ";";
-		}
-		return a.join(LN + TAB);
-	}
-
 	function parse( s , cset, min) {
 		return try
 			lm.LexEngine.parse(s, cset)
@@ -485,12 +504,8 @@ class CLexer {
 				case PString(s):
 					a.push( parse(s, cset, r.patten.pos) );
 				}
-				r.action = actionSimple(r.action);
 				r.index = index++;
 				cfg.cases.push(r);
-			}
-			if (g.epslon != null) {
-				g.epslon.action = actionSimple(g.epslon.action);
 			}
 			ret.push(a);
 		}
