@@ -2,7 +2,7 @@ package subs;
 
 class LexVarIdent {
 	public static function main() {
-		var str = 'var varibles';
+		var str = 'var varibles .1235e-5 0e+7 9e10 3.1446 0 101 .0 %% && ##';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var a = [];
 		while (true) {
@@ -20,12 +20,25 @@ private enum abstract Token(Int) to Int {
 	var Eof;
 	var KwdVar;
 	var CIdent;
+	var CFloat;
+	var Others;
 }
 
 @:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
-	static var tok =  [
+
+	static var exp = "[eE][+-]?[0-9]+";
+	static var integer = "0|[1-9][0-9]*";
+	static var floatpoint = ".[0-9]+|[0-9]+.[0-9]*";
+
+	static var tok = [
+		integer + Opt(exp) | floatpoint + Opt(exp) => CFloat,
 		"[ \t\n]+" => lex.token(),
 		"var" => KwdVar,
 		"[a-zA-Z_][-a-zA-Z0-9_]*" => CIdent,
+		//	"##|%%|&&" => Others,
+		"%%|&&|##" => {
+			var t = Others;
+			t;
+		}
 	];
 }

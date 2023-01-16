@@ -33,7 +33,7 @@ private enum abstract Token(Int) to Int {
 	static var r_int = "[1-9][0-9]*";
 	static var tok =  [                  // a rule set definition, the first definition will become .token()
 		"[ \t]+" => lex.token(),         // "lex" is an instance of this class.
-		r_zero + "|" + r_int => CInt,    //
+		r_zero | r_int => CInt,    //
 		"+" => OpPlus,
 		"-" => OpMinus,
 		"*" => OpTimes,

@@ -45,7 +45,7 @@ class LexBuilder {
 		}
 	}
 
-	static function fatalError(msg, p) return Context.fatalError("[lex build] " + msg , p);
+	static function fatalError(msg, p) : Dynamic return Context.fatalError("[lex build] " + msg , p);
 
 	static public function build() : Array<Field> {
 		var cl = Context.getLocalClass().get();
@@ -66,7 +66,7 @@ class LexBuilder {
 		}
 		var ret = [];
 		var groups : Array<Group> = [];
-		var varmap = new Map<String,String>();        // variable name => patternString
+		var varmap = new Map<String, Expr>();         // variable name => patternString
 		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
 		for (f in Context.getBuildFields()) {
@@ -95,8 +95,8 @@ class LexBuilder {
 							fatalError("Duplicated: " + g.name, f.pos);
 					groups.push(g);
 					continue;
-				case FVar(_, {expr: EConst(CString(s))}):
-					varmap.set(f.name, s);
+				case FVar(_, e = {expr: EConst(CString(_))}):
+					varmap.set(f.name, e);
 					continue;
 				default:
 				}
@@ -108,26 +108,19 @@ class LexBuilder {
 
 		var paterns = [];
 		var charall = [new lm.Charset.Char(0, meta.cmax)];
-		var notEmpty = !Lambda.empty(tmap);
+		var empty_tokmap = Lambda.empty(tmap);
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
 				try {
-					var s = exprString(r.pat, varmap);
+					var patern = parsePaterns(r.pat, varmap, charall);
+					pats.push(patern);
+
+					if (empty_tokmap)
+						continue;
 					// reflect for LR0 Parser, if "action" is a simple Token then store it.
-					if (notEmpty) {
-						switch(r.action.expr) {
-						case EConst(CIdent(v)):
-							var k = unescape( s );
-							if ( !tmap.exists(v) )
-								fatalError("Unknown identifier: " + v, r.action.pos);
-							reflect.set(k, v);
-						case _:
-						}
-					}
-					// String -> Pattern
-					pats.push( LexEngine.parse(s, charall) );
-				} catch(err: Dynamic) {
+					parseReflect(r.pat, r.action, tmap, reflect, true);
+				} catch(err : Dynamic) {
 					fatalError(Std.string(err), r.pat.pos);
 				}
 			}
@@ -270,18 +263,55 @@ class LexBuilder {
 		return ret;
 	}
 
-	static function exprString( e : Expr, vmap : Map<String,String> ) : String {
+	static function parseReflect( e : Expr, action : Expr, token : Map<String, Bool>, reflect : Map<String, String>, strict : Bool ) {
+		switch (e.expr) {
+		case EConst(CString(spat)):
+			switch(action.expr) {
+			case EConst(CIdent(v)):
+				if (strict && !token.exists(v))
+					fatalError("Unknown identifier: " + spat, action.pos);
+				reflect.set(unescape(spat), v);
+			case EBlock(a) if (a.length > 0):
+				parseReflect(e, a[a.length - 1], token, reflect, false);
+			case _:
+			}
+		default:
+		}
+	}
+
+	static function parsePaterns( e : Expr, varmap : Map<String, Expr>, charset : lm.Charset ) : lm.LexEngine.Pattern {
+		inline function parseInner(e) return parsePaterns(e, varmap, charset);
 		return switch (e.expr) {
-		case EConst(CString(s)): s;
+		case EConst(CString(s)):
+			LexEngine.parse(s, charset);
 		case EConst(CIdent(i)):
-			var s = vmap.get(i);
-			if (s == null)
+			var e2 = varmap.get(i);
+			if (e2 == null)
 				fatalError("Undefined identifier: " + i, e.pos);
-			s;
+			parseInner(e2);
 		case EBinop(OpAdd, e1, e2):
-			exprString(e1, vmap) + exprString(e2, vmap);
+			Next(parseInner(e1), parseInner(e2));
+		case EBinop(OpOr, e1, e2):
+			Choice(parseInner(e1), parseInner(e2));
 		case EParenthesis(e):
-			exprString(e, vmap);
+			parseInner(e);
+		case ECall(fn, [arg]):
+			switch (fn.expr) {
+			case EConst(CIdent(i)):
+				var patern = parseInner(arg);
+				switch (i) {
+				case "Star":
+					Star(patern);
+				case "Plus":
+					Plus(patern);
+				case "Opt":
+					Choice(patern, Empty);
+				default:
+					fatalError("Only Star(), Plus(), and Opt() are supported.", fn.pos);
+				}
+			default:
+				fatalError("Invalid rule", e.pos);
+			}
 		default:
 			fatalError("Invalid rule", e.pos);
 		}

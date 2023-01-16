@@ -126,14 +126,39 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 ### CHANGES
 
 * `x.x.x`:
-  - [lexer] Removed support for `lm.Lexer<Void>`
-* `0.9.2`: Some Improvements.
-* `0.9.1`:
-  - [lexer] Fixed `null => Action`
-  - [lexer] ~~Allow `lm.Lexer<Void>`~~
-* `0.9.0`: Simplify
-  - [parser] use "%start" instead of ~~`@:side`~~
-  - [lexer] Added `null => Action` when there is no match
+
+  - [lexer] Added new syntax Opt(), Star(), Plus() for group.
+
+    NOTE: `"a" + "|" + "b"` should now be changed to `"a" | "b"` or the result will be unexpected.
+
+    ```js
+    var inter
+
+    "xx" + Opt("yy")  =>   /xx(yy)?/
+
+    "xx" + Star("yy") =>   /xx(yy)*/
+
+    "xx" + Plus("yy") =>   /xx(yy)+/
+
+    "xx" | "yy"       =>   /xx|yy/  // same as "xx|yy"
+
+    "xx" + "|" + "yy" =>   /xx\|yy/ // unexpected result
+
+    "aa" + "bb"       =>   /aabb/
+
+    // NOTE: Operators are currently not available for variables in haxe
+    static var exp = "[eE][+-]?[0-9]+";
+    static var integer = "0|[1-9][0-9]*";
+    static var floatpoint = ".[0-9]+|[0-9]+.[0-9]*";
+
+    static var token = [
+
+        "[\n]" => token(),
+
+        // operator '+' has a higher precedence than '|'
+        integer + Opt(exp) | floatpoint + Opt(exp) => CFloat,
+    ];
+    ```
 
 ### Defines
 
@@ -241,11 +266,13 @@ enum abstract Token(Int) to Int {
 *   127 is the custom maximum char value. (optional, default is 255)
 */
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
+    static var inter = "0|[1-9][0-9]*";  // 0 or ...
     static var r_zero = "0";             // static variable will be treated as rules if there is no `@:skip`
     static var r_int = "[1-9][0-9]*";
     static var tok =  [                  // a rule set definition, the first definition will become .token()
         "[ \t]+" => lex.token(),         // "lex" is an instance of this class.
-        r_zero + "|" + r_int => CInt,    //
+        r_zero | r_int => CInt,          // zero or int
+     // inter + Opt("[eE][+-]?[0-9]+")   // exponent
         "+" => OpPlus,
         "-" => OpMinus,
         "*" => OpTimes,
