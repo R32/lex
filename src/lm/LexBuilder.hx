@@ -328,15 +328,15 @@ class LexBuilder {
 		for (i in 0...lex.entrys.length) {
 			var e = lex.entrys[i];
 			var n = table.exits(e.begin);
-			if (n != INVALID) {
-				var pat = indexPattern(n);
-				if (i == 0) {
-					Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
-				} else if (groups[i].unmatch != null) {
-					var unmatch = groups[i].unmatch;
-					Context.reportError(" \"case "+ unmatch.pat.toString() +"\" conflicts", unmatch.pat.pos);
-					Context.fatalError(pat.toString() +" conflicts with \"case " + unmatch.pat.toString() + '"', pat.pos);
-				}
+			if (n == INVALID)
+				continue;
+			var pat = indexPattern(n);
+			if (i == 0) {
+				Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
+			} else if (groups[i].unmatch != null) {
+				var unmatch = groups[i].unmatch;
+				Context.reportError(" \"case "+ unmatch.pat.toString() +"\" conflicts", unmatch.pat.pos);
+				Context.fatalError(pat.toString() +" conflicts with \"case " + unmatch.pat.toString() + '"', pat.pos);
 			}
 		}
 	}

@@ -336,7 +336,7 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 	case [c = cases, r = line]:
 		if (r.patten.pat == PNull) {
 			if (c.epslon != null)
-				throw "UnExpected: " + "_";
+				CLexer.fatalError("Duplicated null matching: _", c.epslon.patten.pos, c.epslon.patten.pos + 1);
 			c.epslon = r;
 		} else {
 			c.rules.push(r);
@@ -369,7 +369,7 @@ private class Parser implements lm.LR0<Lexer, Array<Expr>> {
 
 	static var pat : PatternEx = switch(s) {
 	case [CString(s)]: { pos: _t1.pmin, pat: PString(s)};
-	case [CIdent(id)]: { pos: _t1.pmin, pat: id == "null" || id == "_" ? PNull : PIdent(id) };
+	case [CIdent(id)]: { pos: _t1.pmin, pat: id == "_" ? PNull : PIdent(id) };
 	}
 
 	// custom extract function
@@ -565,12 +565,18 @@ class CLexer {
 				fatalError("UnReachable pattern: " + msg, pex.pos, pex.pos + msg.length);
 			}
 		// epsilon
-		for (e in leg.entrys) {
+		for (i in 0...leg.entrys.length) {
+			var e = leg.entrys[i];
 			var n = table.exits(e.begin);
-			if (n != INVALID) {
-				var pex = indexPattern(n);
-				var msg = s_patten(pex.pat);
-				fatalError("epsilon is not allowed: " + msg, pex.pos, pex.pos + msg.length);
+			if (n == INVALID)
+				continue;
+			var pex = indexPattern(n);
+			var msg = s_patten(pex.pat);
+			if (i == 0) {
+				fatalError("NULL matching: " + msg, pex.pos, pex.pos + msg.length);
+			} else if (list[i].epslon != null) {
+				var empty = list[i].epslon.patten;
+				fatalError(msg + " conflicts with \"" + s_patten(empty.pat) + '"', pex.pos, pex.pos + msg.length);
 			}
 		}
 	}
