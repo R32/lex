@@ -18,7 +18,7 @@ class PosArray {
 		var i = 0;
 		var j = data.length - 1;
 		while (i <= j) {
-			var k = i + ((j - i) >> 1);
+			var k = (i + j) >> 1;
 			var p = data[k].pos;
 			if (pos == p) {
 				return data[k].str;

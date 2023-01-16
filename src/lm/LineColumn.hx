@@ -34,7 +34,7 @@ class LineCounter { //
 		var i = 0;
 		var j = a.length - 1;
 		while(i <= j) {
-			var k = i + (j - i >> 1);
+			var k = (i + j) >> 1;
 			var p = a[k];
 			if (pos < p) {
 				j = k - 1;

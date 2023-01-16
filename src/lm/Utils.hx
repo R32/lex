@@ -11,7 +11,7 @@ class Utils {
 		var i = 0;
 		var j = array.length - 1;
 		while (i <= j) {
-			pivot = i + ((j - i) >> 1);
+			pivot = (i + j) >> 1;
 			sign = compar(key, array[pivot]);
 			if (sign == 0)
 				return pivot;
