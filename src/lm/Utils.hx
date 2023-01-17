@@ -41,10 +41,6 @@ class Utils {
 		return asize - bsize;
 	}
 
-	@:deprecated static public inline function error( s : String ) {
-		return s;
-	}
-
 	static public function posString(pmin: Int, input: lms.ByteData): String {
 		var line = 1;
 		var char = 1;
@@ -61,11 +57,38 @@ class Utils {
 		return " at line: " + line + ", column: " + char;
 	}
 
-#if macro
-	static public function getClassFullName(cls: haxe.macro.Type.ClassType) {
-		if (StringTools.endsWith(cls.module, cls.name))
-			return cls.module;
-		return cls.module + "." + cls.name;
+	// Inverse lexEngine.parse
+	static public function unescape( s : String ) {
+		var i = 0;
+		var p = 0;
+		var len = s.length;
+		var buf = new StringBuf();
+		while (i < len) {
+			var c = StringTools.fastCodeAt(s, i++);
+			if (c == "\\".code) {
+				var w = i - p - 1;
+				if (w > 0)
+					buf.addSub(s, p, w);
+				c = StringTools.fastCodeAt(s, i++);
+				switch(c) {
+				case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
+					buf.addChar(c);
+				case "x".code, "X".code:
+					c = Std.parseInt("0x" + s.substr(i, 2));
+					buf.addChar(c);
+					i += 2;
+				case _:
+					throw "Invalid hexadecimal escape sequence";
+				}
+				p = i;
+			}
+		}
+		if (p == 0) {
+			return s;
+		} else {
+			if (p < i)
+				buf.addSub(s, p, i - p);
+			return buf.toString();
+		}
 	}
-#end
 }

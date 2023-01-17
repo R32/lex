@@ -45,9 +45,15 @@ class LexBuilder {
 		}
 	}
 
-	static function fatalError(msg, p) : Dynamic return Context.fatalError("[lex build] " + msg , p);
-
 	static public function build() : Array<Field> {
+		return try {
+			buildInner();
+		} catch ( e : Error ) {
+			Context.fatalError("[lex build] " + e.message , e.pos);
+		}
+	}
+
+	static public function buildInner() : Array<Field> {
 		var cl = Context.getLocalClass().get();
 		var ct_lex = TPath({pack: cl.pack, name: cl.name});
 		var meta = getMeta(cl.meta.extract(":rule"));
@@ -57,10 +63,10 @@ class LexBuilder {
 			if (it.t.toString() == "lm.Lexer") {
 				var t = it.params[0];
 				if (!Context.unify(t, Context.typeof(meta.eof)))
-					fatalError('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
+					throw new Error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
 				readIntTokens(t, tmap);
 				if (lmap == null) lmap = new Map();
-				lmap.set(Utils.getClassFullName(cl), reflect);
+				lmap.set(ExprHelps.classFullName(cl), reflect);
 				break;
 			}
 		}
@@ -87,12 +93,12 @@ class LexBuilder {
 								g.rules.push({pat: s, action: e});
 							}
 						default:
-							fatalError("Expected pattern => function", e.pos);
+							throw new Error("Expected pattern => function", e.pos);
 						}
 					}
 					for (x in groups)
 						if (x.name == g.name)
-							fatalError("Duplicated: " + g.name, f.pos);
+							throw new Error("Duplicated: " + g.name, f.pos);
 					groups.push(g);
 					continue;
 				case FVar(_, e = {expr: EConst(CString(_))}):
@@ -112,17 +118,12 @@ class LexBuilder {
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
-				try {
-					var patern = parsePaterns(r.pat, varmap, charall);
-					pats.push(patern);
-
-					if (empty_tokmap)
-						continue;
-					// reflect for LR0 Parser, if "action" is a simple Token then store it.
-					parseReflect(r.pat, r.action, tmap, reflect, true);
-				} catch(err : Dynamic) {
-					fatalError(Std.string(err), r.pat.pos);
-				}
+				var patern = ExprHelps.parsePaterns(r.pat, varmap, charall);
+				pats.push(patern);
+				if (empty_tokmap)
+					continue;
+				// reflect for LR0 Parser, if "action" is a simple Token then store it.
+				parseReflect(r.pat, r.action, tmap, reflect, true);
 			}
 			paterns.push(pats);
 		}
@@ -269,51 +270,17 @@ class LexBuilder {
 			switch(action.expr) {
 			case EConst(CIdent(v)):
 				if (strict && !token.exists(v))
-					fatalError("Unknown identifier: " + spat, action.pos);
-				reflect.set(unescape(spat), v);
+					throw new Error("Unknown identifier: " + spat, action.pos);
+				try {
+					reflect.set(Utils.unescape(spat), v); // unescape will throw an error
+				} catch(x) {
+					throw new Error(Std.string(x), e.pos);
+				}
 			case EBlock(a) if (a.length > 0):
 				parseReflect(e, a[a.length - 1], token, reflect, false);
 			case _:
 			}
 		default:
-		}
-	}
-
-	static function parsePaterns( e : Expr, varmap : Map<String, Expr>, charset : lm.Charset ) : lm.LexEngine.Pattern {
-		inline function parseInner(e) return parsePaterns(e, varmap, charset);
-		return switch (e.expr) {
-		case EConst(CString(s)):
-			LexEngine.parse(s, charset);
-		case EConst(CIdent(i)):
-			var e2 = varmap.get(i);
-			if (e2 == null)
-				fatalError("Undefined identifier: " + i, e.pos);
-			parseInner(e2);
-		case EBinop(OpAdd, e1, e2):
-			Next(parseInner(e1), parseInner(e2));
-		case EBinop(OpOr, e1, e2):
-			Choice(parseInner(e1), parseInner(e2));
-		case EParenthesis(e):
-			parseInner(e);
-		case ECall(fn, [arg]):
-			switch (fn.expr) {
-			case EConst(CIdent(i)):
-				var patern = parseInner(arg);
-				switch (i) {
-				case "Star":
-					Star(patern);
-				case "Plus":
-					Plus(patern);
-				case "Opt":
-					Choice(patern, Empty);
-				default:
-					fatalError("Only Star(), Plus(), and Opt() are supported.", fn.pos);
-				}
-			default:
-				fatalError("Invalid rule", e.pos);
-			}
-		default:
-			fatalError("Invalid rule", e.pos);
 		}
 	}
 
@@ -352,7 +319,7 @@ class LexBuilder {
 		for (n in 0...lex.nrules)
 			if (exits.get(n) != VALID) {
 				var pat = indexPattern(n);
-				Context.fatalError("UnReachable pattern: " + pat.toString(), pat.pos);
+				throw new Error("UnReachable pattern: " + pat.toString(), pat.pos);
 			}
 		// epsilon
 		for (i in 0...lex.entrys.length) {
@@ -362,11 +329,11 @@ class LexBuilder {
 				continue;
 			var pat = indexPattern(n);
 			if (i == 0) {
-				Context.fatalError("epsilon is not allowed: " + pat.toString(), pat.pos);
+				throw new Error("epsilon is not allowed: " + pat.toString(), pat.pos);
 			} else if (groups[i].unmatch != null) {
 				var unmatch = groups[i].unmatch;
 				Context.reportError(" \"case "+ unmatch.pat.toString() +"\" conflicts", unmatch.pat.pos);
-				Context.fatalError(pat.toString() +" conflicts with \"case " + unmatch.pat.toString() + '"', pat.pos);
+				throw new Error(pat.toString() +" conflicts with \"case " + unmatch.pat.toString() + '"', pat.pos);
 			}
 		}
 	}
@@ -389,42 +356,7 @@ class LexBuilder {
 		}
 		return extra;
 	}
-
-	// assoc with lexEngine.parse
-	static function unescape( s : String ) {
-		var i = 0;
-		var p = 0;
-		var len = s.length;
-		var buf = new StringBuf();
-		while (i < len) {
-			var c = StringTools.fastCodeAt(s, i++);
-			if (c == "\\".code) {
-				var w = i - p - 1;
-				if (w > 0)
-					buf.addSub(s, p, w);
-				c = StringTools.fastCodeAt(s, i++);
-				switch(c) {
-				case "\\".code, "+".code, "*".code, "?".code, "[".code, "]".code, "-".code, "|".code:
-					buf.addChar(c);
-				case "x".code, "X".code:
-					c = Std.parseInt("0x" + s.substr(i, 2));
-					buf.addChar(c);
-					i += 2;
-				case _:
-					throw "Invalid hexadecimal escape sequence";
-				}
-				p = i;
-			}
-		}
-		if (p == 0) {
-			return s;
-		} else {
-			if (p < i)
-				buf.addSub(s, p, i - p);
-			return buf.toString();
-		}
-	}
 }
 #else
-class RuleBuilder {}
+class LexBuilder {}
 #end

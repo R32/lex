@@ -141,7 +141,7 @@ class LR0Base {
 						this.sEof = eof.toString();
 					if (this.sEof == "null" || this.sEof == "Void")
 						fatalError("Invalid EOF value " + this.sEof, lex.pos);
-					this.reflect = LexBuilder.lmap.get( Utils.getClassFullName(lex) );
+					this.reflect = LexBuilder.lmap.get( ExprHelps.classFullName(lex) );
 					return it.params[0];
 				}
 			}

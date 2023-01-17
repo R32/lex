@@ -132,8 +132,6 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
     NOTE: `"a" + "|" + "b"` should now be changed to `"a" | "b"` or the result will be unexpected.
 
     ```js
-    var inter
-
     "xx" + Opt("yy")  =>   /xx(yy)?/
 
     "xx" + Star("yy") =>   /xx(yy)*/
@@ -289,11 +287,11 @@ enum abstract Token(Int) to Int {
     nonassoc: [UMINUS],       // The placeholder must be uppercase
 }) class Parser implements lm.LR0<Lexer, Int> {
 
-    static var main = switch(s) {  // the "s" is instance of lm.Stream
+    var main = switch(s) {  // the "s" is instance of lm.Stream
         case [e = expr, Eof]: e;
     }
 
-    static var expr = switch(s) {
+    var expr = switch(s) {
         case [e1 = expr, op = [OpPlus,OpMinus], e2 = expr]: op == OpPlus ? e1 + e2 : e1 - e2;
         case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
         case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
@@ -303,9 +301,9 @@ enum abstract Token(Int) to Int {
     }
 
     // Define custom extract function for CInt(n)
-    @:rule(CInt) static inline function int_of_string(s: String):Int return Std.parseInt(s);
+    @:rule(CInt) inline function int_of_string(s: String):Int return Std.parseInt(s);
     // if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
-    // @:rule(CInt) static inline function int_of_string(input:lms.ByteData, t):Int {
+    // @:rule(CInt) inline function int_of_string(input:lms.ByteData, t):Int {
     //    return Std.parseInt( input.readString(t.pmin, t.pmax - t.pmin) );
     //}
 }

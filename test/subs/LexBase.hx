@@ -41,7 +41,7 @@ private enum Token {
 		"/" => Op(Div),
 		"(" => LParen,
 		")" => RParen,
-		r_zero + "|" + r_int => CInt(Std.parseInt(lex.current)),
+		r_zero | r_int => CInt(Std.parseInt(lex.current)),
 		'"' => {
 			var i = lex.pmax;
 			var t = lex.str();
