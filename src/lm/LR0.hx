@@ -28,8 +28,6 @@ class LR0Builder extends lm.LR0Base {
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	inline function isBit16() return this.invalid == U16MAX;
 
-	static function fatalError(msg, p) return Context.fatalError("[LR0 build] " + msg , p);
-
 	function new(s_it, rest) {
 		super(s_it, rest);
 		this.h = new Map();
@@ -103,7 +101,8 @@ class LR0Builder extends lm.LR0Base {
 		var INVALID = this.invalid;
 		var bytes = (segs * per) + perExit;
 		var tbls = new Table(bytes);
-		for (i in 0...bytes) tbls.set(i, INVALID);
+		for (i in 0...bytes)
+			tbls.set(i, INVALID);
 
 		for (s in this.lstates) {
 			tbls.set(tbls.exitpos(s.id), s.finalID == -1 ? INVALID: s.finalID);
@@ -197,8 +196,8 @@ class LR0Builder extends lm.LR0Base {
 		case 1: exits[0];
 		default:
 			for (r in exits)
-				Context.warning("conflict case: " + r, ruleToCase(r).pos);
-			fatalError("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
+				Context.reportError("conflict case: " + r, ruleToCase(r).pos);
+			throw new Error("conflict: " + exits.join(","), ruleToCase(exits[exits.length - 1]).pos);
 		}
 		lstates.push(new State(id, sets, targets, f));
 		return id;
@@ -211,17 +210,18 @@ class LR0Builder extends lm.LR0Base {
 		var exits = haxe.io.Bytes.alloc(this.nrules);
 		for (i in table.length - this.perExit...table.length) {
 			var n = table.get(i);
-			if (n == INVALID) continue;
+			if (n == INVALID)
+				continue;
 			exits.set(n, VALID);
 		}
 		for (n in 0...this.nrules)
 			if (exits.get(n) != VALID)
-				fatalError("Unreachable switch case", this.ruleToCase(n).pos);
+				throw new Error("Unreachable switch case", this.ruleToCase(n).pos);
 
 		// 2. The "entry" is not allowed to be epsilon
 		for (e in this.starts)
 			if (this.table.exits(e.begin) != INVALID)
-				fatalError(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
+				throw new Error(lhsA[e.index].name + " is not allow to be EPSILON.", lhsA[e.index].pos);
 	}
 
 	function generate(): Array<Field> {
@@ -352,15 +352,20 @@ class LR0Builder extends lm.LR0Base {
 	}
 
 	public static function build() {
-		var reserve = new Map<String, Field>();
-		var lrb = new LR0Builder("lm.LR0", reserve);
-		var fields = lrb.make();
-		// combine
 		var ret = [];
-		for (f in fields)
-			if (!reserve.exists(f.name))
+		var reserve = new Map<String, Field>();
+		try {
+			var lrb = new LR0Builder("lm.LR0", reserve);
+			var fields = lrb.make();
+			// combine
+			for (f in fields)
+				if (!reserve.exists(f.name))
+					ret.push(f);
+			for (f in reserve)
 				ret.push(f);
-		for (f in reserve) ret.push(f);
+		} catch ( e : Error ) {
+			Context.fatalError("[LR0 build] " + e.message , e.pos);
+		}
 		return ret;
 	}
 }

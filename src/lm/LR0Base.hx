@@ -99,8 +99,6 @@ class LR0Base {
 	public inline function index(l:Lhs):Int return l.value - this.maxValue;
 	public inline function width():Int return this.maxValue + this.lhsA.length;
 
-	static function fatalError(msg, p) return Context.fatalError("[LR0 build] " + msg , p);
-
 	public function new(s_interface: String, allFields: Map<String, Field>) {
 		var cl = Context.getLocalClass().get();
 		var termlsType:Type = null;
@@ -112,7 +110,7 @@ class LR0Base {
 				break;
 			}
 		if (termlsType == null || !Context.unify(termlsType, Context.getType("Int")))
-			fatalError("Wrong generic Type for "+ s_interface + "<?>", cl.pos);
+			throw new Error("Wrong generic Type for "+ s_interface + "<?>", cl.pos);
 		maxValue = 0;
 		termls = [];
 		termlsAll = [];
@@ -140,7 +138,7 @@ class LR0Base {
 					if (eof != null)
 						this.sEof = eof.toString();
 					if (this.sEof == "null" || this.sEof == "Void")
-						fatalError("Invalid EOF value " + this.sEof, lex.pos);
+						throw new Error("Invalid EOF value " + this.sEof, lex.pos);
 					this.reflect = LexBuilder.lmap.get( ExprHelps.classFullName(lex) );
 					return it.params[0];
 				}
@@ -159,14 +157,14 @@ class LR0Base {
 					case EConst(CIdent(i)):
 						var lhs = Lambda.find(this.lhsA, lhs -> lhs.name == i);
 						if (lhs == null)
-							fatalError("UnSupported %start: " + i, e.pos);
+							throw new Error("UnSupported %start: " + i, e.pos);
 						this.starts.push({index: this.index(lhs), begin: -1, width: -1});
 					case _:
-						fatalError("UnSupported :" + TExprTools.toString(e), e.pos);
+						throw new Error("UnSupported :" + TExprTools.toString(e), e.pos);
 					}
 				}
 			case _:
-				fatalError("UnSupported :" + TExprTools.toString(a), a.pos);
+				throw new Error("UnSupported :" + TExprTools.toString(a), a.pos);
 			}
 		}
 		function extract(a: Array<ObjectField>, vec: haxe.ds.Vector<OpAssoc>, map:Map<String, OpAssoc>) {
@@ -185,7 +183,7 @@ class LR0Base {
 					readStarts(li);
 					continue;
 				case _:
-					fatalError("UnSupported type of op assoc: " + stype, li.pos);
+					throw new Error("UnSupported type of op assoc: " + stype, li.pos);
 				}
 				switch (li.expr) {
 				case EArrayDecl(a):
@@ -195,18 +193,18 @@ class LR0Base {
 						case EConst(CString(p)):
 							var i = this.reflect.get(p); // reflect
 							if (i == null)
-								fatalError('No reflect for "' + p + '"', e.pos);
+								throw new Error('No reflect for "' + p + '"', e.pos);
 							i;
 						case _: "";
 						}
 						if ( map.exists(name) )
-							fatalError("Duplicate Token: " + name, e.pos);
+							throw new Error("Duplicate Token: " + name, e.pos);
 						var term = udtMap.get(name);
 						if (term != null) {
 							if (term.t == false)
-								fatalError("UnSupported Token: " + name, e.pos);
+								throw new Error("UnSupported Token: " + name, e.pos);
 						} else if ( !R_UPPER.match(name) ) {
-							fatalError("Only accept '/[A-Z][A-Z0-9_]*/' as placeholder: " + name, e.pos);
+							throw new Error("Only accept '/[A-Z][A-Z0-9_]*/' as placeholder: " + name, e.pos);
 						}
 						var op = {type: type, prio: i, tval: term != null ? term.value : -1};
 						map.set(name, op);
@@ -214,7 +212,7 @@ class LR0Base {
 							vec.set(op.tval, op);
 					}
 				default:
-					fatalError("UnSupported Type", li.pos);
+					throw new Error("UnSupported Type", li.pos);
 				}
 			}
 		}
@@ -305,16 +303,18 @@ class LR0Base {
 		if (cases.length == 0) return;
 		for (lhs in lhsA) { // init udtMap first..
 			if (this.udtMap.exists(lhs.name))
-				fatalError("Duplicate LHS: " + lhs.name, lhs.pos);
+				throw new Error("Duplicate LHS: " + lhs.name, lhs.pos);
 			this.udtMap.set(lhs.name, {t: false, name: lhs.name, value: lhs.value, cset: CSet.single(lhs.value), pos: lhs.pos});
 		}
 		function setEpsilon(lhs, pos) {
-			if (lhs.epsilon) fatalError('Duplicate "default:" or "case _:"', pos);
+			if (lhs.epsilon)
+				throw new Error('Duplicate "default:" or "case _:"', pos);
 			lhs.epsilon = true;
 		}
 		function getCSet(name, pos) {
 			var cset = getTermlCSet(name);
-			if (cset == null) fatalError("Undefined: " + name, pos);
+			if (cset == null)
+				throw new Error("Undefined: " + name, pos);
 			return cset;
 		}
 		function opVerify(sym: Symbol):{type:OpAssocType, prio:Int} {
@@ -325,16 +325,16 @@ class LR0Base {
 					var op = this.opIMap.get(i);
 					if (op == null) {
 						if (prio != -1)
-							fatalError("Mixed non-operator", sym.pos);
+							throw new Error("Mixed non-operator", sym.pos);
 					} else {
 						if (i == c.min) { // if first item
 							prio = op.prio;
 							type = op.type;
 						} else {
 							if (prio == -1)
-								fatalError("Mixed non-operator", sym.pos);
+								throw new Error("Mixed non-operator", sym.pos);
 							else if (prio != op.prio)
-								fatalError("Different priority", sym.pos);
+								throw new Error("Different priority", sym.pos);
 						}
 					}
 				}
@@ -344,11 +344,11 @@ class LR0Base {
 		for (lhs in this.lhsA) {
 			for (c in cases[ index(lhs) ]) {
 				if (c.guard != null)
-					fatalError("Unsupported: " + "guard", c.guard.pos);
+					throw new Error("Unsupported: " + "guard", c.guard.pos);
 				switch(c.values) {
 				case [{expr:EArrayDecl(el), pos: pos}]:
 					if (lhs.epsilon)
-						fatalError('This case is unused', pos);
+						throw new Error('This case is unused', pos);
 					var g: SymbolSet = {action: c.expr, syms: [], left: null, right: null, pos: pos};
 					var len = el.length;
 					if (len == 0) {
@@ -368,7 +368,7 @@ class LR0Base {
 						case EConst(CString(s)):
 							var i = this.reflect.get(s);
 							if (i == null)
-								fatalError("No associated token: " + s, e.pos);
+								throw new Error("No associated token: " + s, e.pos);
 							firstCharChecking(i, UPPER, e.pos);
 							g.syms.push( {t: true, name: i,    cset: getCSet(i, e.pos), ex: null, pos: e.pos} );
 
@@ -385,9 +385,9 @@ class LR0Base {
 						case EBinop(OpAssign, macro $i{v}, macro $i{nt}):  // e.g: e = expr
 							var udt = udtMap.get(nt);
 							if (udt == null || udt.t == true)
-								fatalError("Undefined non-terminator: " + nt, e.pos);
+								throw new Error("Undefined non-terminator: " + nt, e.pos);
 							if (len == 1 && nt == lhs.name)
-								fatalError("Infinite recursion", e.pos);
+								throw new Error("Infinite recursion", e.pos);
 							if (ei == 0) { // the first item
 								if (nt != lhs.name)
 									lhs.lsubs.add(udt.value);
@@ -405,12 +405,12 @@ class LR0Base {
 								default: null;
 								}
 								if (i == null)
-									fatalError("Unsupported: " + t.toString(), t.pos);
+									throw new Error("Unsupported: " + t.toString(), t.pos);
 								firstCharChecking(i, UPPER, t.pos);
 								cset = CSet.union(cset, getCSet(i, t.pos));
 							}
 							if (cset == CSet.C_EMPTY)
-								fatalError("Empty", pos);
+								throw new Error("Empty", pos);
 							g.syms.push( {t: true, name: "_", cset: cset, ex: v, pos: e.pos} );
 						case EMeta({name: ":prec", params: [{expr: EConst(c), pos: p}]}, e2): // e.g: @:prec(FOLLOW)
 							var i = switch(c) {
@@ -418,19 +418,19 @@ class LR0Base {
 							case CString(s):
 								var i = this.reflect.get(s);
 								if (i == null)
-									fatalError("No associated token: " + s, p);
+									throw new Error("No associated token: " + s, p);
 								i;
-							case _: fatalError("Unsupported: " + c, p);
+							case _: throw new Error("Unsupported: " + c, p);
 							}
 							var op = this.opSMap.get(i);
 							if (op == null)
-								fatalError("Undefined :" + i, p);
+								throw new Error("Undefined :" + i, p);
 							prec.left  = {type: op.type, prio: op.prio, lval: -1};
 							prec.right = {type: op.type, prio: op.prio, own: -1};
 							e = e2;
 							continue;
 						case _:
-							fatalError("Unsupported: " + e.toString(), e.pos);
+							throw new Error("Unsupported: " + e.toString(), e.pos);
 						}
 						if (++ei >= len) break;
 						e = el[ei];
@@ -468,9 +468,9 @@ class LR0Base {
 					setEpsilon(lhs, pos);
 					lhs.cases.push({action: c.expr, syms: [], left: null, right: null, pos: pos});
 				case [e]:
-					fatalError("Expected [ patterns ]", e.pos);
+					throw new Error("Expected [ patterns ]", e.pos);
 				case _:
-					fatalError("Comma notation is not allowed while matching streams", c.values[0].pos);
+					throw new Error("Comma notation is not allowed while matching streams", c.values[0].pos);
 				}
 			}
 		}
@@ -520,7 +520,7 @@ class LR0Base {
 		for (lhs in lhsA) {
 			for (li in lhs.cases) {
 				if (li.action == null)
-					fatalError("Need return *" + lhs.ctype.toString() + "*", li.pos);
+					throw new Error("Need return *" + lhs.ctype.toString() + "*", li.pos);
 				thas = [];
 				thas.resize(li.syms.length);
 				thasAll[index++] = thas;
@@ -550,7 +550,7 @@ class LR0Base {
 					if (sym.ex == null || sym.ex == "_")
 						continue;
 					if (row.exists(sym.ex))
-						fatalError("duplicate var: " + sym.ex, sym.pos);
+						throw new Error("duplicate var: " + sym.ex, sym.pos);
 					row.set(sym.ex, true);
 
 					// transform expr
@@ -559,7 +559,7 @@ class LR0Base {
 						var ofstr = funMap.get(sym.name);
 						if (ofstr == null) {
 							if ( sym.name != "_" && CSet.isSingle(sym.cset) ) // If you forget to add an extract function
-								fatalError("Required a static function with @:rule("+ sym.name +")", sym.pos);
+								throw new Error("Required a static function with @:rule("+ sym.name +")", sym.pos);
 							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess __s.offset($v{dx}).term);
 						} else {
 							var ct = ofstr.ct;
@@ -652,7 +652,7 @@ class LR0Base {
 			default:
 			}
 			if (allFields.exists(f.name))
-				fatalError("Duplicate field: " + f.name, f.pos);
+				throw new Error("Duplicate field: " + f.name, f.pos);
 			allFields.set(f.name, f);
 		}
 
@@ -673,7 +673,7 @@ class LR0Base {
 					case EConst(CIdent(s)) | EConst(CString(s)):
 						this.funMap.set(s, {name: f.name, ct: fun.ret, args: len});
 					default:
-						fatalError("UnSupperted value for @:rule: " + t.toString(), t.pos);
+						throw new Error("UnSupperted value for @:rule: " + t.toString(), t.pos);
 					}
 				}
 				switch(len) {
@@ -707,10 +707,10 @@ class LR0Base {
 		var c = s.charCodeAt(0);
 		if (upper) {
 			if ( !(c >= "A".code && c <= "Z".code) )
-				fatalError("Should be start with a capital letter: " + s, pos);
+				throw new Error("Should be start with a capital letter: " + s, pos);
 		} else {
 			if ( !(c >= "a".code && c <= "z".code || c == "_".code) )
-				fatalError("Should be start with a lowercase letter: " + s, pos);
+				throw new Error("Should be start with a lowercase letter: " + s, pos);
 		}
 	}
 }
