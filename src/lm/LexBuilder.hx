@@ -17,7 +17,7 @@ class LexBuilder {
 	/**
 	 LexerClassName => [PatternString => TokenString], it will be used by LR0Parser.
 	*/
-	@:persistent static public var lmap : Map<String, Map<String, String>>;
+	@:persistent static public var lmap : Map<String, Map<String, String>> = new Map();
 
 	static function getMeta( metas : Array<MetadataEntry> ) : {cmax : Int, eof : Null<Expr>} {
 		var ret = {cmax : 255, eof : null};
@@ -65,7 +65,6 @@ class LexBuilder {
 				if (!Context.unify(t, Context.typeof(meta.eof)))
 					throw new Error('Unable to unify "' + t.toString() + '" with "' + meta.eof.toString() + '"', cl.pos);
 				readIntTokens(t, tmap);
-				if (lmap == null) lmap = new Map();
 				lmap.set(ExprHelps.classFullName(cl), reflect);
 				break;
 			}
@@ -88,6 +87,8 @@ class LexBuilder {
 						case EBinop(OpArrow, s, e):
 							switch(s.expr) {
 							case EConst(CIdent(i)) if (i == "null" || i == "_"):
+								if (g.unmatch != null)
+									throw new Error("Duplicated: " + i, s.pos);
 								g.unmatch = {pat: s, action: e};
 							default:
 								g.rules.push({pat: s, action: e});
@@ -158,6 +159,11 @@ class LexBuilder {
 			raw = macro $v{ lex.table.map(i -> String.fromCharCode(i)).join("") };
 			getU = macro StringTools.fastCodeAt(raw, i);
 		}
+		var charmax_limit = if (lex.per == 128 || Context.defined("lex_charmax") || !forceBytes) {
+			macro if (c > $v{meta.cmax}) c = $v{meta.cmax}
+		} else {
+			macro {}
+		}
 		var defs = macro class {
 			static var raw = $raw;
 			static inline var INVALID = $v{lex.invalid};
@@ -186,9 +192,7 @@ class LexBuilder {
 				var c : Int;
 				while (i < right) {
 					c = input.readByte(i++);
-				#if lex_charmax
-					if (c > $v{meta.cmax}) c = $v{meta.cmax};
-				#end
+					$charmax_limit;
 					state = trans(raw, state, c);
 					if (state >= NSEGS)
 						break;

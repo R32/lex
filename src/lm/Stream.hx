@@ -4,7 +4,7 @@ package lm;
 @:generic
 #end
 @:allow(lm.Stream)
-class Tok<LHS> {
+class Tok<LHS> implements lm.Lexer.Position {
 	public var state(default, null): Int;
 	public var term(default, null): Int;  // terminal & non-terminal value
 	public var pmin(default, null): Int;
