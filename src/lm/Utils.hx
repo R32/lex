@@ -91,4 +91,14 @@ class Utils {
 			return buf.toString();
 		}
 	}
+
+	public static function isUpperCaseFirst( s : String ) : Bool {
+		 var c = s.charCodeAt(0);
+		 return return c >= "A".code && c <= "Z".code;
+	}
+
+	public static function isLowerCaseFirst( s : String ) : Bool {
+		 var c = s.charCodeAt(0);
+		 return c >= "a".code && c <= "z".code || c == "_".code;
+	}
 }

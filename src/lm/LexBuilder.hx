@@ -34,8 +34,11 @@ class LexBuilder {
 			return;
 		switch (t) {
 		case TAbstract(_.get() => ab, _):
-			for (f in ab.impl.get().statics.get())
+			for (f in ab.impl.get().statics.get()) {
+				if (Utils.isLowerCaseFirst(f.name))
+					throw new Error("The first char should be uppercase : " + f.name, f.pos);
 				out.set(f.name, true);
+			}
 		case _:
 		}
 	}
@@ -268,8 +271,11 @@ class LexBuilder {
 		case EConst(CString(spat)):
 			switch(action.expr) {
 			case EConst(CIdent(v)):
-				if (strict && !token.exists(v))
-					throw new Error("Unknown identifier: " + spat, action.pos);
+				if (!token.exists(v))
+					if (strict)
+						throw new Error("Unknown identifier: " + spat, action.pos);
+					else
+						return;
 				try {
 					reflect.set(Utils.unescape(spat), v); // unescape will throw an error
 				} catch(x) {
