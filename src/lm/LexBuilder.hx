@@ -1,16 +1,11 @@
 package lm;
 
 #if macro
+import lm.ExprHelps;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
 using haxe.macro.Tools;
-
-private typedef Group = {
-	name: String,
-	rules: Array<{pat: Expr, action: Expr}>,
-	unmatch: {pat: Expr, action: Expr},
-}
 
 class LexBuilder {
 
@@ -70,7 +65,7 @@ class LexBuilder {
 			}
 		}
 		var ret = [];
-		var groups : Array<Group> = [];
+		var groups : Array<RuleCaseGroup> = [];
 		var varmap = new Map<String, Expr>();         // variable name => patternString
 		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
@@ -81,7 +76,7 @@ class LexBuilder {
 			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}) if (el.length > 0):
-					var g:Group = {name: f.name, rules: [], unmatch: null};
+					var g : RuleCaseGroup = {name: f.name, rules: [], unmatch: null};
 					for (e in el) {
 						switch (e.expr) {
 						case EBinop(OpArrow, s, e):
@@ -89,9 +84,9 @@ class LexBuilder {
 							case EConst(CIdent(i)) if (i == "null" || i == "_"):
 								if (g.unmatch != null)
 									throw new Error("Duplicated: " + i, s.pos);
-								g.unmatch = {pat: s, action: e};
+								g.unmatch = {pattern: s, action: e};
 							default:
-								g.rules.push({pat: s, action: e});
+								g.rules.push({pattern: s, action: e});
 							}
 						default:
 							throw new Error("Expected pattern => function", e.pos);
@@ -119,12 +114,12 @@ class LexBuilder {
 		for (g in groups) {
 			var pats = [];
 			for (r in g.rules) {
-				var patern = ExprHelps.parsePaterns(r.pat, varmap, charall);
-				pats.push(patern);
+				var pattern = ExprHelps.parsePaterns(r.pattern, varmap, charall);
+				pats.push(pattern);
 				if (empty_tokmap)
 					continue;
 				// reflect for LR0 Parser, if "action" is a simple Token then store it.
-				parseReflect(r.pat, r.action, tmap, reflect, true);
+				parseReflect(r.pattern, r.action, tmap, reflect, true);
 			}
 			paterns.push(pats);
 		}
@@ -136,8 +131,8 @@ class LexBuilder {
 		f.close();
 		#end
 		// check & hacking
-		checking(lex, groups);
-		var nullCases = hackNullActions(lex, groups);
+		ExprHelps.lexChecking(lex, groups);
+		var nullCases = ExprHelps.lexUnMatchedActions(lex, groups);
 		// generate
 		var forceBytes = !Context.defined("js") || Context.defined("lex_rawtable");
 		// force string as table format if `-D lex_strtable` and ucs2
@@ -238,7 +233,7 @@ class LexBuilder {
 		var i = 0;
 		for (g in groups) {
 			for (rule in g.rules) {
-				ecases[i] = {values: [macro @:pos(rule.pat.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
+				ecases[i] = {values: [macro @:pos(rule.pattern.pos) $v{i}], expr: rule.action}; // $v{i} & [i]
 				++ i;
 			}
 		}
@@ -297,69 +292,9 @@ class LexBuilder {
 		}
 	}
 
-	static function checking( lex : lm.LexEngine, groups : Array<Group> ) {
-		var table = lex.table;
-		var VALID = 1;
-		var INVALID = lex.invalid;
 
-		var exits = haxe.io.Bytes.alloc(lex.nrules);
-		for (i in table.length - lex.perExit...table.length) {
-			var n = table.get(i);
-			if (n == INVALID) continue;
-			exits.set(n, VALID);
-		}
-		function indexPattern(i):Expr {
-			for (g in groups) {
-				var len = g.rules.length;
-				if (i >= len) {
-					i -= len;
-				} else {
-					return g.rules[i].pat;
-				}
-			}
-			throw "NotFound";
-		}
-		// reachable
-		for (n in 0...lex.nrules)
-			if (exits.get(n) != VALID) {
-				var pat = indexPattern(n);
-				throw new Error("UnReachable pattern: " + pat.toString(), pat.pos);
-			}
-		// epsilon
-		for (i in 0...lex.entrys.length) {
-			var e = lex.entrys[i];
-			var n = table.exits(e.begin);
-			if (n == INVALID)
-				continue;
-			var pat = indexPattern(n);
-			if (i == 0) {
-				throw new Error("epsilon is not allowed: " + pat.toString(), pat.pos);
-			} else if (groups[i].unmatch != null) {
-				var unmatch = groups[i].unmatch;
-				Context.reportError(" \"case "+ unmatch.pat.toString() +"\" conflicts", unmatch.pat.pos);
-				throw new Error(pat.toString() +" conflicts with \"case " + unmatch.pat.toString() + '"', pat.pos);
-			}
-		}
-	}
 
-	/**
-	 hack lex.table for "null => Actoin", Must be called after "checking"
-	*/
-	static function hackNullActions( lex : lm.LexEngine, groups : Array<Group>) : Array<Case> {
-		var extra = [];
-		var table = lex.table;
-		var start = lex.nrules;
-		for (i in 1...groups.length) { // the null-case of the first rule-set will be "switch-default"
-			var g = groups[i];
-			if (g.unmatch != null) {
-				var e = lex.entrys[i];
-				table.set(table.exitpos(e.begin), start);
-				extra.push( {values: [macro @:pos(g.unmatch.pat.pos) $v{start}], expr: g.unmatch.action } );
-				++start;
-			}
-		}
-		return extra;
-	}
+
 }
 #else
 class LexBuilder {}
