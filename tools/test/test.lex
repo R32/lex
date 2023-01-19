@@ -38,8 +38,7 @@ let integer = "0|[1-9][0-9]*"
 let token = function
 | "[ \t\n]+"     -> TOKEN()
 | ident          -> CIdent
-| "0"
-| "[1-9][0-9]*"  -> CInt
+| "0" | "[1-9][0-9]*" -> CInt
 | "+"            -> OpAdd
 | "-"            -> OpSub
 | "*"            -> OpMul
@@ -161,7 +160,7 @@ void test_stream() {
 		.tail = 0,
 		.lex = &lex,
 	};
-	char* text = "id 1 + 2 * 3 / 4 - id";
+	char *text = "id 1 + 2 * 3 / 4 - id";
 	test_lexinit(&lex, text, strlen(text));
 	#undef TOKEN
 	#define TOKEN()     (rstream_next(&stream))

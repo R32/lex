@@ -122,8 +122,8 @@ static unsigned  char  _lextable[] = {
 0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,
 0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,
 // EXIT 
-0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x08,0x09,0x06,0x04,0x05,
-0x07,0x02,0x0A,0x0B,0x0D,0x0E,0x0F,0x0F,0xFF,0x0C,0x0C,0xFF,0x01,0x03,0x00,0xFF
+0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x07,0x08,0x05,0x03,0x04,
+0x06,0x02,0x09,0x0A,0x0C,0x0D,0x0E,0x0E,0xFF,0x0B,0x0B,0xFF,0x01,0x02,0x00,0xFF
 };
 
 #define LEX_TABSIZE      1312
@@ -160,38 +160,36 @@ static int _cases(struct rlex* lex, int _q) {
 	break;
 
 	case 2:
-
-	case 3:
 	{
 		_ret = CInt;
 	}
 	break;
 
-	case 4:
+	case 3:
 	{
 		_ret = OpAdd;
 	}
 	break;
 
-	case 5:
+	case 4:
 	{
 		_ret = OpSub;
 	}
 	break;
 
-	case 6:
+	case 5:
 	{
 		_ret = OpMul;
 	}
 	break;
 
-	case 7:
+	case 6:
 	{
 		_ret = OpDiv;
 	}
 	break;
 
-	case 8:
+	case 7:
 	{
 		int min = lex->pos.min;
 		enum token t = STR();
@@ -204,7 +202,7 @@ static int _cases(struct rlex* lex, int _q) {
 	}
 	break;
 
-	case 9:
+	case 8:
 	{
 		int min = lex->pos.min;
 		enum token t = QSTR();
@@ -217,9 +215,15 @@ static int _cases(struct rlex* lex, int _q) {
 	}
 	break;
 
-	case 10:
+	case 9:
 	{
 		_ret = CString;
+	}
+	break;
+
+	case 10:
+	{
+		_ret = STR();
 	}
 	break;
 
@@ -231,23 +235,17 @@ static int _cases(struct rlex* lex, int _q) {
 
 	case 12:
 	{
-		_ret = STR();
+		_ret = CQString;
 	}
 	break;
 
 	case 13:
 	{
-		_ret = CQString;
-	}
-	break;
-
-	case 14:
-	{
 		_ret = QSTR();
 	}
 	break;
 
-	case 15:
+	case 14:
 	{
 		_ret = QSTR();
 	}
@@ -258,6 +256,7 @@ static int _cases(struct rlex* lex, int _q) {
 		_ret = UnMathed;
 	}
 	break;
+
 	}
 	return _ret;
 }
@@ -293,7 +292,7 @@ static int _entry(struct rlex* lex, int begin) {
 		i--;
 	}
 	int q = LEX_EXIT(state);
-	if (i > lex->pos.max && q < 16) {
+	if (i > lex->pos.max && q < 15) {
 		lex->pos.min = lex->pos.max;
 		lex->pos.max = i;
 	} else {
@@ -400,7 +399,6 @@ void test_stream() {
 	};
 	char *text = "id 1 + 2 * 3 / 4 - id";
 	test_lexinit(&lex, text, strlen(text));
-
 	#undef TOKEN
 	#define TOKEN()     (rstream_next(&stream))
 	#define TERM(t)     ((t)->term)

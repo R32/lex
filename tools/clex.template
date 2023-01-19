@@ -34,17 +34,18 @@ static int _cases(struct rlex* lex, int _q) {
 	int _ret = ::eof::;
 	switch(_q) {
 ::foreach cases::
-	case ::index:::::if (!faildown)::
+	case ::index:::
 	{
 		::action::
 	}
-	break;::end::
+	break;
 ::end::
 	default:
 	{
 		::epsilon::
 	}
 	break;
+
 	}
 	return _ret;
 }

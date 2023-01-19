@@ -37,7 +37,7 @@ Usage : haxelib run lex [options] <files>
 		var mt = new Template(smt);
 		for (f in files) {
 			if (EXISTS(f)) {
-				new CLexer(f, mt, outdir);
+				new CLexer(f, mt, {outdir : outdir});
 			}
 		}
 	}

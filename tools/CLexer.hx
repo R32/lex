@@ -1,10 +1,10 @@
 package tools;
 
-import haxe.Template;
-import StringTools.ltrim;
-import StringTools.rtrim;
-import StringTools.trim;
 import lm.LineColumn;
+import lm.ExprHelps;
+import haxe.Template;
+import haxe.macro.Expr;
+ using haxe.macro.ExprTools;
 
 private enum abstract Token(Int) to Int {
 	var Eof = 0;
@@ -19,38 +19,24 @@ private enum abstract Token(Int) to Int {
 	var KLet;      // let
 	var KFun;      // function
 	var OpOr;      // "|"
+	var OpAdd;     // "+"
 	var OpAssign;  // "="
 	var OpArrow;   // "->"
 	var LParen;    // "("
 	var RParen;    // ")"
 }
-private enum Pattern {
-	PNull;
-	PIdent( id : String);
-	PString( s : String);
-}
-private typedef PatternEx = {
-	pat : Pattern,
-	pos : Int,
-}
-private typedef RuleCase = {
-	patten : PatternEx,
-	action : String,
-	faildown : Bool,
-	pos : Int,   // the pos of action start
-	index : Int, // for haxe.Template
-}
-private typedef RuleSet = {
-	name     : String,
-	rules    : Array<RuleCase>,
-	epslon   : Null<RuleCase>,
-}
-private enum Expr {
+
+private enum TPExprDef {
 	EEof( id : String );
 	ESrc( id : String );
 	EMax( i : Int );
-	EAssign( name : String, value : String );
-	ERuleSet( r : RuleSet );
+	EAssign( name : String, value : Expr );
+	ERuleSet( r : RuleCaseGroup );
+}
+
+private typedef TPExpr = {
+	texpr : TPExprDef,
+	pos : Position,
 }
 
 @:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
@@ -59,11 +45,11 @@ private enum Expr {
 
 	public var footer : String;
 
-	public var lines : LineCounter;
+	public var lines : LineCounter;    // LF counter
 
-	public var parray : lm.PosArray;
+	public var parray : lm.PosArray;   // Map<pos,string>
 
-	public var ccodes : Array<String>;
+	public var ccodes : Array<String>; // c language codes
 
 	var sbuf : StringBuf;
 
@@ -114,6 +100,10 @@ private enum Expr {
 		return ccodes.join(LN + TAB);
 	}
 
+	public function mkpos(min, max) {
+		return {min : min, max : max, file : lines.owner};
+	}
+
 	static var ident = "[a-zA-Z_][a-zA-Z0-9_]*";
 
 	static var integer = "0|[1-9][0-9]*";
@@ -138,6 +128,7 @@ private enum Expr {
 		"="           => OpAssign,
 		"->"          => OpArrow,
 		"|"           => OpOr,
+		"+"           => OpAdd,
 		"("           => LParen,
 		")"           => RParen,
 		ident         => CIdent,
@@ -148,7 +139,7 @@ private enum Expr {
 			sbuf = new StringBuf();
 			var t = lex.str();
 			if (t == Eof)
-				CLexer.fatalError("Unclosed " + "string", min, lex.pmax);
+				throw new Error("Unclosed " + "string", mkpos(min, lex.pmax));
 			lex.pmin = min; // pos union
 			parray.add(min + 1, sbuf.toString());
 			t;
@@ -158,7 +149,7 @@ private enum Expr {
 			sbuf = new StringBuf();
 			var t = lex.qstr();
 			if (t == Eof)
-				CLexer.fatalError("Unclosed " + "string", min, lex.pmax);
+				throw new Error("Unclosed " + "string", mkpos(min, lex.pmax));
 			lex.pmin = min;
 			parray.add(min + 1, sbuf.toString());
 			t;
@@ -169,7 +160,7 @@ private enum Expr {
 		},
 		_ => {
 			var s = "UnMatached: '" + lex.getString(pmax, pmin - pmax) + "'";
-			CLexer.fatalError(s, pmax, pmin);
+			throw new Error(s, mkpos(pmax, pmin));
 		}
 	];
 
@@ -206,7 +197,7 @@ private enum Expr {
 		},
 		CRLF         => {
 			lines.add(pmax);
-			CLexer.fatalError("Unexpected: " + "\\n", pmin, pmax);
+			throw new Error("Unexpected: " + "\\n", mkpos(pmin, pmax));
 		},
 		'[^"\r\n\\\\]+'  => {
 			sbuf.add(lex.current);
@@ -244,7 +235,10 @@ private enum Expr {
 			sbuf.addChar("\\".code);
 			lex.qstr();
 		},
-		CRLF         => { lines.add(pmax); CLexer.fatalError("Unexpected: " + "\\n", pmin, pmax); },
+		CRLF         => {
+			lines.add(pmax);
+			throw new Error("Unexpected: " + "\\n", mkpos(pmin, pmax));
+		},
 		"[^'\r\n\\\\]+"  => {
 			sbuf.add(lex.current);
 			lex.qstr();
@@ -309,98 +303,143 @@ private enum Expr {
 	];
 }
 
-private class Parser implements lm.LR0<Lexer, Array<Expr>> {
-	// custom
-	static var __default__ = @:privateAccess {
-		var t = stream.offset( -1);
-		CLexer.fatalError('Unexpected "' + (t.term != Eof ? stream.str(t): "Eof") + '"', t.pmin, t.pmax);
+@:rule({
+	left: ["|"],
+	left: ["+"],
+}) private class Parser implements lm.LR0<Lexer, Array<TPExpr>> {
+
+	public var lexer : Lexer;
+
+	function mkpos( min : Int, max : Int ) {
+		return lexer.mkpos(min, max);
 	}
 
-	static var begin = switch(s) {
+	function mk_expr( def : ExprDef, min, max ) {
+		return {expr : def, pos : mkpos(min, max)};
+	}
+
+	function mk_tpexpr( def : TPExprDef, min, max ) {
+		return {texpr : def, pos : mkpos(min, max)};
+	}
+
+	public function new( lex : Lexer ) {
+		this.lexer = lex;
+		this.stream = @:privateAccess new lm.Stream<Dynamic>(lex);
+	}
+
+	// custom
+	var __default__ = @:privateAccess {
+		var t = stream.offset( -1);
+		throw new Error('Unexpected "' + (t.term != Eof ? stream.str(t): "Eof") + '"', mkpos(t.pmin, t.pmax));
+	}
+
+	var begin = switch(s) {
 	case [a = list, Eof]                         : a;
 	case [Eof]                                   : [];
 	}
-	static var list = switch(s) {
-	case [a = list, e = expr]                    : a.push(e); a;
-	case [e = expr]                              : [e];
-	}
-	static var expr : Expr = switch(s) {
-	case [DEoF, "(", CIdent(c), ")"]             : EEof(c);
-	case [DSrc, "(", CIdent(c), ")"]             : ESrc(c);
-	case [DMax, "(", CInt(i), ")"]               : EMax(i);
-	case [KLet, CIdent(c), "=", CString(s) ]     : EAssign(c, s);
-	case [KLet, CIdent(c), "=", KFun, r = cases] : r.name = c; ERuleSet(r);
+
+	var list = switch(s) {
+	case [a = list, e = tpexpr]                  : a.push(e); a;
+	case [e = tpexpr]                            : [e];
 	}
 
-	static var cases : RuleSet = switch(s) {
+	var tpexpr : TPExpr = switch(s) {
+	case [DEoF, "(", CIdent(c), ")"]             : mk_tpexpr(EEof(c), _t1.pmin, _t4.pmax);
+	case [DSrc, "(", CIdent(c), ")"]             : mk_tpexpr(ESrc(c), _t1.pmin, _t4.pmax);
+	case [DMax, "(", CInt(i), ")"]               : mk_tpexpr(EMax(i), _t1.pmin, _t4.pmax);
+	case [KLet, CIdent(c), "=", e = expr]        : mk_tpexpr(EAssign(c, e), _t1.pmin, _t4.pmax);
+	case [KLet, CIdent(c), "=", KFun, r = cases] : r.name = c; mk_tpexpr(ERuleSet(r), _t1.pmin, _t5.pmax);
+	}
+
+	var expr : Expr = switch(s) {
+	case [CIdent(name), "(", e = expr , ")"] :
+		switch (name) {
+		case "Opt", "Plus", "Star":
+		default:
+			throw new Error("Duplicated null matching: _", mkpos(_t1.pmin, _t1.pmax));
+		}
+		var fname = mk_expr(EConst(CIdent(name)), _t1.pmin, _t1.pmax);
+		mk_expr(ECall(fname, [e]), _t1.pmin, _t4.pmax);
+
+	case [e1 = expr, "+", e2 = expr] :
+		mk_expr(EBinop(OpAdd, e1, e2), _t1.pmin, _t3.pmax);
+
+	case [e1 = expr, "|", e2 = expr] :
+		mk_expr(EBinop(OpOr, e1, e2), _t1.pmin, _t3.pmax);
+
+	case ["(", e = expr , ")"]:
+		mk_expr(EParenthesis(e), _t1.pmin, _t3.pmax);
+
+	case [CString(s)] :
+		mk_expr(EConst(CString(s)), _t1.pmin, _t1.pmax);
+
+	case [CIdent(i)] :
+		mk_expr(EConst(CIdent(i)), _t1.pmin, _t1.pmax);
+	}
+
+	var cases : RuleCaseGroup = switch(s) {
 	case [c = cases, r = line]:
-		if (r.patten.pat == PNull) {
-			if (c.epslon != null)
-				CLexer.fatalError("Duplicated null matching: _", c.epslon.patten.pos, c.epslon.patten.pos + 1);
-			c.epslon = r;
+		if (is_nullcase(r.pattern)) {
+			if (c.unmatch != null)
+				throw new Error("Duplicated null matching: _", c.unmatch.pattern.pos);
+			c.unmatch = r;
 		} else {
 			c.rules.push(r);
 		}
 		c;
 	case [r = line]:
-		if (r.patten.pat == PNull) {
-			{ name : "", rules : [ ], epslon : r }
+		if (is_nullcase(r.pattern)) {
+			{ name : "", rules : [ ], unmatch : r }
 		} else {
-			{ name : "", rules : [r], epslon : null }
+			{ name : "", rules : [r], unmatch : null }
 		}
 	}
 
-	static var line : RuleCase = switch(s) {
-	case [OpOr, p = pat, OpArrow]:
+	var line : RuleCase = switch(s) {
+	case [OpOr, pat = expr, OpArrow]:
 		stream.junk(stream.rest);
 		var pmax = _t3.pmax;
-		var lex = @:privateAccess stream.lex;
-		var act = Std.downcast(lex, Lexer).copyAction(pmax);
-		{ patten : p, action : act, faildown : false, pos : pmax, index : -1 }
-	case [OpOr, p = pat]:
-		var pmax = _t2.pmax;
-		if (p.pat == PNull)
-			CLexer.fatalError("Expected: " + "->", pmax, pmax);
-		var tok = stream.peek(0);
-		if (tok.term != OpOr)
-			CLexer.fatalError("Unexpected: " + "actions", pmax, tok.pmin);
-		{ patten : p, action : "\n", faildown : true, pos : pmax, index : -1 }
+		var act = this.lexer.copyAction(pmax);
+		{ pattern : pat, action : {expr : EConst(CString(act)), pos : mkpos(_t1.pmin, _t3.pmin)} }
 	}
-
-	static var pat : PatternEx = switch(s) {
-	case [CString(s)]: { pos: _t1.pmin, pat: PString(s)};
-	case [CIdent(id)]: { pos: _t1.pmin, pat: id == "_" ? PNull : PIdent(id) };
-	}
-
 	// custom extract function
-	@:rule(CInt) static inline function __s1( s : String ) return Std.parseInt(s);
-	@:rule(CIdent) static inline function __s2( s : String ) return s;
-	@:rule(CString) static function __s3( input, t ) {
-		var s = CLexer.lastLexer.parray.get(t.pmin + 1);
+	@:rule(CInt) inline function __s1( s : String ) return Std.parseInt(s);
+	@:rule(CIdent) inline function __s2( s : String ) return s;
+	@:rule(CString) function __s3( input, t ) {
+		var s = this.lexer.parray.get(t.pmin + 1);
 		if (s == null)
-			CLexer.fatalError("TODO", t.pmin, t.pmax);
+			throw new Error("CLexer __s3() TODO", mkpos(t.pmin, t.pmax));
 		return s;
+	}
+
+	public function is_nullcase(e) {
+		return switch(e.expr) {
+		case EConst(CIdent("_")) : true;
+		default: false;
+		}
 	}
 }
 
 
 private class Config {
-	public var per     : Int;
+
+	public var per     : Int;    // stride
 	public var eof     : String;
 	public var bit16   : Bool;   // the table format if nstates > 254
 	public var utf8    : Bool;   // the input format
-	public var nsegs   : Int;
-	public var nrules  : Int;
-	public var invalid : Int;
-	public var cases   : Array<RuleCase>;
+	public var nsegs   : Int;    // available states
+	public var nrules  : Int;    // number of rules
+	public var invalid : Int;    // invalid number, 0xFF for bytes
+	public var cases   : Array<{ index : Int, action : String }>;
 	public var epsilon : String; // case _: actions
 	public var table   : String;
 	public var tabsize : Int;
 	public var entrys  : Array<{name : String, begin: Int}>;
 	public var entrybegin : Int; // entrys[0].begin
 	public var path    : haxe.io.Path;
+	public var custom  : haxe.DynamicAccess<String>;
 
-	public function new( file : String, outdir : String ) {
+	public function new( file : String, cfg : haxe.DynamicAccess<String> ) {
 		per = 128;
 		eof = null;
 		utf8 = true;
@@ -408,30 +447,39 @@ private class Config {
 		table = "";
 		epsilon = "";
 		entrys = [];
+		custom = new haxe.DynamicAccess();
 		path = new haxe.io.Path(file);
+		path.ext = "c"; // change
+
+		if (cfg == null)
+			return;
+		for (k => value in cfg)
+			custom.set(k, value);
+		var outdir = custom.get("outdir");
 		if (outdir != null && outdir != "")
 			path.dir = haxe.io.Path.removeTrailingSlashes(outdir);
-		path.ext = "c"; // change
 	}
-	public function update( leg : lm.LexEngine, list : Array<RuleSet> ) {
-		bit16   = leg.isBit16();
-		nsegs   = leg.segs;
-		nrules  = leg.nrules;
-		invalid = leg.invalid;
-		tabsize = leg.table.length;
-		table   = stable(leg);
-		for(i in 0...leg.entrys.length) {
-			entrys.push({name: list[i].name.toUpperCase(), begin: leg.entrys[i].begin});
+
+	public function update( lexe : lm.LexEngine, groups : Array<RuleCaseGroup> ) {
+		bit16   = lexe.isBit16();
+		nsegs   = lexe.segs;
+		nrules  = lexe.nrules;
+		invalid = lexe.invalid;
+		tabsize = lexe.table.length;
+		table   = stable(lexe);
+		for(i in 0...lexe.entrys.length) {
+			entrys.push({name: groups[i].name.toUpperCase(), begin: lexe.entrys[i].begin});
 		}
-		entrybegin = leg.entrys[0].begin;
+		entrybegin = lexe.entrys[0].begin;
 	}
-	function stable( leg : lm.LexEngine ) {
+
+	function stable( lexe : lm.LexEngine ) {
 		var buff = new StringBuf();
-		var table = leg.table;
-		var perExit = leg.perExit;
+		var table = lexe.table;
+		var perExit = lexe.perExit;
 		var left = table.length - perExit;
-		var cmax = leg.per - 1;
-		var xpad = leg.isBit16() ? 4 : 2;
+		var cmax = lexe.per - 1;
+		var xpad = lexe.isBit16() ? 4 : 2;
 		var state = 0;
 		for (i in 0...left) {
 			if ((i & cmax) == 0) {
@@ -459,18 +507,30 @@ private class Config {
 */
 class CLexer {
 
-	public function new( file : String, mt : Template, outdir : String ) {
-		var lexer = new Lexer(file);
-		lastLexer = lexer;
-		lexer.skipBegin();
-		var list = [];
-		var idmap = new Map();
-		var parser = new Parser(lexer);
-		var cfg = new Config(file, outdir);
+	public var lexer : Lexer;
+	public var parser : Parser;
+	public var cfg : Config;
+
+	public function new( file : String, mt : Template, cfg : haxe.DynamicAccess<String> ) {
+		this.cfg = new Config(file, cfg);
+		this.lexer = new Lexer(file);
+		this.parser = new Parser(this.lexer);
+		try {
+			build(mt);
+		} catch ( e : Error ) {
+			fatalError(e.message, e.pos);
+		}
+	}
+
+	function build( mt : Template ) {
+		this.lexer.skipBegin();
+		var pstart = lexer.pmax;
+		var groups = [];
+		var varmap = new Map<String, Expr>();
 		// parse file
-		var aexpr = parser.begin();
+		var aexpr = this.parser.begin();
 		for (e in aexpr) {
-			switch(e) {
+			switch(e.texpr) {
 			case EEof(id):
 				cfg.eof = id;
 			case ESrc(id):
@@ -478,18 +538,37 @@ class CLexer {
 			case EMax(i):
 				cfg.per = (i | 0x7f) + 1; // 128|256
 			case EAssign(name, value):
-				idmap.set(name, value);
+				varmap.set(name, value);
 			case ERuleSet(r):
-				list.push(r);
+				groups.push(r);
 			}
 		}
 		if (cfg.eof == null)
-			fatalError("%EOF() is required.", 0, 0);
-		var paterns = toPattens(list, cfg, idmap);
-		var leg = new lm.LexEngine(paterns, cfg.per - 1);
-		checking(leg, list);
-		hackNullActions(leg, cfg, list);
-		cfg.update(leg, list);
+			throw new Error("%EOF() is required.", lexer.mkpos(pstart, pstart));
+		if (groups.length == 0)
+			return;
+		var paterns = toPattens(groups, varmap);
+		var lexe = new lm.LexEngine(paterns, cfg.per - 1);
+
+		// checking
+		ExprHelps.lexChecking(lexe, groups);
+
+		// update cfg.cases + cfg.epsilon
+		var index = 0;
+		for (g in groups) {
+			for (r in g.rules) {
+				cfg.cases.push({ index : index++, action : cstring(r.action)});
+			}
+		}
+		if (groups[0].unmatch != null)
+			cfg.epsilon = cstring(groups[0].unmatch.action);
+		// get extra case and update cfg.cases
+		var extra = ExprHelps.lexUnMatchedActions(lexe, groups);
+		for (c in extra) {
+			cfg.cases.push({ index : index++, action : cstring(c.expr) });
+		}
+
+		cfg.update(lexe, groups);
 		// write
 		var text = mt.execute(cfg);
 		var out = sys.io.File.write(cfg.path.toString());
@@ -501,113 +580,33 @@ class CLexer {
 		Sys.print("> " + cfg.path.toString() + "\n");
 	}
 
-	function parse( s , cset, min) {
-		return try
-			lm.LexEngine.parse(s, cset)
-		catch (e : lm.LexEngine.PError) {
-			fatalError(e.message, min + e.offset, min + e.offset + 1);
-		} catch (x) {
-			fatalError("TODO", min, min + 1);
+	function cstring( e : Expr ) {
+		return switch (e.expr) {
+		case EConst(CString(s)):
+			s;
+		default:
+			throw new Error("Unsupported : " + e.toString(), e.pos);
 		}
 	}
 
-	function toPattens( list : Array<RuleSet>, cfg : Config, idmap : Map<String,String> ) {
+	function toPattens( groups : Array<RuleCaseGroup>, varmap : Map<String, Expr> ) {
 		var cset = [new lm.Charset.Char(0, cfg.per - 1)];
 		var ret = [];
 		var index = 0;
-		for (g in list) {
+		for (g in groups) {
 			var a = [];
 			for (r in g.rules) {
-				switch(r.patten.pat) {
-				case PNull:
-				case PIdent(i):
-					var s = idmap.get(i);
-					if (s == null)
-						fatalError("Undefined: " + i, r.patten.pos, r.patten.pos + i.length);
-					a.push( parse(s, cset, r.patten.pos) );
-				case PString(s):
-					a.push( parse(s, cset, r.patten.pos) );
-				}
-				r.index = index++;
-				cfg.cases.push(r);
+				if (parser.is_nullcase(r.pattern))
+					throw new Error("TODO", r.pattern.pos);
+				a.push(ExprHelps.parsePaterns(r.pattern, varmap, cset));
 			}
 			ret.push(a);
 		}
 		return ret;
 	}
-	// copy from lm.LexBuilder
-	function checking( leg : lm.LexEngine, list : Array<RuleSet> ) {
-		var table = leg.table;
-		var VALID = 1;
-		var INVALID = leg.invalid;
-		var exits = haxe.io.Bytes.alloc(leg.nrules);
-		for (i in table.length - leg.perExit...table.length) {
-			var n = table.get(i);
-			if (n == INVALID) continue;
-			exits.set(n, VALID);
-		}
-		function indexPattern( i ) : PatternEx {
-			for (g in list) {
-				var len = g.rules.length;
-				if (i >= len) {
-					i -= len;
-				} else {
-					return g.rules[i].patten;
-				}
-			}
-			throw "NotFound";
-		}
-		// reachable
-		for (n in 0...leg.nrules)
-			if (exits.get(n) != VALID) {
-				var pex = indexPattern(n);
-				var msg = s_patten(pex.pat);
-				fatalError("UnReachable pattern: " + msg, pex.pos, pex.pos + msg.length);
-			}
-		// epsilon
-		for (i in 0...leg.entrys.length) {
-			var e = leg.entrys[i];
-			var n = table.exits(e.begin);
-			if (n == INVALID)
-				continue;
-			var pex = indexPattern(n);
-			var msg = s_patten(pex.pat);
-			if (i == 0) {
-				fatalError("NULL matching: " + msg, pex.pos, pex.pos + msg.length);
-			} else if (list[i].epslon != null) {
-				var empty = list[i].epslon.patten;
-				fatalError(msg + " conflicts with \"" + s_patten(empty.pat) + '"', pex.pos, pex.pos + msg.length);
-			}
-		}
-	}
-	function hackNullActions(leg: lm.LexEngine, cfg : Config, list: Array<RuleSet>) {
-		var table = leg.table;
-		var start = leg.nrules;
-		if (cfg.cases.length != leg.nrules)
-			throw "assert";
-		for (i in 1...list.length) { // the null-case of the first rule-set will be "switch-default"
-			var g = list[i];
-			if (g.epslon != null) {
-				var e = leg.entrys[i];
-				table.set(table.exitpos(e.begin), start);
-				g.epslon.index = start++;
-				cfg.cases.push( g.epslon );
-			}
-		}
-		if (list[0].epslon != null) {
-			cfg.epsilon = list[0].epslon.action;
-		}
-	}
 
-	function s_patten( p : Pattern ) {
-		return switch(p) {
-		case PNull: "_";
-		case PIdent(s):  s;
-		case PString(s): '"' + s + '"'; // TODO: maybe '"'
-		}
-	}
-	function s_expr(e) {
-		return switch(e) {
+	function s_tpexpr(e) {
+		return switch(e.tpexpr) {
 		case EEof(id):
 			"%EOF" + "(" + id + ")";
 		case ESrc(id):
@@ -615,26 +614,25 @@ class CLexer {
 		case EMax(i):
 			"%SRC" + "(" + i + ")";
 		case EAssign(name, value):
-			'let $name = $value';
+			'let $name = ${value.toString()}';
 		case ERuleSet(r):
 			var s = 'let ${r.name} = function\n';
 			for (c in r.rules) {
-				var pat = s_patten(c.patten.pat);
-				var arrow = c.faildown ? "" : "->";
-				s += '| $pat $arrow ${c.action}';
+				var pat = c.pattern.toString();
+				s += '| $pat -> ${c.action.toString()}';
 			}
-			if (r.epslon != null) {
-				s += '| _ -> ${r.epslon.action}';
+			if (r.unmatch != null) {
+				s += '| _ -> ${r.unmatch.action.toString()}';
 			}
 			s;
 		}
 	}
 
-	public static var lastLexer : Lexer;
-	public static function fatalError( msg : String, min : Int, max : Int ) : Dynamic {
-		var lmin = lastLexer.lines.get(min);
-		var spos = '${lmin.line}: characters ${lmin.column}-${max - lmin.base + 1}';
-		Sys.println(lastLexer.lines.owner + ":" + spos + " : " + msg);
+	function fatalError( msg : String, pos : Position ) : Dynamic {
+		var lfcount = lexer.lines;
+		var lmin = lfcount.get(pos.min);
+		var spos = '${lmin.line}: characters ${lmin.column}-${pos.max - lmin.base + 1}';
+		Sys.println(lfcount.owner + ":" + spos + " : " + msg);
 		Sys.exit( -1);
 		return null;
 	}
