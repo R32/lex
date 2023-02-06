@@ -391,8 +391,6 @@ class LR0Base {
 							if (ei == 0) { // the first item
 								if (nt != lhs.name)
 									lhs.lsubs.add(udt.value);
-								if (len == 1)
-									g.right = {type: Left, prio: -2, own: udt.value};
 							}
 							g.syms.push( {t: false, name: nt, cset: udt.cset , ex: v , pos: e.pos} );
 

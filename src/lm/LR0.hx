@@ -3,6 +3,7 @@ package lm;
 #if macro
 import lm.Charset;
 import lm.LexEngine;
+import lm.LR0Base;
 import haxe.macro.Type;
 import haxe.macro.Expr;
 import haxe.macro.Context;
@@ -112,28 +113,39 @@ class LR0Builder extends lm.LR0Base {
 		this.table = tbls;
 	}
 
+	function equalToFirst( value : Int, source : SymbolSet, target : SymbolSet, same : Bool ) {
+		if (source == target)
+			return true;
+		if (target.syms.length == 0)
+			return false; // allows empty
+		if (!same && target.syms.length > 1)
+			return false; // not single [E]
+		return value == target.syms[0].cset[0].min;
+	}
+
 	function closure(nodes: Array<Node>) {
 		function mixing(dst: Array<Node>, from:Int, lval: Int, rule: Int) {
 			var nfa = this.nfas[from];
 			var lhs = this.lhsA[from];
 			var caze = ruleToCase(rule);
-			if (caze.left == null) {          // [E] | [...,T,E] | [..., undefined_op, E]
+			var sameGroup = this.byRule(rule) == lhs;
+			if (caze.left == null) { // [E] | [...,T,E] | [..., undefined_op, E]
 				for (i in 0...nfa.length)
-					if (caze != lhs.cases[i]) // Exclude only the rule itself
+					if (!equalToFirst(lval, caze, lhs.cases[i], sameGroup))
 						LexEngine.addNode(dst, nfa[i]);
-			} else {
-				var left = caze.left;
-				for (i in 0...nfa.length) {
-					var right = lhs.cases[i].right;
-					if ( right == null || right.own != lval || right.prio == -1
-					|| (right.prio >= 0 && (left.prio < right.prio || left.type == Right && left.prio <= right.prio))
-					) LexEngine.addNode(dst, nfa[i]);
-				}
+				return;
+			}
+			var left = caze.left;
+			for (i in 0...nfa.length) {
+				var right = lhs.cases[i].right;
+				if (right == null || right.own != lval || right.prio == -1
+				|| (right.prio >= 0 && (left.prio < right.prio || left.type == Right && left.prio <= right.prio))
+				) LexEngine.addNode(dst, nfa[i]);
 			}
 		}
 		inline function addAll(nodes, nfa) LexEngine.addNodes(nodes, nfa);
 		var alt = new haxe.ds.Vector<Bool>(lhsA.length);
-		for (p in 0...nodes.length) { // no need to iterate the nodes added later, because "::lhsClosure()" has already done it.
+		for (p in 0...nodes.length) { // nodes will grows in loop
 			for (nc in nodes[p].arrows) {
 				for (c in nc.chars) {
 					if ( isNonTerm(c.min) ) {
