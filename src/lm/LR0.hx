@@ -255,9 +255,8 @@ class LR0Builder extends lm.LR0Base {
 			static inline var INVALID = $v{this.invalid};
 			static inline var NRULES  = $v{this.nrules};
 			static inline var NSEGS   = $v{this.segs};
-			static inline var MAXVALUE = $v{this.maxValue};     // see .isNonTerm(v)/.isTerm(v)
 			static inline function getU(raw, i) return $getU;
-			static inline function trans(r, s, c) return getU(r, $v{this.per} * s + c);
+			static inline function trans(r, s, t) return getU(r, $v{this.per} * s + t.term);
 			static inline function exits(r, s) return getU(r, $v{this.table.length - 1} - s);
 			inline function gotos(fid:Int):$ct_lval return cases(fid);
 			final stream: $ct_stream;
@@ -270,29 +269,22 @@ class LR0Builder extends lm.LR0Base {
 				t.state = state;
 				stream.unshift(t); // should be removed when returning
 				var raw = raw;     // fast reference
-				var prev = state;
-				var dx = 0;
 				while (true) {
 					while (true) {
-						t = stream.next();
-						state = trans(raw, prev, t.term);
-						t.state = state;
+						t = stream.next();   // next token
+						state = trans(raw, state, t);
 						if (state >= NSEGS)
 							break;
-						prev = state;
+						t.state = state;     // update state to stream-token
 					}
 					if (state == INVALID) {
-						state = prev;
-						dx = 1;
+						stream.pos -= 1;     // reverts if INVALID
+						state = stream.offset( -1).state;
 					}
-					var q = exits(raw, state);
-					if (q < NRULES) {
-						stream.pos -= dx;
-					} else {
-						break;  // throw error.
-					}
-					dx = 0;     // reset dx
 					while (true) {
+						var q = exits(raw, state);
+						if (q >= NRULES)
+							return gotos(q);
 						var value:$ct_lval = gotos(q);
 						t = stream.reduce( lvs[q] );
 						if (t.term == exp) {
@@ -301,14 +293,13 @@ class LR0Builder extends lm.LR0Base {
 							return value;
 						}
 						t.val = value;
-						t.state = trans(raw, stream.offset( -2).state, t.term);
-						prev = t.state;
-						if (prev < NSEGS)
+						state = trans(raw, stream.offset( -2).state, t);
+						t.state = state;
+						if (state < NSEGS)
 							break;
-						q = exits(raw, prev);
 					}
 				}
-				return gotos(NRULES); // error will be thrown.
+				return gotos(INVALID); // goto switch default:
 			}
 		}).fields;
 		// build siwtch
