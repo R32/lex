@@ -283,9 +283,9 @@ class LR0Builder extends lm.LR0Base {
 					}
 					while (true) {
 						var q = exits(raw, state);
+						var value : $ct_lval = gotos(q);
 						if (q >= NRULES)
-							return gotos(q);
-						var value:$ct_lval = gotos(q);
+							return value;    // error exiting
 						t = stream.reduce( lvs[q] );
 						if (t.term == exp) {
 							stream.pos -= 2; // ready to discard
@@ -304,8 +304,8 @@ class LR0Builder extends lm.LR0Base {
 		}).fields;
 		// build siwtch
 		var edef = this.unMatched != null ? this.unMatched : (macro {
-			var t = @:privateAccess __s.offset( -1);
-			throw __s.error('Unexpected "' + (t.term != $i{sEof} ? __s.str(t): $v{sEof}) + '"', t);
+			var t = stream.peek(0);
+			throw stream.error('Unexpected "' + (t.term != $i{sEof} ? stream.str(t): $v{sEof}) + '"', t);
 		});
 		var ecases:Array<Case> = [];
 		ecases.resize(this.nrules);
