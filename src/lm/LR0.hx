@@ -138,6 +138,8 @@ class LR0Builder extends lm.LR0Base {
 			var left = caze.left;
 			for (i in 0...nfa.length) {
 				var right = lhs.cases[i].right;
+				if (left.type != Right && (right == null) && equalToFirst(lval, caze, lhs.cases[i], sameGroup))
+					continue;
 				if (right == null || right.own != lval || right.prio == -1
 				|| (right.prio >= 0 && (left.prio < right.prio || left.type == Right && left.prio <= right.prio))
 				) LexEngine.addNode(dst, nfa[i]);
