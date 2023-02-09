@@ -36,8 +36,6 @@ typedef StreamToken = {
 	name : String,
 	cset : Charset,
 	pos  : Position,
-	?epmin : Expr,     // if $(p1, CInt(i), p2) then pmin = "p1" pmax = "p2"
-	?epmax : Expr,
 	?extract : String, // if "CStr(str)" then "str", elseif "e = expr" then "e"
 }
 typedef StreamTokenSets = {
@@ -88,7 +86,6 @@ class ParserBase {
 
 	public var terms_ct : ComplexType;
 
-	public var dyn_ct : ComplexType;
 	/*
 	 * enum terms map(without non-terms), The first letter of all keys is UPPERCASE.
 	 */
@@ -306,8 +303,6 @@ class ParserBase {
 		var index = 0;
 		var indexMax = el.length;
 		var e = el[0];
-		var sposmap = new Map<String, Bool>();
-		var spos : { ?min : Expr, ?max : Expr } = {};
 		var stoken : StreamToken = null;
 		while (true) {
 			switch(e.expr) {
@@ -364,67 +359,21 @@ class ParserBase {
 				result.prec = casePrecMeta(c);
 				e = sub;
 				continue;
-			case ECall({expr : EConst(CIdent("$"))}, args) if (args.length <= 3): // $(p1, T, p2)
-				var sub = extractSPos(args, spos, sposmap);
-				if (sub == null)
-					throw new Error("Unsupported: " + e.toString(), e.pos);
-				e = sub;
-				continue;
 			default:
 				throw new Error("Unsupported: " + e.toString(), e.pos);
 			}
 			if (stoken.cset == CSet.C_EMPTY)
 				throw new Error("Undefined: " + e.toString(), e.pos);
-			// spos
-			stoken.epmin = spos.min;
-			stoken.epmax = spos.max;
 			result.sets.push(stoken);
 			if (++index >= indexMax)
 				break;
 			// reset for next
 			e = el[index];
 			stoken = null;
-			spos = {};
 		}
 		// prec reads
 		casePrecRead(result);
 		return result;
-	}
-	// $(pmin, T, pmax) or $(pmin, T) or $(T, pmax)
-	function extractSPos( el : Array<Expr>, out : {?min : Expr, ?max : Expr}, map : Map<String, Bool> ) : Expr {
-		var sub = switch(el.length) {
-		case 1:
-			el[0];
-		case 2:
-			var t1 = expectIdent(el[0]);
-			var t2 = expectIdent(el[1]);
-			if (t1 == null || isUpperCaseFirst(t1)) { // [e = expr] or [Token]
-				out.max = el[1];
-				el[0];
-			} else if (t2 == null || isUpperCaseFirst(t2) || t1.charCodeAt(0) == "p".code) {
-				out.min = el[0];
-				el[1];
-			} else {
-				out.max = el[1];
-				el[0];
-			}
-		case 3:
-			out.min = el[0];
-			out.max = el[2];
-			el[1];
-		default:
-			null;
-		}
-		// Detect if spmin/spmax conflicts?
-		for (e in [out.min, out.max]) {
-			if (e == null)
-				continue;
-			var id = expectIdent(e);
-			if (map.exists(id))
-				throw new Error("Position variable conflicts: " + id, e.pos);
-			map.set(id, true);
-		}
-		return sub;
 	}
 	function stripUnderscore( e : Expr ) {
 		return switch(e.expr) {
@@ -533,21 +482,21 @@ class ParserBase {
 
 	// writing AST manually is complex, because the keyword "macro" cannot be used here,
 	function InsertExtraAction() {
-		// cast e
+		//// cast e
 		function mk_cast( e : Expr) {
 			return {
 				expr : ECast(e, null),
 				pos : e.pos
 			}
 		}
-		// e.field
+		//// e.field
 		function mk_field( e : Expr, field : String, pos : Position ) {
 			return {
 				expr : EField(e, field),
 				pos : pos
 			}
 		}
-		// @:privateAccess e.field
+		//// @:privateAccess e.field
 		function mk_field_pri( e : Expr, field : String, pos : Position ) {
 			var expr = mk_field(e, field, pos);
 			return {
@@ -555,7 +504,7 @@ class ParserBase {
 				pos : pos
 			}
 		}
-		// (expr :ctype)
+		//// (expr :ctype)
 		function mk_check( e : Expr, ctype : ComplexType ) {
 			if (ctype == null)
 				return e;
@@ -564,7 +513,7 @@ class ParserBase {
 				pos : e.pos
 			}
 		}
-		// var name : ctype = expr;
+		//// var name : ctype = expr;
 		function mk_var( name : String, ctype : ComplexType, expr : Expr, pos : Position ) {
 			return {
 				expr : EVars([{
@@ -576,7 +525,7 @@ class ParserBase {
 				pos : pos
 			}
 		}
-		// stream.offset(dx)
+		//// stream.offset(dx)
 		function mk_stream_offset( dx : Int, pos : Position ) {
 			var expr = mk_field_pri({expr : EConst(CIdent("stream")), pos : pos}, "offset", pos);
 			return {
@@ -584,43 +533,29 @@ class ParserBase {
 				pos : pos
 			}
 		}
-		function InsertPos( dx : Int, epos : Expr, out : Array<Expr>, field : String ) {
-			if (epos == null || stripUnderscore(epos) == null)
-				return;
-			var pos = epos.pos;
-			// stream.offset(dx)
-			var expr = mk_stream_offset(dx, pos);
-			// expr.field
-			var expr = mk_field(expr, field, pos);
-			// var epos = expr;
-			var stsm = mk_var(expectIdent(epos), TPath({name : "Int", pack : []}), expr, pos);
-			// stsm is equals to "macro var epos = stream.offset($v{dx}).field";
-			out.push(stsm);
-		}
 		var ct_int : ComplexType = TPath({name : "Int", pack : []});
 		for (lhs in this.lhsides) {
 			for (stsets in lhs.cases) {
 				var len = stsets.sets.length;
 				var extra : Array<Expr> = [];
+
 				for (i in 0...len) {
 					var dx = -(len - i);
 					var stoken = stsets.sets[i];
-					// spmin/spmax
-					InsertPos(dx, stoken.epmin, extra, "pmin");
-					InsertPos(dx, stoken.epmax, extra, "pmax");
-
 					var vname = stoken.extract;
 					if (vname == null || vname == "_")
 						continue;
 					var pos = stoken.pos;
-					var stream_offset_dx = mk_stream_offset(dx, pos);
+					//// final Tx = stream.offset(dx);
+					extra.push(mk_var("T" + (i + 1), null, mk_stream_offset(dx, pos), pos));
+					var CURRENT = {expr : EConst(CIdent("T" + (i + 1))), pos : pos};
 					// non-term
 					if (stoken.t == false) {
 						var lvalue = stoken.cset[0].min;
 						var ctype = lhsides[lvalue - max_term_value].ctype;
-						var expr = mk_field(stream_offset_dx, "val", pos);
+						var expr = mk_field(CURRENT, "val", pos);
 						var stsm = mk_var(vname, ctype, expr, pos);
-						// var vname = stream.offset(dx).val;
+						//// var vname = stream.offset(dx).val;
 						extra.push(stsm);
 						continue;
 					}
@@ -630,25 +565,24 @@ class ParserBase {
 					if (func == null) {
 						if (tkname != "*" && CSet.isSingle(stoken.cset))
 							throw new Error("Required a function with @:rule(" + tkname + ")", pos);
-						var expr = mk_field(stream_offset_dx, "term", pos);
-						var expr = mk_cast(expr);
-						var stsm = mk_var(vname, terms_ct, expr, pos);
-						// var vname : Token = cast stream.offset(dx).term;
+						var expr = mk_field(CURRENT, "term", pos);
+						var stsm = mk_var(vname, terms_ct, mk_cast(expr), pos);
+						//// var vname : Token = cast stream.offset(dx).term;
 						extra.push(stsm);
 						continue;
 					}
 					var fexpr = {expr : EConst(CIdent(func.name)), pos : pos};
 					var args = switch(func.args) {
 					case 1:
-						// [stream.str(stream.offset(dx))]
+						//// [stream.str(stream.offset(dx))]
 						var expr = mk_field({expr : EConst(CIdent("stream")), pos : pos}, "str", pos);
-						var expr = {expr : ECall(expr, [stream_offset_dx]), pos : pos};
+						var expr = {expr : ECall(expr, [CURRENT]), pos : pos};
 						[expr];
 					case 2:
-						// [stream.lex.input, stream.offset(dx)]
+						//// [stream.lex.input, stream.offset(dx)]
 						var expr = mk_field_pri({expr : EConst(CIdent("stream")), pos : pos}, "lex", pos);
 						var expr = mk_field(expr, "input", pos);
-						[expr, stream_offset_dx];
+						[expr, CURRENT];
 					default:
 						throw new Error("Unsupported: " + func.name, func.pos);
 					}
