@@ -6,7 +6,7 @@ import haxe.Template;
 import haxe.macro.Expr;
  using haxe.macro.ExprTools;
 
-private enum abstract Token(Int) to Int {
+enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var Exit;
 	var ActRollback;
@@ -39,7 +39,7 @@ private typedef TPExpr = {
 	pos : Position,
 }
 
-@:rule(Eof, 127) private class Lexer implements lm.Lexer<Token> {
+@:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
 
 	public var header : String;
 
@@ -306,7 +306,7 @@ private typedef TPExpr = {
 @:rule({
 	left: ["|"],
 	left: ["+"],
-}) private class Parser implements lm.LR0<Lexer, Array<TPExpr>> {
+}) private class Parser implements lm.SLR<Lexer> {
 
 	public var lexer : Lexer;
 
@@ -314,41 +314,41 @@ private typedef TPExpr = {
 		return lexer.mkpos(min, max);
 	}
 
-	function mk_expr( def : ExprDef, min, max ) {
+	function mk_expr( def : ExprDef, min : Int, max : Int ) {
 		return {expr : def, pos : mkpos(min, max)};
 	}
 
-	function mk_tpexpr( def : TPExprDef, min, max ) {
+	function mk_tpexpr( def : TPExprDef, min : Int, max : Int ) {
 		return {texpr : def, pos : mkpos(min, max)};
 	}
 
 	public function new( lex : Lexer ) {
 		this.lexer = lex;
-		this.stream = @:privateAccess new lm.Stream<Dynamic>(lex);
+		this.stream = @:privateAccess new lm.Stream(lex);
 	}
 
-	// custom
-	var __default__ = @:privateAccess {
-		var t = stream.offset( -1);
-		throw new Error('Unexpected "' + (t.term != Eof ? stream.str(t): "Eof") + '"', mkpos(t.pmin, t.pmax));
+	// start
+	var begin : Array<TPExpr> = switch(s) {
+	case [a = list, Eof] :
+		a;
+	default:
+		var t = stream.peek(0);
+		if (t.term == Eof)
+			return [];
+		throw new Error('Unexpected "' + stream.str(t) + '"', mkpos(t.pmin, t.pmax));
 	}
 
-	var begin = switch(s) {
-	case [a = list, Eof]                         : a;
-	case [Eof]                                   : [];
-	}
-
-	var list = switch(s) {
+	var list : Array<TPExpr> = switch(s) {
 	case [a = list, e = tpexpr]                  : a.push(e); a;
 	case [e = tpexpr]                            : [e];
 	}
 
 	var tpexpr : TPExpr = switch(s) {
-	case [DEoF, "(", CIdent(c), ")"]             : mk_tpexpr(EEof(c), _t1.pmin, _t4.pmax);
-	case [DSrc, "(", CIdent(c), ")"]             : mk_tpexpr(ESrc(c), _t1.pmin, _t4.pmax);
-	case [DMax, "(", CInt(i), ")"]               : mk_tpexpr(EMax(i), _t1.pmin, _t4.pmax);
-	case [KLet, CIdent(c), "=", e = expr]        : mk_tpexpr(EAssign(c, e), _t1.pmin, _t4.pmax);
-	case [KLet, CIdent(c), "=", KFun, r = cases] : r.name = c; mk_tpexpr(ERuleSet(r), _t1.pmin, _t5.pmax);
+	case [DEoF, "(", CIdent(c), ")"]             : mk_tpexpr(EEof(c), T1.pmin, T4.pmax);
+	case [DSrc, "(", CIdent(c), ")"]             : mk_tpexpr(ESrc(c), T1.pmin, T4.pmax);
+	case [DMax, "(", CInt(i), ")"]               : mk_tpexpr(EMax(i), T1.pmin, T4.pmax);
+	case [KLet, CIdent(c), "=", e = expr]        : mk_tpexpr(EAssign(c, e), T1.pmin, T4.pmax);
+	case [KLet, CIdent(c), "=", KFun, r = cases] : r.name = c; mk_tpexpr(ERuleSet(r), T1.pmin, T5.pmax);
 	}
 
 	var expr : Expr = switch(s) {
@@ -356,25 +356,25 @@ private typedef TPExpr = {
 		switch (name) {
 		case "Opt", "Plus", "Star":
 		default:
-			throw new Error("Duplicated null matching: _", mkpos(_t1.pmin, _t1.pmax));
+			throw new Error("Duplicated null matching: _", mkpos(T1.pmin, T1.pmax));
 		}
-		var fname = mk_expr(EConst(CIdent(name)), _t1.pmin, _t1.pmax);
-		mk_expr(ECall(fname, [e]), _t1.pmin, _t4.pmax);
+		var fname = mk_expr(EConst(CIdent(name)), T1.pmin, T1.pmax);
+		mk_expr(ECall(fname, [e]), T1.pmin, T4.pmax);
 
 	case [e1 = expr, "+", e2 = expr] :
-		mk_expr(EBinop(OpAdd, e1, e2), _t1.pmin, _t3.pmax);
+		mk_expr(EBinop(OpAdd, e1, e2), T1.pmin, T3.pmax);
 
 	case [e1 = expr, "|", e2 = expr] :
-		mk_expr(EBinop(OpOr, e1, e2), _t1.pmin, _t3.pmax);
+		mk_expr(EBinop(OpOr, e1, e2), T1.pmin, T3.pmax);
 
 	case ["(", e = expr , ")"]:
-		mk_expr(EParenthesis(e), _t1.pmin, _t3.pmax);
+		mk_expr(EParenthesis(e), T1.pmin, T3.pmax);
 
 	case [CString(s)] :
-		mk_expr(EConst(CString(s)), _t1.pmin, _t1.pmax);
+		mk_expr(EConst(CString(s)), T1.pmin, T1.pmax);
 
 	case [CIdent(i)] :
-		mk_expr(EConst(CIdent(i)), _t1.pmin, _t1.pmax);
+		mk_expr(EConst(CIdent(i)), T1.pmin, T1.pmax);
 	}
 
 	var cases : RuleCaseGroup = switch(s) {
@@ -398,9 +398,9 @@ private typedef TPExpr = {
 	var line : RuleCase = switch(s) {
 	case [OpOr, pat = expr, OpArrow]:
 		stream.junk(stream.rest);
-		var pmax = _t3.pmax;
+		var pmax = T3.pmax;
 		var act = this.lexer.copyAction(pmax);
-		{ pattern : pat, action : {expr : EConst(CString(act)), pos : mkpos(_t1.pmin, _t3.pmin)} }
+		{ pattern : pat, action : {expr : EConst(CString(act)), pos : mkpos(T1.pmin, T3.pmin)} }
 	}
 	// custom extract function
 	@:rule(CInt) inline function __s1( s : String ) return Std.parseInt(s);
@@ -421,7 +421,7 @@ private typedef TPExpr = {
 }
 
 
-private class Config {
+class Config {
 
 	public var per     : Int;    // stride
 	public var eof     : String;
