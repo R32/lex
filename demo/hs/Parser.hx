@@ -21,7 +21,7 @@ import hscript.Expr;
 	left: ["%"],
 	nonassoc: ["!", "~" , "++", "--"],
 	left: ["[", "(", "."],  // ++a[0] => ++(a[0])
-}) class Parser implements lm.LR0<Lexer, Expr> {
+}) class Parser implements lm.SLR<Lexer> {
 
 	// ofString
 	@:rule(CIdent) static inline function id_ofstr(s:String):String return s;
@@ -35,7 +35,7 @@ import hscript.Expr;
 			s.junk(1);
 	}
 
-	static function autoSemicolon(s, e: Expr) {
+	static function autoSemicolon( s : lm.Stream, e : Expr) {
 		var t = s.peek(0);
 		if (t.term == cast Semicolon) {
 			s.junk(1);
@@ -57,7 +57,7 @@ import hscript.Expr;
 		}
 	}
 
-	static function conpos(s, a: Array<lm.Stream.Tok>): Void {
+	static function conpos( s : lm.Stream, a : Array<lm.Stream.Tok> ) : Void {
 		var i = 0;
 		var len = a.length;
 		var t1 = a[i++];
@@ -70,18 +70,25 @@ import hscript.Expr;
 	}
 
 	// %start main
-	static var main = switch (s) {
+	static var main : Expr = switch (s) {
 		case [l = list, Eof]: l.length == 1 ? l[0]: EBlock(l);
-		case [Eof]: EBlock([]);
+		default:
+			var t = stream.peek(0);
+			switch(t.term) {
+			case Eof:
+				EBlock([]);
+			default:
+				throw stream.UnExpected(t);
+			}
 	}
 
 	static var list: Array<Expr> = switch(s) {
 		case [l = list, i = item]:
-			autoSemicolon(__s, i);
+			autoSemicolon(stream, i);
 			l.push(i);
 			l;
 		case [i = item]:
-			autoSemicolon(__s, i);
+			autoSemicolon(stream, i);
 			[i];
 	}
 
@@ -116,22 +123,22 @@ import hscript.Expr;
 		case [CString(i), ":", e = expr]:           [{name: i, e: e}]; // allowJSON
 	}
 
-	static var expr = switch (s) {
-		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]:     EBinop(__s.str(_t2), e1, e2);
-		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(__s, [_t2, _t3, _t4]);      EBinop(">>=", e1, e2);
-		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(__s, [_t2, _t3, _t4, _t5]); EBinop(">>>=", e1, e2);
-		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(__s, [_t2, _t3]);           EBinop(">=", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(__s, [_t2, _t3]);           EBinop(">>", e1, e2);
-		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(__s, [_t2, _t3, _t4]);      EBinop(">>>", e1, e2);
-		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(__s.str(_t2), e1, e2);
+	static var expr : Expr = switch (s) {
+		case [e1 = expr, op = ["=", "+=", "-=", "*=", "/=", "%=", "<<=", "|=", "&=", "^="], e2 = expr]:     EBinop(stream.str(T2), e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", "=", e2 = expr]:        conpos(stream, [T2, T3, T4]);      EBinop(">>=", e1, e2);
+		case [@:prec("<<=") e1 = expr, ">", ">", ">", "=", e2 = expr]:   conpos(stream, [T2, T3, T4, T5]);  EBinop(">>>=", e1, e2);
+		case [@:prec("<=") e1 = expr, ">", "=", e2 = expr]:              conpos(stream, [T2, T3]);          EBinop(">=", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", e2 = expr]:              conpos(stream, [T2, T3]);          EBinop(">>", e1, e2);
+		case [@:prec("<<") e1 = expr, ">", ">", ">", e2 = expr]:         conpos(stream, [T2, T3, T4]);      EBinop(">>>", e1, e2);
+		case [e1 = expr, op = ["==", "!=", ">", "<", "<="], e2 = expr]:  EBinop(stream.str(T2), e1, e2);
 		case [e1 = expr, "<<", e2 = expr]:                     EBinop("<<", e1, e2);
 		case [e1 = expr, "||", e2 = expr]:                     EBinop("||", e1, e2);
 		case [e1 = expr, "&&", e2 = expr]:                     EBinop("&&", e1, e2);
-		case [e1 = expr, op = ["|", "&", "^"], e2 = expr]:     EBinop(__s.str(_t2), e1, e2);
-		case [e1 = expr, op = ["+", "-"], e2 = expr]:          EBinop(__s.str(_t2), e1, e2);
-		case [e1 = expr, op = ["*", "/"], e2 = expr]:          EBinop(__s.str(_t2), e1, e2);
+		case [e1 = expr, op = ["|", "&", "^"], e2 = expr]:     EBinop(stream.str(T2), e1, e2);
+		case [e1 = expr, op = ["+", "-"], e2 = expr]:          EBinop(stream.str(T2), e1, e2);
+		case [e1 = expr, op = ["*", "/"], e2 = expr]:          EBinop(stream.str(T2), e1, e2);
 		case [e1 = expr, "%", e2 = expr]:                      EBinop("%", e1, e2);
-		case [@:prec("~") op = ["-", "~", "!"], e = expr]:     EUnop(__s.str(_t1), true, e);
+		case [@:prec("~") op = ["-", "~", "!"], e = expr]:     EUnop(stream.str(T1), true, e);
 		case [l = left]:     l;
 		case [b = block]:    b;
 		case [c = constant]: c;
@@ -147,8 +154,8 @@ import hscript.Expr;
 	}
 
 	static var left = switch(s) {
-		case [op = ["++", "--"], l = left]:         EUnop(__s.str(_t1), true, l);
-		case [l = left, op = ["++", "--"]]:         EUnop(__s.str(_t2), false, l);
+		case [op = ["++", "--"], l = left]:         EUnop(stream.str(T1), true, l);
+		case [l = left, op = ["++", "--"]]:         EUnop(stream.str(T2), false, l);
 		case [l = left, ".", CIdent(i)]:            EField(l, i);
 		case [l = left, "[", e = expr , "]"]:       EArray(l, e);
 		case ["[", "]"]:                            EArrayDecl([]);  // []
@@ -228,13 +235,13 @@ import hscript.Expr;
 
 	static var ifelse = switch(s) {
 		case [f = ifelse, "else", se = item]:
-			optSemicolon(__s);
+			optSemicolon(stream);
 			switch(f) {
 			case EIf(c, e, _): EIf(c, e, se);
 			case _: throw("TODO");
 			}
 		case ["if", "(", c = expr, ")", e = item]:
-			optSemicolon(__s);
+			optSemicolon(stream);
 			EIf(c, e);
 	}
 
@@ -302,7 +309,7 @@ import hscript.Expr;
 		case [b = switch_block, x = switch_case]:
 			if (x.v.length == 0) {
 				if (b.def != null)
-					throw __s.UnExpected(_t2);
+					throw stream.UnExpected(T2);
 				b.def = x.e;
 			} else {
 				b.cases.push({values: x.v, expr: x.e});

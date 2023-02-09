@@ -7,7 +7,7 @@ import hscript.Expr;
 	left: ["||"],
 	left: ["&&"],
 	nonassoc: ["!"],
-}) class PreProcess implements lm.LR0<hs.Lexer, Expr> {
+}) class PreProcess implements lm.SLR<hs.Lexer> {
 
 	public var defines : Map<String, Dynamic> = ["lex" => "1", "hscript" => 1];
 
@@ -88,7 +88,7 @@ import hscript.Expr;
 	@:rule(CIdent) static inline function id_ofstring(s:String):String return s;
 
 	// %start parse
-	static var parse = switch(s) {
+	static var parse : Expr = switch(s) {
 		case [e = cond]:
 			var s = stream;
 			if (s.rest > 0) @:privateAccess {
@@ -96,8 +96,14 @@ import hscript.Expr;
 				s.junk(s.rest);              // then clear stream cache
 			}
 			e;
-		case [Eof]:
-			throw stream.error("Unclosed: " + "#if/else", _t1);
+		default:
+			var t = stream.peek(0);
+			switch(t.term) {
+			case Eof:
+				throw stream.error("Unclosed: " + "#if/else", t);
+			default:
+				throw stream.UnExpected(t);
+			}
 	}
 	static var cond = switch(s) {
 		case [c1 = cond, "&&", c2 = cond]:    EBinop("&&", c1, c2);
