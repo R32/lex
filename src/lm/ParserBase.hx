@@ -1,0 +1,671 @@
+package lm;
+
+#if (macro || eval || display)
+
+import haxe.macro.Expr;
+import haxe.macro.Type;
+import lm.Charset;
+import lm.LexEngine;
+import lm.ExprHelps;
+import lm.Utils.isUpperCaseFirst;
+import lm.Utils.isLowerCaseFirst;
+ using haxe.macro.ExprTools;
+
+typedef RuleCaseGroupExtend = {
+	>RuleCaseGroup,
+	ctype : ComplexType,
+	pos : Position,
+}
+
+/*
+ * enum term
+ */
+typedef EmuTerm = {
+	t : Bool, // term or non-term
+	name : String,
+	value : Int,
+	cset : Charset,
+	pos : Position,
+}
+
+/*
+ * stream token
+ */
+typedef StreamToken = {
+	t    : Bool,
+	name : String,
+	cset : Charset,
+	pos  : Position,
+	?epmin : Expr,     // if $(p1, CInt(i), p2) then pmin = "p1" pmax = "p2"
+	?epmax : Expr,
+	?extract : String, // if "CStr(str)" then "str", elseif "e = expr" then "e"
+}
+typedef StreamTokenSets = {
+	action : Expr,
+	sets   : Array<StreamToken>,
+	prec  : PrecCase,
+}
+
+typedef LeftHandSide = {
+	name  : String,
+	value : Int,            // automatic increase
+	edef  : Expr,           // if "default:", "case []" or "case _"
+	cases : Array<StreamTokenSets>,
+	lsubs : Array<Int>,     // <sub_lhs.value>
+	ctype : ComplexType,
+	entry : Bool,
+	pos   : Position,
+}
+
+enum PrecType {
+	Left;
+	Right;
+	Nonassoc;
+}
+typedef Prec = {
+	type : PrecType,
+	prio : Int,
+	value : Int,
+}
+typedef PrecCase = {
+	?left : Prec,
+	?right : Prec,
+}
+
+/*
+ *
+ */
+class ParserBase {
+	/*
+	 * terms and non-terms
+	 */
+	public var terms_and_non_terms : Array<EmuTerm>; // terms_and_non_terms
+
+	/*
+	 * The union set of terms(no "eof" and no "non-terms")
+	 */
+	public var terms_union_cset : Charset; // terms_union_cset
+
+	public var terms_ct : ComplexType;
+
+	public var dyn_ct : ComplexType;
+	/*
+	 * enum terms map(without non-terms), The first letter of all keys is UPPERCASE.
+	 */
+	public var terms_map : Map<String, EmuTerm>;
+
+	/*
+	 * non-terms map, The first letter of all keys is LOWERCASE.
+	 */
+	public var non_terms_map : Map<String, EmuTerm>;
+
+	public var lhsides : Array<LeftHandSide>;
+
+	public var rule_groups : Array<RuleCaseGroupExtend>;
+
+	public var funmap : Map<String, {name : String, ct : ComplexType, args : Int, pos : Position}>; //  TokenName => FunctionName
+
+	public var precs_map : Map<String, Prec>;
+
+	public var starts : Array<String>;
+
+	var precs_idx : haxe.ds.Vector<Prec>; // precs_idx[term.value]
+
+	public var nrules : Int;
+
+	public var reduce_data : Array<Int>; // for lm.Stream.reduce
+
+	public var eof : String;
+
+	public var reflect : Map<String, String>; // PatternString => TokenString
+
+	public var max_term_value(default, null) : Int; // terms | non-terms Separator
+
+	public function is_term( v : Int ) return v < max_term_value;
+
+	public function is_non_term( v : Int ) return v >= max_term_value;
+
+	public function new () {
+		terms_and_non_terms = [];
+		terms_union_cset = [];
+		rule_groups = [];
+		lhsides = [];
+		non_terms_map = new Map();
+		terms_map = new Map();
+		precs_map = new Map();
+		funmap = new Map();
+		reduce_data = [];
+		eof = null;
+		nrules = 0;
+		reflect = null;
+		max_term_value = 0;
+	}
+
+	public function lhsFromRule( n : Int ) : LeftHandSide {
+		for (lhs in this.lhsides) {
+			var len = lhs.cases.length;
+			if (n < len)
+				return lhs;
+			n -= len;
+		}
+		throw "NotFound";
+	}
+
+	public function caseFromRule( n : Int ) : StreamTokenSets {
+		for (lhs in this.lhsides) {
+			var len = lhs.cases.length;
+			if (n < len)
+				return lhs.cases[n];
+			n -= len;
+		}
+		throw "NotFound";
+	}
+
+	public function addTerm( name : String, value : Int, pos : Position ) {
+		if (!isUpperCaseFirst(name))
+			throw new Error("The first char must be UPPERCASE: " + name, pos);
+		var term = {t : true, name : name, value : value, cset : CSet.single(value), pos : pos};
+		this.terms_and_non_terms.push(term);
+		this.terms_map.set(name, term);
+		this.max_term_value = value + 1;
+		if (name != this.eof)
+			this.terms_union_cset = CSet.union(this.terms_union_cset, term.cset);
+	}
+
+	public function initPrecMap( precs : Array<{type : PrecType, sets : Array<Expr>}> ) {
+		this.precs_idx = new haxe.ds.Vector(this.max_term_value);
+		var prio = 1;
+		for (prec in precs) {
+			for (e in prec.sets) {
+				var tm = this.expectTerm(e, true);
+				var id = expectIdent(e);
+				var value = -1;
+				if (tm != null) {
+					id = tm.name;
+					value = tm.value;
+				} else if (id == null || id != id.toUpperCase()) {
+					throw new Error("Undefined token: " + e.toString(), e.pos);
+				}
+				if (this.precs_map.exists(id))
+					throw new Error("Duplicate token: " + id, e.pos);
+				var prec = {type : prec.type, prio : prio, value : value};
+				this.precs_map.set(id, prec);
+				if (value >= 0)
+					this.precs_idx.set(value, prec);
+			}
+			prio++;
+		}
+	}
+
+	// add non-term
+	public function addNonTerm( name : String, value : Int, ct : ComplexType, cases : Array<Case>, edef : Null<Expr>, pos : Position ) {
+		if (!isLowerCaseFirst(name))
+			throw new Error("The first char must be LOWERCASE: " + name, pos);
+		if (value >= 255)
+			throw new Error("The number of (tokens + LHS) exceeds 255", pos);
+
+		if (this.starts.length == 0)
+			this.starts.push(name);
+		// raw term
+		var term = {t : false, name : name, value : value, cset : CSet.single(value), pos : pos};
+		this.terms_and_non_terms.push(term);
+		this.non_terms_map.set(name, term);
+
+		// transform edef to case "_" if non entry
+		var isEntry = this.starts.indexOf(name) >= 0;
+		var unmatch = null;
+		if (edef != null) {
+			if (isEntry) {
+				unmatch = {pattern : null, action : edef};
+			} else {
+				cases.push({values : [{expr : EConst(CIdent("_")), pos : edef.pos}], expr : edef});
+			}
+		}
+
+		this.nrules += cases.length;
+		// origin switch expr
+		this.rule_groups.push({name : name, ctype : ct, rules : cases.map(caseToPattern), unmatch : unmatch , pos : pos});
+		// transformed switch expr
+		this.lhsides.push({name : name, ctype : ct, cases : [], edef : edef, value : value, lsubs : [], pos : pos, entry : isEntry});
+	}
+	function caseToPattern( c : Case ) {
+		if (c.guard != null)
+			throw new Error("Unsupported: " + c.guard.toString(), c.guard.pos);
+		if (c.values.length > 1)
+			throw new Error("Multi-match is not supported", c.values[1].pos);
+		return {pattern : c.values[0], action : c.expr};
+	}
+
+	public function expectIdent( e : Expr ) : String {
+		return switch(e.expr) {
+		case EConst(CIdent(i)): i;
+		default: null;
+		}
+	}
+
+	public function expectTerm( e : Expr, skipError = false ) {
+		var name = switch(e.expr) {
+		case EConst(CIdent(i)):
+			i;
+		case EConst(CString(s)):
+			var t = this.reflect.get(s);
+			if (t == null)
+				throw new Error("No associated token: " + s, e.pos);
+			t;
+		case _:
+			"";
+		}
+		var tm = terms_map.get(name);
+		if (tm == null && !skipError)
+			throw new Error("Undefined token: " + name, e.pos);
+		return tm;
+	}
+
+	public function toPatternSets() : Array<PatternSet> {
+		inline function add(rule, cur)
+			return @:privateAccess LexEngine.next(rule, Match(cur));
+		var result = [];
+		for (lhs in this.lhsides) {
+			var line = [];
+			for (kase in lhs.cases) {
+				var pattern = Empty;
+				for (tk in kase.sets)
+					pattern = add(pattern, tk.cset);
+				line.push(pattern);
+			}
+			result.push(line);
+		}
+		return result;
+	}
+
+	public function transform() {
+		for (i in 0...this.rule_groups.length) {
+			var lhs = this.lhsides[i];
+			for (rule in this.rule_groups[i].rules) {
+				var stsets = {action : rule.action, sets : [], prec : {}};
+				switch(rule.pattern.expr) {
+				case EArrayDecl([]), EConst(CIdent("_")):
+					if (lhs.edef != null)
+						throw new Error("Duplicate empty matche", rule.pattern.pos);
+				case EArrayDecl(el):
+					stsetsRead(lhs, el, stsets);
+				case EMeta({name: ":prec", params: [c]}, {expr : EArrayDecl(el)}) if (el.length > 0):
+					stsets.prec = casePrecMeta(c);
+					stsetsRead(lhs, el, stsets);
+				default:
+					throw new Error("Unsupported: " + rule.pattern.toString(), rule.pattern.pos);
+				};
+				lhs.cases.push(stsets);
+				this.reduce_data.push(lhs.value << 8 | stsets.sets.length);
+			}
+		}
+		this.lhsClosure();
+		this.InsertExtraAction();
+	}
+	function stsetsRead( owner : LeftHandSide, el : Array<Expr>, result : StreamTokenSets ) {
+		var index = 0;
+		var indexMax = el.length;
+		var e = el[0];
+		var sposmap = new Map<String, Bool>();
+		var spos : { ?min : Expr, ?max : Expr } = {};
+		var stoken : StreamToken = null;
+		while (true) {
+			switch(e.expr) {
+			case EConst(CIdent(i)):  // CInt, OpAdd
+				if (isUpperCaseFirst(i)) {
+					var charsets = try getCSet(i, true) catch (s : String) throw new Error(s + i, e.pos);
+					stoken = {t : true, name : i  , cset : charsets , pos : e.pos};
+				} else if (indexMax == 1 && index == 0) { // e.g: [t]
+					stoken = {t : true, name : "*", cset : terms_union_cset, pos : e.pos, extract : i};
+				} else {
+					throw new Error("The first char must be UPPERCASE: " + i, e.pos);
+				}
+			case EConst(CString(s)): // ["+", "-", "*"]
+				var i = this.reflect.get(s);
+				if (i == null)
+					throw new Error("No associated token: " + s, e.pos);
+				stoken = {t : true, name : i,  cset : getCSet(i), pos : e.pos};
+			case EParenthesis(sub):  // (pattern)
+				e = sub;
+				continue;
+			case ECall({expr : EConst(CIdent(i)), pos : pos}, [v]): // CInt(n)
+				var sv = expectIdent(v);
+				if (sv == null)
+					throw new Error("Unsupported: " + v.toString() ,v.pos);
+				stoken = {t : true, name : i, cset : getCSet(i), pos : e.pos, extract : sv};
+			case EBinop(OpAssign, {expr : EConst(CIdent(v))}, {expr : EConst(CIdent(non)), pos : npos}): // [e = expr]
+				var tm = non_terms_map.get(non);
+				if (tm == null)
+					throw new Error("Undefined non-terminator: " + non, npos);
+
+				if (indexMax == 1 && non == owner.name)
+					throw new Error("Infinite recursion", e.pos);
+
+				if (index == 0 && non != owner.name)
+						owner.lsubs.push(tm.value);
+
+				stoken = {t : false, name: non, cset : tm.cset , extract : v , pos : e.pos};
+			case EBinop(OpAssign, {expr : EConst(CIdent(v))}, {expr : EArrayDecl(a), pos : pos}): // t = [OpPlus, OpMinus]
+				var cset = CSet.C_EMPTY;
+				var prev = 0;
+				for (i in 0...a.length) {
+					var tm = expectTerm(a[i]);
+					var op = precs_map.get(tm.name);
+					var prio = op == null ? 0 : op.prio;
+					if (i > 0 && prio != prev)
+						throw new Error("Inconsistent priorities: " + tm.name , tm.pos);
+					prev = prio;
+					cset = CSet.union(cset, tm.cset);
+				}
+				if (cset == CSet.C_EMPTY)
+					throw new Error("Empty", pos);
+				stoken = {t : true, name : "*", cset : cset, extract : v, pos : e.pos};
+			case EMeta({name : ":prec", params : [c]}, sub): // e.g: @:prec(FOLLOW) tokns
+				result.prec = casePrecMeta(c);
+				e = sub;
+				continue;
+			case ECall({expr : EConst(CIdent("$"))}, args) if (args.length <= 3): // $(p1, T, p2)
+				var sub = extractSPos(args, spos, sposmap);
+				if (sub == null)
+					throw new Error("Unsupported: " + e.toString(), e.pos);
+				e = sub;
+				continue;
+			default:
+				throw new Error("Unsupported: " + e.toString(), e.pos);
+			}
+			if (stoken.cset == CSet.C_EMPTY)
+				throw new Error("Undefined: " + e.toString(), e.pos);
+			// spos
+			stoken.epmin = spos.min;
+			stoken.epmax = spos.max;
+			result.sets.push(stoken);
+			if (++index >= indexMax)
+				break;
+			// reset for next
+			e = el[index];
+			stoken = null;
+			spos = {};
+		}
+		// prec reads
+		casePrecRead(result);
+		return result;
+	}
+	// $(pmin, T, pmax) or $(pmin, T) or $(T, pmax)
+	function extractSPos( el : Array<Expr>, out : {?min : Expr, ?max : Expr}, map : Map<String, Bool> ) : Expr {
+		var sub = switch(el.length) {
+		case 1:
+			el[0];
+		case 2:
+			var t1 = expectIdent(el[0]);
+			var t2 = expectIdent(el[1]);
+			if (t1 == null || isUpperCaseFirst(t1)) { // [e = expr] or [Token]
+				out.max = el[1];
+				el[0];
+			} else if (t2 == null || isUpperCaseFirst(t2) || t1.charCodeAt(0) == "p".code) {
+				out.min = el[0];
+				el[1];
+			} else {
+				out.max = el[1];
+				el[0];
+			}
+		case 3:
+			out.min = el[0];
+			out.max = el[2];
+			el[1];
+		default:
+			null;
+		}
+		// Detect if spmin/spmax conflicts?
+		for (e in [out.min, out.max]) {
+			if (e == null)
+				continue;
+			var id = expectIdent(e);
+			if (map.exists(id))
+				throw new Error("Position variable conflicts: " + id, e.pos);
+			map.set(id, true);
+		}
+		return sub;
+	}
+	function stripUnderscore( e : Expr ) {
+		return switch(e.expr) {
+		case EConst(CIdent(i)) if (i != "_"): e;
+		default: null;
+		}
+	}
+	function casePrecMeta( e : Expr ) {
+		var tm = expectTerm(e, true);
+		var name = tm == null ? expectIdent(e) : tm.name;
+		var op = this.precs_map.get(name);
+		if (op == null)
+			throw new Error("Undefined :" + name, e.pos);
+		return {
+			left : {type : op.type, prio : op.prio, value : -1},
+			right : {type : op.type, prio : op.prio, value : -1},
+		}
+	}
+	function casePrecRead( stsets: StreamTokenSets ) {
+		if (stsets.sets.length < 2)
+			return;
+		var sets = stsets.sets;
+		var prec = stsets.prec;
+		// left
+		var t1 = sets[sets.length - 1];
+		var t2 = sets[sets.length - 2];
+		if (prec.left == null && t2.t && t1.t == false) {// [..., Token, e = expr]
+			var def = getPrecByCSet(t2.cset);
+			if (def != null) {
+				prec.left = {type : def.type, prio : def.prio, value : t1.cset[0].min}
+			}
+		}
+		// right
+		var t1 = sets[0];
+		var t2 = sets[1];
+		if (prec.right == null && t2.t && t1.t == false) {// [expr, Token, ....]
+			var def = getPrecByCSet(t2.cset);
+			if (def != null) {
+				prec.right = {type : def.type, prio : def.prio, value : t1.cset[0].min}
+			}
+		}
+	}
+	function getPrecByCSet( cset : Charset ) {
+		for (c in cset) {
+			for (i in c.min ... c.max + 1) {
+				// The priority has been verified in function "transform"
+				return precs_idx.get(i);
+			}
+		}
+		return null;
+	}
+	function getCSet( name : String, mixing = false ) {
+		if (name == "*")
+			return this.terms_union_cset;
+		var t = terms_map.get(name);
+		if (t != null)
+			return t.cset;
+		var cset = CSet.C_EMPTY;
+		if (!mixing || name.length < 2)
+			return cset;
+		// if prefix("Op") then OpPlus, OpMinus, OpXxxx ....
+		var tnames = [];
+		for (t in this.terms_and_non_terms) {
+			if (!t.t && !StringTools.startsWith(t.name, name))
+				continue;
+			tnames.push(t.name);
+			cset = CSet.union(cset, t.cset);
+		}
+		// Are all operators the same priority?
+		var prev = 0;
+		for (i in 0...tnames.length) {
+			var op = precs_map.get(tnames[i]);
+			var prio = op == null ? 0 : op.prio;
+			if (i > 0 && prio != prev)
+				throw "Inconsistent priorities: ";
+			prev = prio;
+		}
+		return cset;
+	}
+
+	function lhsClosure() {
+		var added = true;
+		while (added) {
+			added = false;
+			for (top in lhsides) {
+				var i = 0;
+				var len = top.lsubs.length;
+				while (i < len) { // prevent iterating on added items
+					var sub = this.lhsides[top.lsubs[i++] - this.max_term_value];
+					for (v in sub.lsubs) {
+						if (top.lsubs.indexOf(v) >= 0)
+							continue;
+						top.lsubs.push(v);
+						added = true;
+					}
+				}
+			}
+		}
+		// sorts
+		for (lhs in lhsides) {
+			lhs.lsubs.sort(lm.Utils.onIntCompar);
+		}
+	}
+
+
+
+	// writing AST manually is complex, because the keyword "macro" cannot be used here,
+	function InsertExtraAction() {
+		// cast e
+		function mk_cast( e : Expr) {
+			return {
+				expr : ECast(e, null),
+				pos : e.pos
+			}
+		}
+		// e.field
+		function mk_field( e : Expr, field : String, pos : Position ) {
+			return {
+				expr : EField(e, field),
+				pos : pos
+			}
+		}
+		// @:privateAccess e.field
+		function mk_field_pri( e : Expr, field : String, pos : Position ) {
+			var expr = mk_field(e, field, pos);
+			return {
+				expr : EMeta({name : ":privateAccess", pos : pos}, expr),
+				pos : pos
+			}
+		}
+		// (expr :ctype)
+		function mk_check( e : Expr, ctype : ComplexType ) {
+			if (ctype == null)
+				return e;
+			return {
+				expr : ECheckType(e, ctype),
+				pos : e.pos
+			}
+		}
+		// var name : ctype = expr;
+		function mk_var( name : String, ctype : ComplexType, expr : Expr, pos : Position ) {
+			return {
+				expr : EVars([{
+					name : name,
+					expr : expr,
+					type : ctype,
+					isFinal : true,
+				}]),
+				pos : pos
+			}
+		}
+		// stream.offset(dx)
+		function mk_stream_offset( dx : Int, pos : Position ) {
+			var expr = mk_field_pri({expr : EConst(CIdent("stream")), pos : pos}, "offset", pos);
+			return {
+				expr : ECall(expr, [{expr : EConst(CInt("" + dx)), pos : pos}]),
+				pos : pos
+			}
+		}
+		function InsertPos( dx : Int, epos : Expr, out : Array<Expr>, field : String ) {
+			if (epos == null || stripUnderscore(epos) == null)
+				return;
+			var pos = epos.pos;
+			// stream.offset(dx)
+			var expr = mk_stream_offset(dx, pos);
+			// expr.field
+			var expr = mk_field(expr, field, pos);
+			// var epos = expr;
+			var stsm = mk_var(expectIdent(epos), TPath({name : "Int", pack : []}), expr, pos);
+			// stsm is equals to "macro var epos = stream.offset($v{dx}).field";
+			out.push(stsm);
+		}
+		var ct_int : ComplexType = TPath({name : "Int", pack : []});
+		for (lhs in this.lhsides) {
+			for (stsets in lhs.cases) {
+				var len = stsets.sets.length;
+				var extra : Array<Expr> = [];
+				for (i in 0...len) {
+					var dx = -(len - i);
+					var stoken = stsets.sets[i];
+					// spmin/spmax
+					InsertPos(dx, stoken.epmin, extra, "pmin");
+					InsertPos(dx, stoken.epmax, extra, "pmax");
+
+					var vname = stoken.extract;
+					if (vname == null || vname == "_")
+						continue;
+					var pos = stoken.pos;
+					var stream_offset_dx = mk_stream_offset(dx, pos);
+					// non-term
+					if (stoken.t == false) {
+						var lvalue = stoken.cset[0].min;
+						var ctype = lhsides[lvalue - max_term_value].ctype;
+						var expr = mk_field(stream_offset_dx, "val", pos);
+						var stsm = mk_var(vname, ctype, expr, pos);
+						// var vname = stream.offset(dx).val;
+						extra.push(stsm);
+						continue;
+					}
+					// term
+					var tkname = stoken.name;
+					var func = this.funmap.get(tkname);
+					if (func == null) {
+						if (tkname != "*" && CSet.isSingle(stoken.cset))
+							throw new Error("Required a function with @:rule(" + tkname + ")", pos);
+						var expr = mk_field(stream_offset_dx, "term", pos);
+						var expr = mk_cast(expr);
+						var stsm = mk_var(vname, terms_ct, expr, pos);
+						// var vname : Token = cast stream.offset(dx).term;
+						extra.push(stsm);
+						continue;
+					}
+					var fexpr = {expr : EConst(CIdent(func.name)), pos : pos};
+					var args = switch(func.args) {
+					case 1:
+						// [stream.str(stream.offset(dx))]
+						var expr = mk_field({expr : EConst(CIdent("stream")), pos : pos}, "str", pos);
+						var expr = {expr : ECall(expr, [stream_offset_dx]), pos : pos};
+						[expr];
+					case 2:
+						// [stream.lex.input, stream.offset(dx)]
+						var expr = mk_field_pri({expr : EConst(CIdent("stream")), pos : pos}, "lex", pos);
+						var expr = mk_field(expr, "input", pos);
+						[expr, stream_offset_dx];
+					default:
+						throw new Error("Unsupported: " + func.name, func.pos);
+					}
+					var call = {expr : ECall(fexpr, args), pos : pos};
+					var stsm = mk_var(vname, func.ct, call, pos);
+					extra.push(stsm);
+				}
+				if (extra.length == 0)
+					continue;
+				// update action
+				extra.push(mk_check(stsets.action, lhs.ctype));
+				stsets.action = {
+					expr : EBlock(extra),
+					pos : stsets.action.pos
+				}
+			}
+		}
+	}
+}
+#end
