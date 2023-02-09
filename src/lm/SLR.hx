@@ -52,7 +52,7 @@ class SLRBuilder {
 		}
 		var recudeData = this.parser.reduce_data.map(n -> macro $v{n});
 		var fields = (macro class {
-			var s(get, never) : lm.Stream<Dynamic>;
+			var s(get, never) : lm.Stream;
 			@:dce inline function get_s() return this.stream;
 			static var raw = $raw;
 			static var rdatas : Array<Int> = [$a{recudeData}];
@@ -63,7 +63,7 @@ class SLRBuilder {
 			static inline function trans(r, s, t) return get(r, $v{engine.per} * s + t.term);
 			static inline function exits(r, s) return get(r, $v{engine.table.length - 1} - s);
 			inline function gotos( fid : Int ) : Dynamic return cases(fid);
-			final stream : lm.Stream<Dynamic>;
+			final stream : lm.Stream;
 			public function new( lex : lm.Lexer<Int> ) {
 				this.stream = @:privateAccess new lm.Stream(lex);
 			}
@@ -288,7 +288,7 @@ class SLRBuilder {
 		// funmap(name => function)
 		// e.g: @:rule(CInt) function int_of_string( str : String ) return Std.parseInt(str);
 		var ct_source = macro :lms.ByteData;
-		var ct_stream = macro :lm.Stream<Dynamic>;
+		var ct_stream = macro :lm.Stream;
 		var ct_lexer_position = macro :lm.Lexer.Position;
 		for (item in funcs) {
 			var field = item.f;
