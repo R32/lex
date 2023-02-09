@@ -3,7 +3,7 @@ package subs;
 @:analyzer(no_optimize)
 class Demo {
 	static function main() {
-		var str = '1 - 2 * (3 + 4) + 5 * 6';
+		var str = '1 - 2 * (3 + 4) + 5 * Unexpected 6';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var par = new Parser(lex);
 		eq(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
@@ -15,6 +15,7 @@ class Demo {
 private enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;
+	var CIdent;
 	var OpPlus;
 	var OpMinus;
 	var OpTimes;
@@ -40,6 +41,7 @@ private enum abstract Token(Int) to Int {
 		"/" => OpDiv,
 		"(" => LParen,
 		")" => RParen,
+		"[a-zA-Z_]+" => CIdent,
 	];
 }
 
@@ -48,13 +50,25 @@ private enum abstract Token(Int) to Int {
 	left: ["+", "-"],         // The parser could auto reflect(str) => Token
 	left: [OpTimes, OpDiv],   // The lower have higher priority.
 	nonassoc: [UMINUS],       // The placeholder must be uppercase
-}) class Parser implements lm.LR0<Lexer, Int> {
+}) class Parser implements lm.SLR<Lexer> {
 
-	var main = switch(s) {  // the "s" is instance of lm.Stream
-		case [e = expr, Eof]: e;
+	var main = switch(s) {
+		case [e = expr, Eof]:
+			e;
+		default:              // place handling error code here
+			var t = stream.peek(0);
+			switch(t.term) {
+			case Eof:
+				return 0;
+			case CIdent:                // Show recovery from errors, Note: this ability is very weak
+				stream.junk(1);         // Discard current token
+				slrloop( -1, MAIN_EXP); // main => MAIN_EXP, NOTE: Only the entry switch-case (Specified in "%start") has an EXP value
+			default:
+				throw "Unexpected: " + stream.str(t);
+			}
 	}
 
-	var expr = switch(s) {
+	var expr : Int = switch(s) {        // Specify Type explicitly
 		case [e1 = expr, op = [OpPlus,OpMinus], e2 = expr]: op == OpPlus ? e1 + e2 : e1 - e2;
 		case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
 		case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
@@ -65,8 +79,7 @@ private enum abstract Token(Int) to Int {
 
 	// define custom extract function for CInt(n)
 	@:rule(CInt) inline function int_of_string(s: String):Int return Std.parseInt(s);
-	// if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
-	// @:rule(CInt) static inline function int_of_string(input:lms.ByteData, t):Int {
+	// OR @:rule(CInt) inline function int_of_string( input : lms.ByteData, t : lm.Stream.Tok ) : Int {
 	//	  return Std.parseInt( input.readString(t.pmin, t.pmax - t.pmin) );
 	//}
 }

@@ -386,5 +386,11 @@ extern class LR0Builder{}
 
 @:autoBuild(lm.LR0Builder.build())
 #end
+/*
+ * Deprecated, lm.SLR is recommended instead.
+ *
+ * Migration:
+ *   - For pmin/pmax, Simply replace "_t1~_tN" with "T1~TN"
+ */
 @:remove interface LR0<LEX, LHS> {
 }
