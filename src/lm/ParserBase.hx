@@ -538,16 +538,15 @@ class ParserBase {
 			for (stsets in lhs.cases) {
 				var len = stsets.sets.length;
 				var extra : Array<Expr> = [];
-
 				for (i in 0...len) {
 					var dx = -(len - i);
 					var stoken = stsets.sets[i];
 					var vname = stoken.extract;
-					if (vname == null || vname == "_")
-						continue;
 					var pos = stoken.pos;
 					//// final Tx = stream.offset(dx);
 					extra.push(mk_var("T" + (i + 1), null, mk_stream_offset(dx, pos), pos));
+					if (vname == null || vname == "_")
+						continue;
 					var CURRENT = {expr : EConst(CIdent("T" + (i + 1))), pos : pos};
 					// non-term
 					if (stoken.t == false) {
