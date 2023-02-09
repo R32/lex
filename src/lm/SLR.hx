@@ -68,11 +68,18 @@ class SLRBuilder {
 				this.stream = @:privateAccess new lm.Stream(lex);
 			}
 			@:access(lm.Stream, lm.Tok)
-			function _entry( state : Int, exp : Int) : Dynamic {
-				var t = stream.newTok($i{this.parser.eof}, 0, 0);
-				t.state = state;
-				stream.unshift(t); // should be removed when returning
-				var raw = raw;     // fast reference
+			function slrloop( state : Int, exp : Int) : Dynamic {
+				var t : lm.Stream.Tok;
+				if (state >= 0) {
+					t = stream.newTok($i{this.parser.eof}, 0, 0);
+					t.state = state;
+					stream.unshift(t);       // should be removed when returning
+				} else {
+					t = stream.offset( -1);  // try to restore from error
+					state = t.state;
+				}
+				var raw = raw;
+				var q = INVALID;
 				while (true) {
 					while (true) {
 						t = stream.next();   // next token
@@ -86,7 +93,7 @@ class SLRBuilder {
 						state = stream.offset( -1).state;
 					}
 					while (true) {
-						var q = exits(raw, state);
+						q = exits(raw, state);
 						var value : Dynamic = gotos(q);
 						if (q >= NRULES)
 							return value;    // error exiting
@@ -103,7 +110,7 @@ class SLRBuilder {
 							break;
 					}
 				}
-				return gotos(INVALID); // goto switch default:
+				return gotos(q);
 			}
 		}).fields;
 		// switch default
@@ -154,8 +161,14 @@ class SLRBuilder {
 				kind: FFun({
 					args: [],
 					ret: lhs.ctype,
-					expr: macro return _entry($v{en.begin}, $v{lhs.value})
+					expr: macro return slrloop($v{en.begin}, $v{lhs.value})
 				}),
+				pos: lhs.pos,
+			});
+			fields.push({
+				name: lhs.name.toUpperCase() + "_EXP",
+				access: [AInline, AStatic],
+				kind: FVar(null, macro $v{lhs.value}),
 				pos: lhs.pos,
 			});
 		}
