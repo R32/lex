@@ -1,38 +1,31 @@
 package lm;
 
-#if static
-@:generic
-#end
 @:allow(lm.Stream)
-class Tok<LHS> implements lm.Lexer.Position {
-	public var state(default, null): Int;
-	public var term(default, null): Int;  // terminal & non-terminal value
-	public var pmin(default, null): Int;
-	public var pmax(default, null): Int;
-	public var val(default, null): LHS;
-	function new(t, min, max) {
+class Tok implements lm.Lexer.Position {
+	public var state(default, null) : Int;
+	public var term(default, null) : Int;  // terminal & non-terminal value
+	public var pmin(default, null) : Int;
+	public var pmax(default, null) : Int;
+	public var val(default, null) : Dynamic;
+	function new( t, min , max ) {
 		term = t;
 		pmin = min;
 		pmax = max;
 		// state = lm.LexEngine.INVALID;
 	}
-
-	var nxt: Tok<LHS>;
+	var nxt : Tok;
 }
 
-#if static
-@:generic
-#end
-class Stream<LHS> {
+class Stream {
 
-	var h : Tok<LHS>;
+	var h : Tok;
 
-	function reclaim(tok: Tok<LHS>) {
+	function reclaim( tok : Tok ) {
 		tok.nxt = h;
 		h = tok;
 	}
 
-	function newTok(term, min, max): Tok<LHS> {
+	function newTok( term, min, max ) : Tok {
 		return if ( h == null ) {
 			new Tok(term, min, max);
 		} else {
@@ -46,17 +39,17 @@ class Stream<LHS> {
 		}
 	}
 
-	var cached: haxe.ds.Vector<Tok<LHS>>;
-	var lex: lm.Lexer<Int>;
+	var cached : haxe.ds.Vector<Tok>;
+	var lex : lm.Lexer<Int>;
 
-	var pos: Int;
-	var right: Int;
-	public var rest(get, never): Int;
-	inline function get_rest():Int return right - pos;
+	var pos : Int;
+	var right : Int;
+	public var rest(get, never) : Int;
+	inline function get_rest() : Int return right - pos;
 
-	function new(l: lm.Lexer<Int>) {
+	function new( l : lm.Lexer<Int> ) {
 		lex = l;
-		cached = new haxe.ds.Vector<Tok<LHS>>(128);
+		cached = new haxe.ds.Vector<Tok>(64);
 		right = 0;
 		pos = 0;
 	}
@@ -64,7 +57,7 @@ class Stream<LHS> {
 	/**
 	 for example: `.peek(0)` will get the next token from stream`
 	*/
-	public function peek(i: Int):Tok<LHS> {
+	public function peek( i : Int ) : Tok {
 		while (rest <= i) {
 			var t = lex.token();
 			cached[right++] = newTok(t, lex.pmin, lex.pmax);
@@ -75,7 +68,7 @@ class Stream<LHS> {
 	/**
 	 `if n > 0` then discard N token from stream
 	*/
-	public function junk(n: Int) {
+	public function junk( n : Int ) {
 		if (n <= 0) return;
 		if (rest >= n) {
 			var i = n;
@@ -97,15 +90,15 @@ class Stream<LHS> {
 		}
 	}
 
-	function stri(dx):String return str( offset(dx) );
+	function stri(dx) : String return str( offset(dx) );
 
-	public function error(msg:String, t: Tok<LHS>) return msg + lm.Utils.posString(t.pmin, lex.input);
+	public function error( msg : String, t : Tok ) return msg + lm.Utils.posString(t.pmin, lex.input);
 
-	public inline function UnExpected(t: Tok<LHS>) return error('Unexpected "' + str(t) + '"', t);
+	public inline function UnExpected( t : Tok ) return error('Unexpected "' + str(t) + '"', t);
 
-	public inline function str(t: Tok<LHS>):String return lex.getString(t.pmin, t.pmax - t.pmin);
+	public inline function str( t : Tok ):String return lex.getString(t.pmin, t.pmax - t.pmin);
 
-	inline function offset(i: Int) return cached[pos + i];  // unsafe
+	inline function offset( i : Int ) return cached[pos + i];  // unsafe
 
 	function next() {
 		if (right == pos) {
@@ -115,7 +108,7 @@ class Stream<LHS> {
 		return cached[pos++];
 	}
 
-	function reduce(lvw) : Tok<LHS> {// lvw == lv << 8 | w;
+	function reduce(lvw) : Tok {// lvw == lv << 8 | w;
 		var w = lvw & 0xFF;
 		if (w == 0)
 			return reduceEP(lvw >>> 8);
@@ -139,13 +132,13 @@ class Stream<LHS> {
 		return t;
 	}
 
-	function reduceEP(lv): Tok<LHS> {
+	function reduceEP(lv) : Tok {
 		var prev = cached[pos - 1];
 		var t = newTok(lv, prev.pmax, prev.pmax);
 		unshift(t);
 		return t;
 	}
-	inline function unshift(t: Tok<LHS>) {
+	inline function unshift( t : Tok ) {
 		var i = right;
 		while (--i >= pos)
 			cached[i + 1] = cached[i];

@@ -36,11 +36,11 @@ class LexEngine {
 
 	public var nrules(default, null): Int;
 
-	public var entrys(default, null): Array<{begin:Int, width:Int}>;
+	public var entrys(default, null): Array<{begin : Int, index : Int, ?width : Int}>;
 
 	public var invalid(default, null): Int;
 
-	public function new(a: Array<PatternSet>, cmax = 255) {
+	public function new( patterns : Array<PatternSet>, cmax = 255) {
 		this.entrys = [];
 		this.per = cmax + 1;
 		this.h = new Map();
@@ -48,11 +48,15 @@ class LexEngine {
 		this.segs = 0;  // state_counter
 		this.invalid = U16MAX;
 		this.final_counter = U16MAX - 1; // compress it later.
-		this.nrules = Lambda.fold(a, (p, n) -> p.length + n, 0);
+		this.make(patterns);
+	}
+
+	function make( patterns : Array<PatternSet>) {
+		this.nrules = Lambda.fold(patterns, (p, n) -> p.length + n, 0);
 		this.generator = new NodeGenerator(this.nrules);
 		var nodes = [];
 		var begin = 0;
-		for (pats in a) {
+		for (pats in patterns) {
 			nodes.resize(pats.length);
 			// Pattern -> NFA(nodes)
 			for (p in 0...pats.length) {
@@ -64,7 +68,7 @@ class LexEngine {
 			compile(addNodes([], nodes));
 			if (final_counter < segs)
 				throw "Too many states";
-			entrys.push({begin: begin, width: this.segs - begin});
+			entrys.push({begin: begin, width: this.segs - begin, index : entrys.length});
 			begin = this.segs;
 		}
 		// properties
@@ -86,12 +90,16 @@ class LexEngine {
 	public inline function debugWrite(out) this.table.debugWrite(per, perExit, isBit16(), out);
 	public inline function isBit16() return this.invalid == U16MAX;
 
+	function closure( nodes : Array<Node> ) : Array<Node> {
+		return nodes;
+	}
+
 	function compile(nodes: Array<Node>): Int {
 		var sid = nodes.map( n -> n.id ).join("+");
 		var id = h.get(sid);
 		if (id != null)
 			return id;
-		var ta: Array<FMArrow> = getTransitions(nodes);
+		var ta: Array<FMArrow> = getTransitions(closure(nodes));
 		id = if (ta.length == 0) {
 			final_counter--; // final state.
 		} else {

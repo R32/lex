@@ -262,7 +262,7 @@ class LR0Builder extends lm.LR0Base {
 		}
 		var lvs = this.lvalues.map(n -> macro $v{n}).toArray(); // (lvalue << 8 | length)
 		var fields = (macro class {
-			var s(get, never) : $ct_stream;
+			var s(get, never) : lm.Stream;
 			@:dce inline function get_s() return stream;
 			static var raw = $raw;
 			static var lvs:Array<Int> = [$a{lvs}];
@@ -272,17 +272,24 @@ class LR0Builder extends lm.LR0Base {
 			static inline function getU(raw, i) return $getU;
 			static inline function trans(r, s, t) return getU(r, $v{this.per} * s + t.term);
 			static inline function exits(r, s) return getU(r, $v{this.table.length - 1} - s);
-			inline function gotos(fid:Int):$ct_lval return cases(fid);
-			final stream: $ct_stream;
+			inline function gotos(fid:Int) : Dynamic return cases(fid);
+			final stream: lm.Stream;
 			public function new(lex: lm.Lexer<Int>) {
-				this.stream = @:privateAccess new lm.Stream<$ct_lval>(lex);
+				this.stream = @:privateAccess new lm.Stream(lex);
 			}
 			@:access(lm.Stream, lm.Tok)
-			function _entry(state:Int, exp:Int):$ct_lval {
-				var t = stream.newTok($i{sEof}, 0, 0);
-				t.state = state;
-				stream.unshift(t); // should be removed when returning
+			function slrloop(state:Int, exp:Int) : Dynamic {
+				var t : lm.Stream.Tok;
+				if (state >= 0) {
+					t = stream.newTok($i{sEof}, 0, 0);
+					t.state = state;
+					stream.unshift(t);       // should be removed when returning
+				} else {
+					t = stream.offset( -1);  // try to restore from error
+					state = t.state;
+				}
 				var raw = raw;     // fast reference
+				var q = INVALID;
 				while (true) {
 					while (true) {
 						t = stream.next();   // next token
@@ -296,8 +303,8 @@ class LR0Builder extends lm.LR0Base {
 						state = stream.offset( -1).state;
 					}
 					while (true) {
-						var q = exits(raw, state);
-						var value : $ct_lval = gotos(q);
+						q = exits(raw, state);
+						var value = gotos(q);
 						if (q >= NRULES)
 							return value;    // error exiting
 						t = stream.reduce( lvs[q] );
@@ -313,7 +320,7 @@ class LR0Builder extends lm.LR0Base {
 							break;
 					}
 				}
-				return gotos(INVALID); // goto switch default:
+				return gotos(q);
 			}
 		}).fields;
 		// build siwtch
@@ -333,7 +340,7 @@ class LR0Builder extends lm.LR0Base {
 			access: [],
 			kind: FFun({
 				args: [{name: "q", type: macro: Int}],
-				ret: ct_lval,
+				ret: macro :Dynamic,
 				expr: macro { final __s = stream; return $eswitch; },
 			}),
 			pos: here,
@@ -348,7 +355,7 @@ class LR0Builder extends lm.LR0Base {
 				kind: FFun({
 					args: [],
 					ret: lhs.ctype,
-					expr: macro return _entry($v{en.begin}, $v{lhs.value})
+					expr: macro return slrloop($v{en.begin}, $v{lhs.value})
 				}),
 				pos: lhs.pos,
 			});
@@ -379,5 +386,11 @@ extern class LR0Builder{}
 
 @:autoBuild(lm.LR0Builder.build())
 #end
+/*
+ * Deprecated, lm.SLR is recommended instead.
+ *
+ * Migration:
+ *   - For pmin/pmax, Simply replace "_t1~_tN" with "T1~TN"
+ */
 @:remove interface LR0<LEX, LHS> {
 }

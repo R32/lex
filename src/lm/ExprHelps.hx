@@ -125,24 +125,24 @@ class ExprHelps {
 	/*
 	 * for "_ => Actoin", Should be called after "lexChecking"
 	 */
-	static public function lexUnMatchedActions( lex : lm.LexEngine, groups : Array<RuleCaseGroup> ) : Array<Case> {
+	static public function lexUnMatchedActions( lex : lm.LexEngine, groups : Array<RuleCaseGroup>, _begin = 1 ) : Array<Case> {
 		var extra = [];
 		var table = lex.table;
 		var start = lex.nrules;
-		for (i in 1...groups.length) { // the first one[0] will be "switch-default"
-			var g = groups[i];
-			if (g.unmatch != null) {
-				var e = lex.entrys[i];
-				table.set(table.exitpos(e.begin), start);
-				extra.push({
-					values : [{
-						expr : EConst(CInt("" + start)),
-						pos : g.unmatch.pattern.pos
-					}],
-					expr: g.unmatch.action
-				});
-				++start;
-			}
+		for (i in _begin...lex.entrys.length) { // the entry[0] will be "switch-default"
+			var e = lex.entrys[i];
+			var g = groups[e.index];
+			if (g.unmatch == null)
+				continue;
+			table.set(table.exitpos(e.begin), start);
+			extra.push({
+				values : [{
+					expr : EConst(CInt("" + start)),
+					pos : g.unmatch.pattern.pos
+				}],
+				expr: g.unmatch.action
+			});
+			++start;
 		}
 		return extra;
 	}

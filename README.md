@@ -7,7 +7,7 @@ Build lexer and simple parser(SimpleLR) in macro.
 
 * [hello world](#Usage)
 
-* [Lexer tool for c langauge](/tools/CLexer.hx) *alpha, I usually use it as a regexp for c langauge*
+* [Lexer tool for c langauge](/tools/CLexer.hx)
 
   > run `haxelib run lex` [test.lex](/tools/test/test.lex) and then you will get a [`test.c`](/tools/test/test.c) file
 
@@ -17,36 +17,33 @@ Build lexer and simple parser(SimpleLR) in macro.
 
 ## Status
 
-LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
+LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
 * Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
   - It also provides a lexer tool for c language
 
-* Parser: Only SimpleLR is available. (WIP)
+* Parser: Only SimpleLR is available.
 
-  Unlike normal LR parser, there is no *action table*(just *jump table*), So how did it *shift/reduce*?
+  Unlike normal LR parser, there is no *action-table*, all are *jump-table*.
 
-    1. if you got a valid *state* and if `state < SEGS` then *shift* else *reduce*
+  Some conflicts may be resolved in normal *LALR/LR1*, But here the conflicts error will be thrown directly.
 
-    2. if you got a invalid *state* on valid *prevState*, if can be *exit(prevState)* then *reduce(prevState)* else throw an error.
-
-  Some conflicts may be resolved in normal *LALR/LR1*, but since there is no *action table* here, so it will throw an error directly
-
-  - **Position**: Inside the actions, you could use `_t1~_tN` to access the position, which is the instance of `lm.Stream.Tok`
+  - **Position**: Inside the actions, you could use `T1~TN` to access the position, which is the instance of `lm.Stream.Tok`
 
     ```hx
-    _t1.pmax - _t1.pmin;
+    T1.pmax - T1.pmin;
     ```
 
     And inside the actions, you could use the vairalbe `stream`
 
     ```hx
     var tok = stream.peek(0);
-    if (tok.term == SomeToken) stream.junk(1);
+    if (tok.term == SomeToken)
+        stream.junk(1);
     ```
 
-  - **Combine Tokens**: Since the Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens
+  - **Combine Tokens**: The Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens:
 
     ```haxe
     // 1. the same prefix(At least 2 characters).
@@ -71,20 +68,6 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
     }
     ```
 
-  - different types:
-
-    ```haxe
-    class Parser implements lm.LR0<MyLexer, Int> { // "Int" indicates that all LHS types default to "Int"
-        static var main = switch(s) {
-            case [e = expr, Eof]: Std.int(e);
-        }
-        static var expr:Float = switch(s) {       // Explicit declaration "expr" type is "Float"
-            case [e1 = expr, "+", e2 = expr]: e1 + e2;
-            case [CFloat(f)]: f;
-        }
-    }
-    ```
-
   - **Operator Precedence**:
 
     ```haxe
@@ -92,10 +75,8 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
     @:rule({
         left: ["+", "-"],         // The parser could auto reflect(str) => Token
         left: [OpTimes, OpDiv],   // The lower have higher Priority.
-        nonassoc: [UMINUS],       // All characters of the placeholder must be uppercase
-    }) class MyParser implements lm.LR0<MyLexer,...
-    // Different from the normal LR parser, the behavior of "nonassoc" is same as "left". Since
-    // this parser is not very necessary to refer the operator precedence definitions.
+        nonassoc: [UMINUS],       // All characters of the placeholder must be UPPERCASE
+    }) class MyParser implements lm.SLR<MyLexer> {
     ```
 
 <pre><details>
@@ -116,6 +97,8 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 ### CHANGES
 
 * `x.x.x`:
+
+  - [slr] Refactored LR0 code to SLR
 
   - [lexer] Added new syntax Opt(), Star(), Plus() for group.
 
@@ -150,29 +133,7 @@ LIMIT: you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/
 
 ### Defines
 
-<pre><details><summary>minor...</summary><p>
-
-* `-D lex_charmax`: to simply handle for utf16 char, Because the State Transition Table is 8-bit
-
-  ```hx
-  // source code from lm.LexBuilder
-  var c = input.readByte(i++);
-  #if lex_charmax
-  if (c > CMAX) c = CMAX;
-  #end
-  state = trans(state, c);
-  ```
-* `-D lex_rawtable or -D lex_strtable`: use `Bytes`(*No encoding specified*) or `String` as table format.
-
-  By default, `String` format is used for **JS**, other platforms use `Bytes` format.
-
-* `-D lex_rawinput`: then force use `Bytes` as the input format, default is `String`. see `lms.ByteData`
-
-  actually you can use `--remap <package:target>` to override `lms.*`.
-
-</p></details></pre>
-
-* `-D lex_lr0table`: for debug. it will generate a SimpleLR table save as `lr0-table.txt`. for example:
+* `-D lex_slrtable`: for debug. it will generate a SimpleLR table save as `slr-table.txt`. for example:
 
   > You may have to modify the `mmap` field in `debug.Print`
 
@@ -229,7 +190,7 @@ copy from [test/subs/Demo.hx](test/subs/Demo.hx)
 @:analyzer(no_optimize)
 class Demo {
     static function main() {
-        var str = '1 - 2 * (3 + 4) + 5 * 6';
+        var str = '1 - 2 * (3 + 4) + 5 * Unexpected 6';
         var lex = new Lexer(lms.ByteData.ofString(str));
         var par = new Parser(lex);
         trace(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
@@ -246,6 +207,7 @@ enum abstract Token(Int) to Int {
     var OpDiv;
     var LParen;
     var RParen;
+    var CIdent;
 }
 
 /**
@@ -267,6 +229,7 @@ enum abstract Token(Int) to Int {
         "/" => OpDiv,
         "(" => LParen,
         ")" => RParen,
+        "[a-zA-Z_]+" => CIdent,
     ];
 }
 
@@ -275,13 +238,25 @@ enum abstract Token(Int) to Int {
     left: ["+", "-"],         // The parser could auto reflect(str) => Token
     left: [OpTimes, OpDiv],   // The lower have higher priority.
     nonassoc: [UMINUS],       // The placeholder must be uppercase
-}) class Parser implements lm.LR0<Lexer, Int> {
+}) class Parser implements lm.SLR<Lexer> {
 
-    var main = switch(s) {  // the "s" is instance of lm.Stream
-        case [e = expr, Eof]: e;
+    var main = switch(s) {
+        case [e = expr, Eof]:
+            e;
+        default:              // place handling error code here
+            var t = stream.peek(0);
+            switch(t.term) {
+            case Eof:
+                return 0;
+            case CIdent:                // Show recovery from errors, Note: this ability is very weak
+                stream.junk(1);         // Discard current token
+                slrloop( -1, MAIN_EXP); // main => MAIN_EXP, NOTE: Only the entry switch-case (Specified in "start") has an EXP value
+            default:
+                throw "Unexpected: " + stream.str(t);
+            }
     }
 
-    var expr = switch(s) {
+    var expr : Int = switch(s) {        // Specify Type explicitly
         case [e1 = expr, op = [OpPlus,OpMinus], e2 = expr]: op == OpPlus ? e1 + e2 : e1 - e2;
         case [e1 = expr, OpTimes, e2 = expr]: e1 * e2;
         case [e1 = expr, OpDiv, e2 = expr]: Std.int(e1 / e2);
@@ -291,9 +266,8 @@ enum abstract Token(Int) to Int {
     }
 
     // Define custom extract function for CInt(n)
-    @:rule(CInt) inline function int_of_string(s: String):Int return Std.parseInt(s);
-    // if the custom function has 2 params then the type of the second argument is :lm.Stream.Tok<AUTO>.
-    // @:rule(CInt) inline function int_of_string(input:lms.ByteData, t):Int {
+    @:rule(CInt) inline function int_of_string( s : String ) : Int return Std.parseInt(s);
+    // OR @:rule(CInt) inline function int_of_string( input : lms.ByteData, t : lm.Stream.Tok ) : Int {
     //    return Std.parseInt( input.readString(t.pmin, t.pmax - t.pmin) );
     //}
 }
