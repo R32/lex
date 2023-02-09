@@ -80,10 +80,6 @@ class LR0Base {
 	var sEof: String;            // by @:rule from Lexer
 	var funMap: Map<String, {name: String, ct: ComplexType, args: Int}>; //  TokenName => FunctionName
 	var ct_termls: ComplexType;  // the ctype of tokens
-	var ct_ldef: ComplexType;    // the default ctype of LHS.
-	var ct_lval: ComplexType;    // if "ct_lhs" can no be unified with any "LHS.ctype" then its value is ":Dynamic"
-	var ct_stream: ComplexType;  // :lm.Stream<ct_lval>
-	var ct_stream_tok: ComplexType;
 	var opIMap: haxe.ds.Vector<OpAssoc>;   // term value => OpAssoc
 	var opSMap: Map<String, OpAssoc>;      // (term name | placeholder) => OpAssoc
 	var lvalues: haxe.ds.Vector<Int>;      // [(lhsValue << 8) | syms.length]. (used for stream.reduce)
@@ -120,10 +116,8 @@ class LR0Base {
 		funMap = new Map();
 
 		ct_termls = Context.toComplexType(termlsType);
-		ct_ldef = Context.toComplexType(lhsType);
-		ct_lval = ct_ldef;
 		readLexerTermls(termlsType);    // termals
-		var cases = readLhs(allFields); // non-termls
+		var cases = readLhs(allFields, Context.toComplexType(lhsType)); // non-termls
 		readPrecedence(cl);
 		transform( cases );
 	}
@@ -498,33 +492,6 @@ class LR0Base {
 	}
 
 	function organize() {
-		// Scanning _t1~_tN from action
-		var thas = [];
-		function loop(e: Expr) {
-			switch(e.expr) {
-			case EConst(CIdent(s)) | EField({expr: EConst(CIdent(s))},_):
-				if ( StringTools.startsWith(s, "_t") ) {
-					var i = Std.parseInt( s.substr(2, s.length - 2) );
-					if (i != null && i >= 1 && i <= thas.length)
-						thas[i-1] = true;
-				}
-			case EField(_,_):
-			default:
-				e.iter(loop);
-			}
-		}
-		var index = 0;
-		var thasAll = new haxe.ds.Vector(nrules);
-		for (lhs in lhsA) {
-			for (li in lhs.cases) {
-				if (li.action == null)
-					throw new Error("Need return *" + lhs.ctype.toString() + "*", li.pos);
-				thas = [];
-				thas.resize(li.syms.length);
-				thasAll[index++] = thas;
-				li.action.iter(loop);
-			}
-		}
 		// duplicate var checking. & transform expr
 		this.vcases = new haxe.ds.Vector(nrules);
 		this.lvalues = new haxe.ds.Vector<Int>(this.nrules);
@@ -538,15 +505,14 @@ class LR0Base {
 				this.lvalues[index] = lhs.value << 8 | len;
 				for (i in 0...len) {
 					var dx = -(len - i); // negative
-					if ( thasAll[index][i] ) {
-						var stok = "_t" + (i + 1);
-						var expr = macro @:privateAccess __s.offset($v{dx});
-						a.push( macro var $stok: $ct_stream_tok = $expr );
-					}
 					var sym = li.syms[i];
+					//
+					var stok = "_t" + (i + 1);
+					a.push(macro @:pos(sym.pos) final $stok = @:privateAccess stream.offset($v{dx}));
 					// checking...
 					if (sym.ex == null || sym.ex == "_")
 						continue;
+					var CURRENT = {expr : EConst(CIdent(stok)), pos : sym.pos};
 					if (row.exists(sym.ex))
 						throw new Error("duplicate var: " + sym.ex, sym.pos);
 					row.set(sym.ex, true);
@@ -558,22 +524,22 @@ class LR0Base {
 						if (ofstr == null) {
 							if ( sym.name != "_" && CSet.isSingle(sym.cset) ) // If you forget to add an extract function
 								throw new Error("Required a static function with @:rule("+ sym.name +")", sym.pos);
-							a.push(macro @:pos(sym.pos) var $name: $ct_termls = cast @:privateAccess __s.offset($v{dx}).term);
+							a.push(macro @:pos(sym.pos) final $name : $ct_termls = cast $e{CURRENT}.term);
 						} else {
 							var ct = ofstr.ct;
 							switch(ofstr.args) {
 							case 1:  // (string)
-								a.push(macro @:pos(sym.pos) var $name: $ct = $i{ofstr.name}( @:privateAccess __s.stri($v{dx}) ));
+								a.push(macro @:pos(sym.pos) final $name : $ct = $i{ofstr.name}(stream.str($e{CURRENT})));
 							case 2:  // (input, tok)
-								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(__s.lex.input, __s.offset($v{dx}))));
-							default: // (input, pmin, pmax)
-								a.push(macro @:pos(sym.pos) var $name: $ct = @:privateAccess ($i{ofstr.name}(__s.lex.input, __s.offset($v{dx}).pmin, __s.offset($v{dx}).pmax)));
+								a.push(macro @:pos(sym.pos) final $name : $ct = @:privateAccess ($i{ofstr.name}(stream.lex.input, $e{CURRENT})));
+							default:
+								throw new Error("Unsupported: " + ofstr.name, sym.pos);
 							}
 						}
 					} else {
 						var lhsValue = sym.cset[0].min; // NON-TERML
 						var ct = lhsA[lhsValue - maxValue].ctype;
-						a.push( macro @:pos(sym.pos) var $name: $ct = @:privateAccess (cast __s.offset($v{dx}).val: $ct) );
+						a.push( macro @:pos(sym.pos) final $name : $ct =  $e{CURRENT}.val );
 					}
 				}
 				switch(li.action.expr) {
@@ -609,9 +575,8 @@ class LR0Base {
 		return ret;
 	}
 
-	function readLhs(allFields: Map<String, Field>): Array<Array<Case>> {
+	function readLhs(allFields: Map<String, Field>, ct_ldef : ComplexType ): Array<Array<Case>> {
 		var lhsValue = this.maxValue;
-		var lhsType = this.ct_ldef.toType();
 		var fields: Array<Field> = Context.getBuildFields();
 		var flazy = new List<{f: Field, fun: Function}>();
 		var ret = [];
@@ -625,8 +590,6 @@ class LR0Base {
 					if (edef != null)
 						ecases.push({values: [macro @:pos(edef.pos) _], expr: edef});
 					firstCharChecking(f.name, LOWER, f.pos);
-					if ( ct != null && this.ct_ldef == this.ct_lval && !Context.unify(ct.toType(), lhsType) )
-						this.ct_lval = macro :Dynamic; // use Dynamic if .unify() == false
 					ret.push(ecases);
 					this.nrules += ecases.length;
 					this.lhsA.push({
@@ -635,7 +598,7 @@ class LR0Base {
 						epsilon: false,
 						cases: [],
 						lsubs: new List(),
-						ctype: ct == null ? this.ct_ldef : ct,
+						ctype: ct == null ? ct_ldef : ct,
 						pos: f.pos,
 					});
 					continue;
@@ -656,9 +619,8 @@ class LR0Base {
 
 		if (lhsValue > 255) throw "Too Many Termls/NoN-Termls"; // TODO: or force the invalid value up to 16bit??
 
-		// Waiting for "ct_lval" available
-		this.ct_stream = macro :lm.Stream<$ct_lval>;
-		this.ct_stream_tok = macro :lm.Stream.Tok<$ct_lval>;
+		var ct_stream = macro :lm.Stream;
+		var ct_stream_tok = macro :lm.Stream.Tok;
 
 		for (x in flazy) {
 			var f = x.f;

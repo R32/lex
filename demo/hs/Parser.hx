@@ -57,7 +57,7 @@ import hscript.Expr;
 		}
 	}
 
-	static function conpos(s, a: Array<lm.Stream.Tok<Dynamic>>): Void {
+	static function conpos(s, a: Array<lm.Stream.Tok>): Void {
 		var i = 0;
 		var len = a.length;
 		var t1 = a[i++];

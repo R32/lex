@@ -1,6 +1,6 @@
 package;
 
-class Main extends Test {             // override hscript/Test.hx
+class Main extends TestHScript {             // override hscript/Test.hx
 
 	static var lex = new hs.Lexer(lms.ByteData.ofString(""));
 	static var par = new hs.Parser(lex);
