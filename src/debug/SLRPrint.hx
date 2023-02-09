@@ -13,9 +13,9 @@ class SLRPrint {
 		var buffer = new StringBuf();
 		var tokens = getAllToken(parser);
 		var lhsides = parser.lhsides;
-		var RPAD = parser.nrules <= 10 ? 1 : 2;
+		var RPAD = parser.nrules <= 10 ? 2 : (parser.nrules <= 100 ? 3 : 4);
 		var R = 0;
-		inline function LABEL() buffer.add("  (" + lpad("R", " ", RPAD) + (R++) +")");
+		inline function LABEL() buffer.add("  (" + lpad("R" + R++, " ", RPAD) +")");
 		inline function ARROW() buffer.add(" -->");
 		inline function newLine() buffer.add("\n");
 		var smax = Lambda.fold(lhsides, ( (l, n)-> l.name.length > n ? l.name.length : n ), 0);
@@ -134,19 +134,17 @@ class SLRPrint {
 
 	static function getAllToken( parser : ParserBase ) {
 		var result = new Map<Int, String>();
-		function stoken( i : Int, name : String, iter = true ) {
-			var s = parser.reflect.get(name);
+		function stoken( i : Int ) {
+			var tk = Lambda.find(parser.terms_and_non_terms, t -> t.value == i);
+			if (tk == null)
+				return "unknown";
+			var s = parser.reflect.get(tk.name);
 			if (s != null)
 				return s;
-			var s = Print.mapp.get(name);
+			var s = Print.mapp.get(tk.name);
 			if (s != null)
 				return s;
-			if (iter) {
-				var tk = Lambda.find(parser.terms_and_non_terms, t -> t.value == i);
-				if (tk != null)
-					return stoken(tk.cset[0].min, tk.name, false);
-			}
-			return name;
+			return tk.name.toLowerCase();
 		}
 		function set( tk : StreamToken ) {
 			if (!tk.t) {
@@ -155,7 +153,7 @@ class SLRPrint {
 			}
 			for (c in tk.cset) {
 				for (i in c.min...c.max + 1) {
-					result.set(i, stoken(i, tk.name));
+					result.set(i, stoken(i));
 				}
 			}
 		}
