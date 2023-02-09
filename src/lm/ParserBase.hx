@@ -299,6 +299,7 @@ class ParserBase {
 		this.lhsClosure();
 		this.InsertExtraAction();
 	}
+
 	function stsetsRead( owner : LeftHandSide, el : Array<Expr>, result : StreamTokenSets ) {
 		var index = 0;
 		var indexMax = el.length;
@@ -308,7 +309,10 @@ class ParserBase {
 			switch(e.expr) {
 			case EConst(CIdent(i)):  // CInt, OpAdd
 				if (isUpperCaseFirst(i)) {
-					var charsets = try getCSet(i, true) catch (s : String) throw new Error(s + i, e.pos);
+					var opts = [];
+					var charsets = getCSet(i, opts);
+					if (result.prec.left == null && !precPrioDetect(opts))
+						throw new Error("Inconsistent priorities: " + i, e.pos);
 					stoken = {t : true, name : i  , cset : charsets , pos : e.pos};
 				} else if (indexMax == 1 && index == 0) { // e.g: [t]
 					stoken = {t : true, name : "*", cset : terms_union_cset, pos : e.pos, extract : i};
@@ -343,15 +347,14 @@ class ParserBase {
 			case EBinop(OpAssign, {expr : EConst(CIdent(v))}, {expr : EArrayDecl(a), pos : pos}): // t = [OpPlus, OpMinus]
 				var cset = CSet.C_EMPTY;
 				var prev = 0;
+				var opts = [];
 				for (i in 0...a.length) {
 					var tm = expectTerm(a[i]);
-					var op = precs_map.get(tm.name);
-					var prio = op == null ? 0 : op.prio;
-					if (i > 0 && prio != prev)
-						throw new Error("Inconsistent priorities: " + tm.name , tm.pos);
-					prev = prio;
+					opts.push(tm.name);
 					cset = CSet.union(cset, tm.cset);
 				}
+				if (result.prec.left == null && !precPrioDetect(opts))
+					throw new Error("Inconsistent priorities: " + opts.join(", "), pos);
 				if (cset == CSet.C_EMPTY)
 					throw new Error("Empty", pos);
 				stoken = {t : true, name : "*", cset : cset, extract : v, pos : e.pos};
@@ -393,7 +396,7 @@ class ParserBase {
 		}
 	}
 	function casePrecRead( stsets: StreamTokenSets ) {
-		if (stsets.sets.length < 2)
+		if (stsets.sets.length < 2 || stsets.prec.left != null)
 			return;
 		var sets = stsets.sets;
 		var prec = stsets.prec;
@@ -425,33 +428,36 @@ class ParserBase {
 		}
 		return null;
 	}
-	function getCSet( name : String, mixing = false ) {
+	function getCSet( name : String, ?opsout : Array<String> ) {
 		if (name == "*")
 			return this.terms_union_cset;
 		var t = terms_map.get(name);
 		if (t != null)
 			return t.cset;
 		var cset = CSet.C_EMPTY;
-		if (!mixing || name.length < 2)
+		if (opsout == null || name.length < 2)
 			return cset;
 		// if prefix("Op") then OpPlus, OpMinus, OpXxxx ....
-		var tnames = [];
 		for (t in this.terms_and_non_terms) {
 			if (!t.t && !StringTools.startsWith(t.name, name))
 				continue;
-			tnames.push(t.name);
+			opsout.push(t.name);
 			cset = CSet.union(cset, t.cset);
 		}
-		// Are all operators the same priority?
+		return cset;
+	}
+
+	// Are all operators the same priority?
+	function precPrioDetect( names : Array<String> ) {
 		var prev = 0;
-		for (i in 0...tnames.length) {
-			var op = precs_map.get(tnames[i]);
+		for (i in 0...names.length) {
+			var op = precs_map.get(names[i]);
 			var prio = op == null ? 0 : op.prio;
 			if (i > 0 && prio != prev)
-				throw "Inconsistent priorities: ";
+				return false;
 			prev = prio;
 		}
-		return cset;
+		return true;
 	}
 
 	function lhsClosure() {
