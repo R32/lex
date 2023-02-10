@@ -54,8 +54,10 @@ static int _cases(struct rlex* lex, int _q) {
 ::end::
 
 static int _entry(struct rlex* lex, int begin) {
-	if (rlex_end(lex))
+	if (rlex_end(lex)) {
+		lex->pos.min = lex->pos.max;
 		return ::eof::;
+	}
 	int c;
 	int i = lex->pos.max;
 	int state = begin;

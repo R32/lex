@@ -182,7 +182,10 @@ class LexBuilder {
 				pmax = 0;
 			}
 			function _token( init : Int, right : Int ) {
-				if (pmax >= right) return $e{meta.eof};
+				if (pmax >= right) {
+					pmin = pmax;
+					return $e{meta.eof};
+				}
 				var raw = raw;
 				var i = pmax;
 				var state = init;
