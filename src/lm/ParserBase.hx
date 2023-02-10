@@ -212,10 +212,11 @@ class ParserBase {
 		var isEntry = this.starts.indexOf(name) >= 0;
 		var unmatch = null;
 		if (edef != null) {
+			var pattern = {expr : EConst(CIdent("_")), pos : edef.pos};
 			if (isEntry) {
-				unmatch = {pattern : null, action : edef};
+				unmatch = {pattern : pattern, action : edef};
 			} else {
-				cases.push({values : [{expr : EConst(CIdent("_")), pos : edef.pos}], expr : edef});
+				cases.push({values : [pattern], expr : edef});
 			}
 		}
 
