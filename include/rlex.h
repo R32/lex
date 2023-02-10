@@ -1,5 +1,9 @@
-#ifndef r32_lex
-#define r32_lex
+/*
+ * SPDX-License-Identifier: GPL-2.0
+ */
+
+#ifndef R_LEX_H
+#define R_LEX_H
 /*
 Syntax:
 
@@ -64,13 +68,13 @@ struct rlex {
 	union {
 		struct rlex_position pos;
 		struct {
-			int pmin, pmax;	// Compatible for old style
+			int pmin, pmax;
 		};
 	};
 	int size;  // src size in characters
-	int _pad;  // x64 align
-	unsigned char* src;
-	int (*token)(struct rlex* lex);
+	int ___x;  // align pad
+	void *src; // LEXCHAR
+	int (*token)(struct rlex *lex);
 };
 
 #define rlex_token(lex)     ((lex)->token(lex))
@@ -80,7 +84,7 @@ struct rlex {
 // Call it after executing .token()
 #define rlex_error(lex)     ((lex)->pos.min >= (lex)->pos.max)
 
-// Only works if there is no error
+// WARINNING: Make sure rlex_error() is false before calling.
 #define rlex_cursize(lex)   ((lex)->pos.max - (lex)->pos.min)
 
 // rlexsrc, rlex_char(lex, i), rlex_current(lex) are now defined in "lex.template"
@@ -90,5 +94,7 @@ struct rlex {
 		(p1).min < (p2).min ? (p1).min : (p2).min, \
 		(p1).max > (p2).max ? (p1).max : (p2).max  \
 	})
+
+#define rlex_contiguous(p1, p2) ((p1).max == (p2).min)
 
 #endif

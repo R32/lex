@@ -1,114 +1,74 @@
 package tools;
 
-import sys.FileSystem;
 import sys.io.File;
 import haxe.Template;
-import tools.CLexer;
+import tools.generator.DArgs;
+import tools.generator.DArgs.*;
 
-/**
- build lex for c language
-*/
+/*
+ * build lex and simple lr for c language
+ */
 class Run {
 
-	static inline var version = "0.3";
+	static inline var version = "0.5";
 
-	var files : Array<String>;
-	var libPath : String;
-	var outdir : String;
+	public var dargs : DArgs;
 
 	function usage() {
 		Sys.print('Lexer Tool v$version
-Usage : haxelib run lex [options] <files>
+Usage : haxelib run lex [options] <lex file>
  Options :
   -o, --out <dir> : specify output directory
   -h, --help      : print help infomation
+  --slr <file>    : build Simple LR
 ');
 	}
 
-	function doLexer() {
+	function getTemplate( name : String ) {
 		var smt = "";
-		if ( EXISTS( LEXER_TEMPLATE ) ) {
-			smt = File.getContent(LEXER_TEMPLATE);
-		} else if (libPath != null) {
-			smt = File.getContent(libPath + "tools/" + LEXER_TEMPLATE);
+		if (FILE_EXISTS(name)) {
+			smt = File.getContent(name);
+		} if (string_has(dargs.libpath)) {
+			smt = File.getContent(dargs.libpath + "tools/" + name);
 		}
-		if (smt == "")
-			throw "Needs " + LEXER_TEMPLATE;
-		var mt = new Template(smt);
-		for (f in files) {
-			if (EXISTS(f)) {
-				new CLexer(f, mt, {outdir : outdir});
-			}
+		if (smt == "") {
+			fatal('Requires: "$name"\n');
 		}
+		return smt;
 	}
 
-	function doParser() {
-		Sys.print("UnImplements\n");
+	function doLexer() {
+		var smt = getTemplate(LEX_TEMPLATE);
+		var mt = new Template(smt);
+		new tools.generator.CLexer(mt, dargs);
+	}
+
+	function doSLR() {
+		if (!string_has(dargs.lexeme))
+			fatal("Requires a lexeme file.");
+		var smt = getTemplate(SLR_TEMPLATE);
+		var mt = new Template(smt);
+		new tools.generator.CSLR(mt, dargs);
 	}
 
 	public function new( args : Array<String> ) {
-
-		files = [];
-		outdir = "";
-
-		if (Sys.getEnv("HAXELIB_RUN") == "1") {
-			libPath = Sys.getCwd();
-			Sys.setCwd(args.pop());
-		} else {
-			libPath = getLibPath();
-		}
-
-		// parse args
-		var i = 0;
-		var max = args.length;
-		var isParser = false;
-		while (i < max) {
-			var v = args[i++];
-			if (v.charCodeAt(0) != "-".code) {
-				files.push(v);
-				continue;
-			}
-			if (v == "-o" || v == "--out") {
-				outdir = args[i++];
-				continue;
-			}
-			if (v == "-h" || v == "--help") {
-				return usage();
-			}
-			if (v == "-p" || v == "--parser") {
-				isParser = true;
-			}
-		}
-		if (files.length == 0)
-			return usage();
-		// run
-		if (isParser) {
-			doParser();
-		} else {
+		dargs = new DArgs(args);
+		// lexer
+		if (string_has(dargs.lexeme))
 			doLexer();
-		}
+		// simple lr
+		if (string_has(dargs.simpleLR))
+			doSLR();
+		// help infomation
+		if (!string_has(dargs.lexeme) && !string_has(dargs.simpleLR))
+			usage();
 	}
 
-	static inline var LEXER_TEMPLATE = "clex.template";
+	static inline var LEX_TEMPLATE = "clex.template";
 
-	static inline function EXISTS(f) return FileSystem.exists( f ) && !FileSystem.isDirectory(f);
+	static inline var SLR_TEMPLATE = "cslr.template";
 
 	static function main() {
 		new Run(Sys.args());
-	}
-
-	static function getLibPath() : String {
-		var proc = new sys.io.Process("haxelib", ["path", "lex"]);
-		if (proc.exitCode() != 0) {
-			var msg = proc.stderr.readAll().toString();
-			proc.close();
-			throw msg;
-		}
-		var out = proc.stdout.readUntil("\n".code);
-		proc.close();
-		if (out.charCodeAt(out.length - 1) == "\r".code)
-			return out.substr(0, out.length - 1)
-		else
-			return out;
 	}
 }

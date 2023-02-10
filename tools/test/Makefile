@@ -2,7 +2,7 @@
 CC       := gcc
 INCLUDES := -I../../include
 TARGET   := test.exe
-OBJS     := test.o rstream.o
+OBJS     := test_lex.o test_slr.o rstream.o
 
 all: $(TARGET)
 	@./$<
@@ -19,11 +19,14 @@ $(TARGET): $(OBJS)
 vpath %.h ../../include
 vpath %.c ../../include
 
-test.o: test.c ../clex.template rstream.c rstream.h rlex.h
+test_lex.o: test_lex.c rstream.o
+	$(CC) $(INCLUDES) -c $< -o $@
+
+test_slr.o: test_slr.c rstream.o
 	$(CC) $(INCLUDES) -c $< -o $@
 
 rstream.o: rstream.c rstream.h rlex.h
 	$(CC) $(INCLUDES) -c $< -o $@
 
-test.c: test.lex ../clex.template ../CLexer.hx rstream.c rstream.h rlex.h
-	haxelib run lex $<
+test_lex.c test_slr.c: test.slr test.lex ../clex.template ../cslr.template
+	haxelib run lex --slr test.slr test.lex

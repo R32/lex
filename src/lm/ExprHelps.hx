@@ -23,6 +23,43 @@ typedef RuleCaseGroup = {
  */
 class ExprHelps {
 
+	static public function UnExpected( e : Expr ) : Dynamic {
+		throw new Error("Unexpected: " + e.toString(), e.pos);
+	}
+
+	static public function expectCString( e : Expr ) : String {
+		return switch (e.expr) {
+		case EConst(CString(s)): s;
+		default:
+			UnExpected(e);
+		}
+	}
+
+	static public function expectCInt( e : Expr ) : Int {
+		return switch (e.expr) {
+		case EConst(CInt(n)): Std.parseInt(n);
+		default:
+			UnExpected(e);
+		}
+	}
+
+	static public function expectCIdent( e : Expr ) : String {
+		return switch (e.expr) {
+		case EConst(CIdent(s)): s;
+		default:
+			UnExpected(e);
+		}
+	}
+
+	// Unlike ExprTools.toString, This function does not add extra quotation marks for CString
+	static public function stringOrId( e : Expr ) : String {
+		return switch (e.expr) {
+		case EConst(CIdent(s)), EConst(CString(s)): s;
+		default:
+			UnExpected(e);
+		}
+	}
+
 	/*
 	 * parse expr patterns
 	 */
@@ -122,6 +159,7 @@ class ExprHelps {
 		}
 		return null;
 	}
+
 	/*
 	 * for "_ => Actoin", Should be called after "lexChecking"
 	 */
@@ -145,6 +183,34 @@ class ExprHelps {
 			++start;
 		}
 		return extra;
+	}
+
+	static public function lexstable( lexe : lm.LexEngine ) {
+		var buff = new StringBuf();
+		var table = lexe.table;
+		var perExit = lexe.perExit;
+		var left = table.length - perExit;
+		var cmax = lexe.per - 1;
+		var xpad = lexe.isBit16() ? 4 : 2;
+		var state = 0;
+		for (i in 0...left) {
+			if ((i & cmax) == 0) {
+				buff.add("// STATE " + (state++) + "\n");
+			}
+			buff.add("0x" + StringTools.hex(table.get(i), xpad) + ",");
+			if (i > 0 && (i & 15) == 15) {
+				buff.addChar("\n".code);
+			}
+		}
+		buff.add("// EXIT \n");
+		for (i in 0...perExit - 1) {
+			buff.add("0x" + StringTools.hex(table.get(left + i), xpad));
+			buff.addChar(",".code);
+			if (i > 0 && (i & 15) == 15)
+				buff.addChar("\n".code);
+		}
+		buff.add("0x" + StringTools.hex(table.get(left + perExit - 1), xpad));
+		return buff.toString();
 	}
 }
 #else

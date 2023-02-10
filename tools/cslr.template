@@ -1,0 +1,109 @@
+
+static int SLR_RDATA[] = {
+::reduce_data::
+};
+
+static unsigned ::if (states_over_255):: short ::else:: char ::end:: _slrtable[] = {
+::table::
+};
+
+#define SLR_EXIT(s)      (_slrtable[(::tabsize:: - 1) - (s)])
+#define SLR_TRANS(s, c)  (_slrtable[((s) * ::stride::) + (c)])
+
+void *::prefix::_slrloop(struct rstream *stream, int begin, int exp);
+#define ::prefix::_slrloop            slrloop
+::foreach entrys::
+#define ::uname::_BEGIN               ::begin::
+#define ::uname::_EXP                 ::value::
+#define ::prefix::_::name::(stream)   ::stype::(slrloop(stream, ::begin::, ::value::))
+::end::
+
+#define stream_offset(i)              (&stream->cached[stream->head + (i)])
+#define stream_peek(i)                (rstream_peek(stream, i))
+#define stream_junk(n)                (rstream_junk(stream, n))
+#define stream_current(t)             (((LEXCHAR *)(stream->lex)->src) + t->pmin)
+
+static void *slrcases(struct rstream *stream, int _q) {
+	void *_ret = NULL;
+	switch(_q) {
+::foreach cases::
+	case ::index:::
+	{
+		::action::
+	}
+	break;
+::end::
+	default:
+	{
+		::epsilon::
+	}
+	break;
+
+	}
+	return _ret;
+}
+
+// public function
+void *::prefix::_slrloop(struct rstream *stream, int state, int exp)
+{
+#define NRULES          ::nrules::
+#define NSEGS           ::nsegs::
+#define INVALID   ::invalid::
+
+	struct rstream_tok *t;
+	if (state >= 0) {
+		t = rstream_reserve(stream);
+		t->state = state;
+	} else {
+		t = stream_offset(-1);
+		state = t->state;
+	}
+	void *value;
+	int reduce;
+	int q = INVALID;
+	while (1) { FirstLoop:
+		t = rstream_next(stream);
+		state = SLR_TRANS(state, t->term);
+		if (state >= NSEGS)
+			break;
+		t->state = state;
+	}
+	if (state == INVALID) {
+		stream->head -= 1;
+		state = stream_offset(-1)->state;
+	}
+	while (1) {
+		q = SLR_EXIT(state);
+		if (q >= NRULES) {
+			::error_ifelse::
+			return slrcases(stream, q);
+		}
+		value = slrcases(stream, q);
+		reduce = SLR_RDATA[q];
+		t = rstream_reduce(stream, reduce & 0xFF);
+		t->term = reduce >> 8;
+		if (t->term == exp) {
+			stream->head -= 2;
+			rstream_junk(stream, 2);
+			return value;
+		}
+		t->value = value;
+		state = SLR_TRANS(stream_offset(-2)->state, t->term);
+		t->state = state;
+		if (state < NSEGS)
+			goto FirstLoop;
+	}
+	return slrcases(stream, q);
+
+#undef NRULES
+#undef NSEGS
+#undef INVALID
+#undef goto_cases
+}
+// undef
+#undef stream_offset
+#undef stream_peek
+#undef stream_junk
+#undef stream_current
+#undef SLR_EXIT
+#undef SLR_TRANS

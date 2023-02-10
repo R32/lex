@@ -15,17 +15,17 @@
   </output>
   <!-- Other classes to be compiled into your SWF -->
   <classpaths>
-    <class path=".." />
-    <class path="..\src" />
+    <class path="..\..\src" />
+    <class path="..\.." />
   </classpaths>
   <!-- Build options -->
   <build>
     <option directives="" />
     <option flashStrict="False" />
     <option noInlineOnDebug="False" />
-    <option mainClass="" />
+    <option mainClass="Test" />
     <option enabledebug="False" />
-    <option additional="--run &quot;tools.Run test/test.lex&quot;" />
+    <option additional="" />
   </build>
   <!-- haxelib libraries -->
   <haxelib>

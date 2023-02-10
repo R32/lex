@@ -11,11 +11,15 @@ LIMITS:
 
 ## Samples
 
+* [Simple LR tool for c langauge](/tools/generator/CSLR.hx)
+
+  > run `haxelib run lex --slr TPL.slr TPL.lex`
+
+* [Lexer tool for c langauge](/tools/generator/CLexer.hx)
+
+  > run `haxelib run lex` [test.lex](/tools/test/test.lex) and then you will get a [`test_lex.c`](/tools/test/test_lex.c) file
+  
 * [hello world](#Usage)
-
-* [Lexer tool for c langauge](/tools/CLexer.hx)
-
-  > run `haxelib run lex` [test.lex](/tools/test/test.lex) and then you will get a [`test.c`](/tools/test/test.c) file
 
 * [hscript parser](/demo/)
 

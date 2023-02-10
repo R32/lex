@@ -1,20 +1,29 @@
-#ifndef r32_stream
-#define r32_stream
+/*
+ * SPDX-License-Identifier: GPL-2.0
+ */
+
+#ifndef R_STREAM_H
+#define R_STREAM_H
 #include "rlex.h"
 
 struct rstream_tok {
-	int state;         // for internal of parser tool,
-	int term;
-	struct rlex_position pos;
 	union {
+		struct rlex_position pos;
 		struct {
-			int   i4;  // low
-			int   i4h; // high
+			int pmin, pmax;
 		};
-		void      *pval;
-		long long i8;
-		float     f4;
-		double    f8;
+	};
+	int state;
+	int term;
+	union {
+		void      *value;
+		struct {
+			int   i32;
+			int   high;
+		};
+		long long i64;
+		float     f32;
+		double    f64;
 	};
 };
 
@@ -22,36 +31,27 @@ struct rstream {
 	int head;
 	int tail;
 	struct rlex *lex;
-	struct rstream_tok cached[32]; // BEWARE: Here will not detect whether it overflows.
+	struct rstream_tok cached[64];
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/*
+ * The returned (rstream_tok *) will point to an element from rstream.cached[X],
+ */
+struct rstream_tok *rstream_peek(struct rstream *stream, int i);
 
 void rstream_junk(struct rstream *stream, int n);
 
 void rstream_init(struct rstream *stream, struct rlex *lex);
 
-void rstream_unshift(struct rstream *stream, struct rstream_tok* src);
+struct rstream_tok *rstream_reserve(struct rstream *stream);           // For internal
 
-/*
- IMPORTANT:
+struct rstream_tok *rstream_next(struct rstream *stream);              // For internal
 
-   The (rstream_tok*) returned by all the following functions is point to an item from the array(stream.cached[N]), 
-
-   So you DONT'T have to do `.free(tok)` for it.
-
-   And its internal value will be changed at any time.
-*/
-
-struct rstream_tok* rstream_peek(struct rstream *stream, int i);
-
-struct rstream_tok* rstream_next(struct rstream *stream);
-
-struct rstream_tok* rstream_reduce(struct rstream *stream, int width);
-
+struct rstream_tok *rstream_reduce(struct rstream *stream, int width); // For internal
 
 #ifdef __cplusplus
 }

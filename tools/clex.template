@@ -1,33 +1,18 @@
 // For template variables, please check CLexer.Config
 
-::if (utf8)::
-typedef unsigned char rlexsrc;
-#define rlex_char(lex, i)     ((lex)->src[i])
-#define rlex_current(lex)     ((lex)->src + (lex)->pos.min)
-::else::
-typedef unsigned short rlexsrc;
-#define rlex_char(lex, i)     (((unsigned short*)(lex)->src)[i])
-#define rlex_current(lex)     (((unsigned short*)(lex)->src) + (lex)->pos.min)
-#define LEX_UCS2_SRC
-::end::
-
-::if bit16::
-#define LEX_UCS2_TABLE
-::end::
-
-static unsigned ::if (bit16):: short ::else:: char ::end:: _lextable[] = {
+static unsigned ::if (states_over_255):: short ::else:: char ::end:: _lextable[] = {
 ::table::
 };
 
 #define LEX_TABSIZE      ::tabsize::
-#define LEX_TABSPAN      ::per::
+#define LEX_TABSPAN      ::stride::
 #define LEX_EXIT(s)      (_lextable[(LEX_TABSIZE - 1) - (s)])
 #define LEX_TRANS(s, c)  (_lextable[((s) * LEX_TABSPAN) + (c)])
 
 static int _entry(struct rlex*, int);
 
 ::foreach entrys::
-#define ::name::_BEGIN    ::begin::
+#define ::uname::_BEGIN    ::begin::
 #define ::name::()        (_entry(lex, ::begin::))
 ::end::
 static int _cases(struct rlex* lex, int _q) {
@@ -64,9 +49,9 @@ static int _entry(struct rlex* lex, int begin) {
 	int prev = begin;
 	while(i < lex->size) {
 		c = rlex_char(lex, i++);
-::if ((per == 128) || (!utf8))::
-		if (c > ::(per - 1)::)
-			c = ::(per - 1)::;
+::if ((stride == 128) || (!utf8))::
+		if (c > ::(stride - 1)::)
+			c = ::(stride - 1)::;
 ::end::
 		state = LEX_TRANS(state, c);
 		if (state >= ::nsegs::)
@@ -92,7 +77,7 @@ static int __token(struct rlex* lex) {
 }
 
 // public function
-void ::path.file::_lexinit(struct rlex* lex, rlexsrc *src, int size) {
+void ::prefix::_init_lexeme(struct rlex* lex, LEXCHAR *src, int size) {
 	lex->pos = (struct rlex_position){0, 0};
 	lex->size = size;
 	lex->src = (unsigned char*)src;

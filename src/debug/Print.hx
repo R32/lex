@@ -119,7 +119,7 @@ class Print {
 			s;
 		}
 	}
-
+#if lex_lr0table
 	static public function production(par: lm.LR0Base) {
 		var used = getUsed(par);
 		var buf = new StringBuf();
@@ -261,7 +261,7 @@ class Print {
 		}
 		return used;
 	}
-
+#end
 	static function sRepeat(i, c = " ") {
 			var s = "";
 			while (i-- > 0) s += c;

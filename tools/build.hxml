@@ -1,3 +1,0 @@
--cp ../
--cp ../src
---run "tools.Run test/test.lex"
