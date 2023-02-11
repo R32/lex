@@ -26,6 +26,22 @@ class SLRBuilder {
 		this.engine = new ParserEngine(this.parser);
 	}
 
+	function buildErrorIfElse() : Expr {
+		if (engine.entrys.length == 1)
+			return macro {};
+		var ifelse : Expr = null;
+		var exit = engine.nrules;
+		var pos = Context.currentPos();
+		for (i in 1...engine.entrys.length) {
+			var en = engine.entrys[i];
+			var cond = macro state >= $v{en.begin};
+			var expr = macro q = $v{exit};
+			ifelse = {expr : EIf(cond, expr, ifelse), pos : pos};
+			exit++;
+		}
+		return ifelse;
+	}
+
 	function generate() : Array<Field> {
 		if (engine.entrys.length == 0)
 			return [];
@@ -50,6 +66,7 @@ class SLRBuilder {
 			raw = macro $v{ engine.table.map(i -> String.fromCharCode(i)).join("") };
 			get = macro StringTools.fastCodeAt(raw, i);
 		}
+		var errorIfElse = buildErrorIfElse();
 		var recudeData = this.parser.reduce_data.map(n -> macro $v{n});
 		var fields = (macro class {
 			var s(get, never) : lm.Stream;
@@ -94,9 +111,11 @@ class SLRBuilder {
 					}
 					while (true) {
 						q = exits(raw, state);
+						if (q >= NRULES) {
+							$e{errorIfElse};
+							return gotos(q);
+						}
 						var value : Dynamic = gotos(q);
-						if (q >= NRULES)
-							return value;    // error exiting
 						t = stream.reduce( rdatas[q] );
 						if (t.term == exp) {
 							stream.pos -= 2; // ready to discard
