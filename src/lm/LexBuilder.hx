@@ -73,10 +73,9 @@ class LexBuilder {
 		var reserve = new haxe.ds.StringMap<Bool>();  // reserved fields
 		// transform
 		for (f in Context.getBuildFields()) {
-			if (f.access.indexOf(AStatic) >= 0
-			&& f.access.indexOf(AInline) == -1
+			if (f.access.indexOf(AInline) == -1
 			&& f.access.indexOf(AFinal) == -1
-			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // static, no inline, no @:skip
+			&& Lambda.exists(f.meta, m->m.name == ":skip") == false) { // no inline, no @:skip
 				switch (f.kind) {
 				case FVar(_, {expr: EArrayDecl(el)}) if (el.length > 0):
 					var g : RuleCaseGroup = {name: f.name, rules: [], unmatch: null};
@@ -100,9 +99,13 @@ class LexBuilder {
 							throw new Error("Duplicated: " + g.name, f.pos);
 					groups.push(g);
 					continue;
-				case FVar(_, e = {expr: EConst(CString(_))}):
-					varmap.set(f.name, e);
-					continue;
+				case FVar(_, e = {expr : _}):
+					switch(e.expr) {
+					case EConst(CString(_)), EBinop(OpAdd, _, _), EBinop(OpOr, _, _):
+						varmap.set(f.name, e);
+						continue;
+					default:
+					}
 				default:
 				}
 			}

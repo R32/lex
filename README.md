@@ -21,6 +21,101 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
 
 * Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
 
+  ```haxe
+  static function main()  {
+      var str = lms.ByteData.ofString('exec(123 + 456)');
+      var lex = new Lexer(str);
+      var t = lex.token();
+      while (t != Eof) {
+          trace(s_token(t));
+          t = lex.token();
+      }
+  }
+
+  enum Op {
+      Add;
+      Sub;
+      Mul;
+      Div;
+  }
+
+  enum Token {
+      Eof;
+      LParen;
+      RParen;
+      Op( op : Op );
+      CIdent( id : String);
+      CInt( i : Int);
+      CString( s : String);
+  }
+
+  /*
+   * The following meta characters are supported in string:
+   * `*`: zero or more
+   * `+`: one or more
+   * `?`: zero or one
+   * `[`: begin char range
+   * `]`: end char range
+   * `\`: escape next char
+   * `|`: or  (Not recommended, e.g: "abc|xyz" should be be replaced by: "abc" | "xyz" )
+   *
+   * The new syntax is added as follows:
+   *
+   * "a" | "b"    => /a|b/
+   * "a" + "b"    => /ab/  "+" has a higher priority than "|"
+   * Opt("abc")   => /(abc)?/
+   * Star("abc")  => /(abc)*
+   * Plus("abc")  => /(abc)+/
+   */
+  @:rule(Eof) class Lexer implements lm.Lexer<Token> {
+
+      // You could add "@:skip" to avoid being parsed into a pattern
+
+      var r_int = "0" | "-?[1-9][0-9]*";
+
+      var r_ident = "[a-zA-Z_][a-zA-Z_0-9]+";
+
+      // Matching 1, And the first one will be automatically renamed as "token"
+      var tok =  [
+          "[ \t]+" => this.token(),   // Recursive Matching 1
+          "+" => Op(Add),
+          "-" => Op(Sub),
+          "*" => Op(Mul),
+          "/" => Op(Div),
+          "(" => LParen,
+          ")" => RParen,
+          r_int =>
+              CInt(Std.parseInt(this.current)),
+          r_ident =>
+              CIdent(this.current),
+          '"' => {
+              var i = this.pmax;      // save start position
+              var t = this.string();  // goto Matching 2
+              if (t == Eof)
+                  throw "UnClosed \"";
+              this.pmin = i;          // restore pmin
+              CString(this.current);
+          },
+          "//[^\n]*" =>
+              this.token(),           // Recursive Matching 1
+          _ => {
+              // error handing, when error occurs, this.pmin will be >= this.pmax
+              throw "UnExpected : " + this.getString(pmax, pmin - pmax);
+              // NOTE: Unlike SLR parser, For lexer, only "Matching 1"
+              // has the ability to handle errors, the others can only do empty(epsilon) matching
+          }
+      ];
+
+      // Matching 2
+      var string = [
+          '"'     => CString(""),
+          '[^"]+' => this.string()    // Recursive Matching 2
+      ];
+
+      // Matching N...
+  }
+  ```
+
   - It also provides a lexer tool for c language
 
 * Parser: Only SimpleLR is available.
@@ -101,35 +196,6 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
   - [slr] Refactored LR0 code to SLR
 
   - [lexer] Added new syntax Opt(), Star(), Plus() for group.
-
-    NOTE: `"a" + "|" + "b"` should now be changed to `"a" | "b"` or the result will be unexpected.
-
-    ```js
-    "xx" + Opt("yy")  =>   /xx(yy)?/
-
-    "xx" + Star("yy") =>   /xx(yy)*/
-
-    "xx" + Plus("yy") =>   /xx(yy)+/
-
-    "xx" | "yy"       =>   /xx|yy/  // same as "xx|yy"
-
-    "xx" + "|" + "yy" =>   /xx\|yy/ // unexpected result
-
-    "aa" + "bb"       =>   /aabb/
-
-    // NOTE: Operators are currently not available for variables in haxe
-    static var exp = "[eE][+-]?[0-9]+";
-    static var integer = "0|[1-9][0-9]*";
-    static var floatpoint = ".[0-9]+|[0-9]+.[0-9]*";
-
-    static var token = [
-
-        "[\n]" => token(),
-
-        // operator '+' has a higher precedence than '|'
-        integer + Opt(exp) | floatpoint + Opt(exp) => CFloat,
-    ];
-    ```
 
 ### Defines
 
@@ -216,11 +282,11 @@ enum abstract Token(Int) to Int {
 *   127 is the custom maximum char value. (optional, default is 255)
 */
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
-    static var inter = "0|[1-9][0-9]*";  // 0 or ...
-    static var r_zero = "0";             // static variable will be treated as rules if there is no `@:skip`
-    static var r_int = "[1-9][0-9]*";
-    static var tok =  [                  // a rule set definition, the first definition will become .token()
-        "[ \t]+" => lex.token(),         // "lex" is an instance of this class.
+    var inter = "0|[1-9][0-9]*";         // 0 or ...
+    var r_zero = "0";                    // string variable will be treated as pattern if there is no `@:skip`
+    var r_int = "[1-9][0-9]*";
+    var tok =  [                         // a rule set definition, the first one will become .token()
+        "[ \t]+" => this.token(),
         r_zero | r_int => CInt,          // zero or int
      // inter + Opt("[eE][+-]?[0-9]+")   // exponent
         "+" => OpPlus,
