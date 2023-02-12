@@ -19,7 +19,7 @@ Build lexer and simple parser(SimpleLR) in macro.
 
 LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
-* Lexer: *the most of this code is taken from [LexEngine.nml](https://github.com/HaxeFoundation/neko/blob/master/src/core/LexEngine.nml)*
+* Lexer
 
   ```haxe
   static function main()  {
@@ -57,7 +57,7 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
    * `[`: begin char range
    * `]`: end char range
    * `\`: escape next char
-   * `|`: or  (Not recommended, e.g: "abc|xyz" should be be replaced by: "abc" | "xyz" )
+   * `|`: or  (Not recommended, e.g: "abc|xyz" should be replaced by: "abc" | "xyz" )
    *
    * The new syntax is added as follows:
    *
@@ -116,8 +116,6 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
   }
   ```
 
-  - It also provides a lexer tool for c language
-
 * Parser: Only SimpleLR is available.
 
   Unlike normal LR parser, there is no *action-table*, all are *jump-table*.
@@ -138,27 +136,41 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
         stream.junk(1);
     ```
 
-  - **Combine Tokens**: The Parser can only be used with `enum abstract(Int)`, So there are two ways to combine Tokens:
+  - Combine multiple Tokens:
 
     ```haxe
-    // 1. the same prefix(At least 2 characters).
+    /*
+     * This feature has been removed.
+     *
+     *// 0. the same prefix(At least 2 characters).
+     * switch(s) {
+     *case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
+     *}
+     */
+
+    // 1. uses "[]", NOTE: if you put tokens with **different precedence**, a conflict error will be thrown.
     switch(s) {
-    case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
+    case [e1=expr, op = [OpAdd, OpSub], e2=expr]: op == OpAdd ? e1 + e2 : e1 - e2;
     }
 
-    // 2. uses "[]"
-    switch(s) {
-    case [e1=expr, t=[OpPlus, OpMinus], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+    // 2. uses production(switch), NOTE: This will ignore all token **precedence** from predefine.
+    // But you can use "@:prec(XXX)" to enforce the **precedence** for it
+    case [e1=expr, op = op, e2=expr]: trace(op == OpAdd) ... //
+
+
+    var op : Token = switch(s) {
+    case [OpAdd] : OpAdd;
+    case [OpSub] : OpSub;
+    case [OpDiv] : OpDiv;
+    case [OpMul] : OpMul;
     }
     ```
-
-    **NOTE**: if you put tokens together with **different priorities**, you will get a conflict error.
 
   - You can use string literals instead of simple terminators in *stream match*.
 
     ```haxe
     switch(s) {
-    case [e1=expr, t=["+", "-"], e2=expr]: t == OpPlus ? e1 + e2 : e1 - e2;
+    case [e1=expr, op = ["+", "-"], e2=expr]: op == OpPlus ? e1 + e2 : e1 - e2;
     case ["(", e = expr, ")"]: e;
     }
     ```

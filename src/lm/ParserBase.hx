@@ -304,11 +304,7 @@ class ParserBase {
 			switch(e.expr) {
 			case EConst(CIdent(i)):  // CInt, OpAdd
 				if (isUpperCaseFirst(i)) {
-					var opts = [];
-					var charsets = getCSet(i, opts);
-					if (result.prec.left == null && !precPrioDetect(opts))
-						throw new Error("Inconsistent priorities: " + i, e.pos);
-					stoken = {t : true, name : i  , cset : charsets , pos : e.pos};
+					stoken = {t : true, name : i  , cset : getCSet(i) , pos : e.pos};
 				} else if (indexMax == 1 && index == 0) { // e.g: [t]
 					stoken = {t : true, name : "*", cset : terms_union_cset, pos : e.pos, extract : i};
 				} else {
@@ -423,23 +419,14 @@ class ParserBase {
 		}
 		return null;
 	}
-	function getCSet( name : String, ?opsout : Array<String> ) {
+
+	function getCSet( name : String ) {
 		if (name == "*")
 			return this.terms_union_cset;
 		var t = terms_map.get(name);
 		if (t != null)
 			return t.cset;
-		var cset = CSet.C_EMPTY;
-		if (opsout == null || name.length < 2)
-			return cset;
-		// if prefix("Op") then OpPlus, OpMinus, OpXxxx ....
-		for (t in this.terms_map) {
-			if (!StringTools.startsWith(t.name, name))
-				continue;
-			opsout.push(t.name);
-			cset = CSet.union(cset, t.cset);
-		}
-		return cset;
+		return CSet.C_EMPTY;
 	}
 
 	// Are all operators the same priority?
