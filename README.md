@@ -3,6 +3,12 @@ Lex
 
 Build lexer and simple parser(SimpleLR) in macro.
 
+LIMITS:
+
+1. You can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
+
+2. Suitable for ASCII only.
+
 ## Samples
 
 * [hello world](#Usage)
@@ -16,8 +22,6 @@ Build lexer and simple parser(SimpleLR) in macro.
 * [css selector](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
 
 ## Status
-
-LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
 * Lexer
 
@@ -142,7 +146,7 @@ LIMITS : you can't use it in [`macro-in-macro`](https://github.com/HaxeFoundatio
     /*
      * This feature has been removed.
      *
-     *// 0. the same prefix(At least 2 characters).
+     * 0. the same prefix(At least 2 characters).
      * switch(s) {
      *case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
      *}
