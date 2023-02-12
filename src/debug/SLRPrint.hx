@@ -50,8 +50,10 @@ class SLRPrint {
 				if (stsets.sets.length == 0)
 					epsilon = true;
 			}
-			if (lhs.edef != null || epsilon)
+			if (lhs.edef != null || epsilon) {
+				newLine(); LABEL(); LHS(""); ARROW();
 				buffer.add(" epsilon");
+			}
 			newLine();
 		}
 		return buffer.toString();
