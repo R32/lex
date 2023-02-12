@@ -74,10 +74,6 @@ typedef PrecCase = {
  *
  */
 class ParserBase {
-	/*
-	 * terms and non-terms
-	 */
-	public var terms_and_non_terms : Array<EmuTerm>; // terms_and_non_terms
 
 	/*
 	 * The union set of terms(no "eof" and no "non-terms")
@@ -123,7 +119,6 @@ class ParserBase {
 	public function is_non_term( v : Int ) return v >= max_term_value;
 
 	public function new () {
-		terms_and_non_terms = [];
 		terms_union_cset = [];
 		rule_groups = [];
 		lhsides = [];
@@ -162,9 +157,9 @@ class ParserBase {
 		if (!isUpperCaseFirst(name))
 			throw new Error("The first char must be UPPERCASE: " + name, pos);
 		var term = {t : true, name : name, value : value, cset : CSet.single(value), pos : pos};
-		this.terms_and_non_terms.push(term);
 		this.terms_map.set(name, term);
-		this.max_term_value = value + 1;
+		if (value >= this.max_term_value)
+			this.max_term_value = value + 1;
 		if (name != this.eof)
 			this.terms_union_cset = CSet.union(this.terms_union_cset, term.cset);
 	}
@@ -205,7 +200,6 @@ class ParserBase {
 			this.starts.push(name);
 		// raw term
 		var term = {t : false, name : name, value : value, cset : CSet.single(value), pos : pos};
-		this.terms_and_non_terms.push(term);
 		this.non_terms_map.set(name, term);
 
 		// transform edef to case "_" if non entry
@@ -439,8 +433,8 @@ class ParserBase {
 		if (opsout == null || name.length < 2)
 			return cset;
 		// if prefix("Op") then OpPlus, OpMinus, OpXxxx ....
-		for (t in this.terms_and_non_terms) {
-			if (!t.t && !StringTools.startsWith(t.name, name))
+		for (t in this.terms_map) {
+			if (!StringTools.startsWith(t.name, name))
 				continue;
 			opsout.push(t.name);
 			cset = CSet.union(cset, t.cset);

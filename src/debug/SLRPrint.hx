@@ -135,7 +135,7 @@ class SLRPrint {
 	static function getAllToken( parser : ParserBase ) {
 		var result = new Map<Int, String>();
 		function stoken( i : Int ) {
-			var tk = Lambda.find(parser.terms_and_non_terms, t -> t.value == i);
+			var tk = Lambda.find(parser.terms_map, t -> t.value == i);
 			if (tk == null)
 				return "unknown";
 			var s = parser.reflect.get(tk.name);
