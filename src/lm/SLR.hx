@@ -27,7 +27,7 @@ class SLRBuilder {
 	}
 
 	function buildErrorIfElse() : Expr {
-		if (engine.entrys.length == 1)
+		if (engine.entrys.length <= 1)
 			return macro {};
 		var ifelse : Expr = null;
 		var exit = engine.nrules;

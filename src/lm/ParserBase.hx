@@ -270,7 +270,7 @@ class ParserBase {
 		return result;
 	}
 
-	public function transform() {
+	public function transform( extra = true ) {
 		for (i in 0...this.rule_groups.length) {
 			var lhs = this.lhsides[i];
 			for (rule in this.rule_groups[i].rules) {
@@ -292,7 +292,8 @@ class ParserBase {
 			}
 		}
 		this.lhsClosure();
-		this.InsertExtraAction();
+		if (extra)
+			this.AddExtraHaxeCode(); // T1~TN ...
 	}
 
 	function stsetsRead( owner : LeftHandSide, el : Array<Expr>, result : StreamTokenSets ) {
@@ -466,10 +467,8 @@ class ParserBase {
 		}
 	}
 
-
-
 	// writing AST manually is complex, because the keyword "macro" cannot be used here,
-	function InsertExtraAction() {
+	function AddExtraHaxeCode() {
 		//// cast e
 		function mk_cast( e : Expr) {
 			return {
@@ -521,7 +520,7 @@ class ParserBase {
 				pos : pos
 			}
 		}
-		var ct_int : ComplexType = TPath({name : "Int", pack : []});
+
 		for (lhs in this.lhsides) {
 			for (stsets in lhs.cases) {
 				var len = stsets.sets.length;

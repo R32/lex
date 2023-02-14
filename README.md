@@ -5,7 +5,7 @@ Build lexer and simple parser(SimpleLR) in macro.
 
 LIMITS:
 
-1. You can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
+1. In haxe, You can't use it in [`macro-in-macro`](https://github.com/HaxeFoundation/haxe/pull/7496)
 
 2. Suitable for ASCII only.
 
@@ -18,8 +18,6 @@ LIMITS:
   > run `haxelib run lex` [test.lex](/tools/test/test.lex) and then you will get a [`test.c`](/tools/test/test.c) file
 
 * [hscript parser](/demo/)
-
-* [css selector](https://github.com/R32/css-selector/blob/master/csss/LRParser.hx)
 
 ## Status
 
@@ -63,13 +61,21 @@ LIMITS:
    * `\`: escape next char
    * `|`: or  (Not recommended, e.g: "abc|xyz" should be replaced by: "abc" | "xyz" )
    *
-   * The new syntax is added as follows:
+   * The newly added syntax:
    *
    * "a" | "b"    => /a|b/
    * "a" + "b"    => /ab/  "+" has a higher priority than "|"
    * Opt("abc")   => /(abc)?/
    * Star("abc")  => /(abc)*
    * Plus("abc")  => /(abc)+/
+   *
+   * For example: 
+   * var integer    = "0" | "[1-9][0-9]*";
+   * var floatpoint = ".[0-9]+" | "[0-9]+.[0-9]*";
+   * var exp        = "[eE][+-]?[0-9]+";
+   * var float      = integer + Opt(exp) | floatpoint + Opt(exp);
+   *
+   * // "float" is equal to  [(0 | [1-9][0-9]*) + exp] | [( [0-9]+ | [0-9]+.[0-9]* ) + exp]
    */
   @:rule(Eof) class Lexer implements lm.Lexer<Token> {
 
@@ -143,15 +149,6 @@ LIMITS:
   - Combine multiple Tokens:
 
     ```haxe
-    /*
-     * This feature has been removed.
-     *
-     * 0. the same prefix(At least 2 characters).
-     * switch(s) {
-     *case [e1=expr, Op(t), e2=expr]: switch(t) { case OpPlus: .... }
-     *}
-     */
-
     // 1. uses "[]", NOTE: if you put tokens with **different precedence**, a conflict error will be thrown.
     switch(s) {
     case [e1=expr, op = [OpAdd, OpSub], e2=expr]: op == OpAdd ? e1 + e2 : e1 - e2;
@@ -160,7 +157,6 @@ LIMITS:
     // 2. uses production(switch), NOTE: This will ignore all token **precedence** from predefine.
     // But you can use "@:prec(XXX)" to enforce the **precedence** for it
     case [e1=expr, op = op, e2=expr]: trace(op == OpAdd) ... //
-
 
     var op : Token = switch(s) {
     case [OpAdd] : OpAdd;
