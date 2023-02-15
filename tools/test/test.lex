@@ -20,9 +20,9 @@ enum token {
 /*
  * The tool will generate the following types and macros in the beginning of the file:
  *
- * typedef unsigned char LEXCHAR; // if %SRC is UTF8, or "typedef unsigned short LEXCHAR" for UCS2
+ * #define LEXCHAR unsigned char  // if %SRC is UTF8, or "#define LEXCHAR unsigned short" for UCS2
  *
- * #define LEX_UCS2_SRC           // if %SRC is UCS2, you will see this
+ * #define LEXCHAR_UCS2           // if %SRC is UCS2, you will see this
  *
  * #define rlex_char(lex, i)      (((LEXCHAR *)(lex)->src)[i])
  * #define rlex_current(lex)      (((LEXCHAR *)(lex)->src) + (lex)->pos.min)
