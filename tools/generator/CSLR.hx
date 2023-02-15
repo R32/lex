@@ -407,6 +407,12 @@ class CSLR {
 			this.base.non_terms_map.set(name, term);
 
 			var entry = this.base.starts.indexOf(name) >= 0;
+			var edef = g.unmatch?.action;
+			if (!entry && edef != null) {
+				g.rules.push({pattern : g.unmatch.pattern, action : edef});
+				edef = null;
+				g.unmatch = null;
+			}
 
 			this.base.nrules += g.rules.length;
 			// lhs
@@ -414,7 +420,7 @@ class CSLR {
 				name : name,
 				ctype : g.ctype,
 				cases : [],
-				edef : g.unmatch?.action,
+				edef : edef,
 				value : acc,
 				lsubs : [],
 				pos : g.pos,
