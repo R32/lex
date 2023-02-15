@@ -2,11 +2,11 @@
   "name": "lex",
   "classPath": "src",
   "main": "tools.Run",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "url": "https://github.com/R32/lex/",
   "license": "MIT",
   "tags": ["lexer", "parser", "LR0", "SLR"],
   "description": "Build lexer and simple parser(SimpleLR) in macro",
-  "releasenote": "Updated",
+  "releasenote": "Added SLR Tool for c language(First version)",
   "contributors": ["r32"]
 }
