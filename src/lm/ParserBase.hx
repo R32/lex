@@ -307,6 +307,8 @@ class ParserBase {
 				if (isUpperCaseFirst(i)) {
 					stoken = {t : true, name : i  , cset : getCSet(i) , pos : e.pos};
 				} else if (indexMax == 1 && index == 0) { // e.g: [t]
+					if (i == "_")
+						throw ExprHelps.UnExpected(e);
 					stoken = {t : true, name : "*", cset : terms_union_cset, pos : e.pos, extract : i};
 				} else {
 					throw new Error("The first char must be UPPERCASE: " + i, e.pos);
