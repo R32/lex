@@ -1,6 +1,6 @@
 // For template variables, please check CLexer.Config
 
-static unsigned ::if (states_over_255):: short ::else:: char ::end:: _lextable[] = {
+const static unsigned ::if (states_over_255):: short ::else:: char ::end:: _lextable[] = {
 ::table::
 };
 

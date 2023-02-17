@@ -1,9 +1,9 @@
 
-static int SLR_RDATA[] = {
+const static int SLR_RDATA[] = {
 ::reduce_data::
 };
 
-static unsigned ::if (states_over_255):: short ::else:: char ::end:: _slrtable[] = {
+const static unsigned ::if (states_over_255):: short ::else:: char ::end:: _slrtable[] = {
 ::table::
 };
 
@@ -48,7 +48,7 @@ void *::prefix::_slrloop(struct rstream *stream, int state, int exp)
 {
 #define NRULES          ::nrules::
 #define NSEGS           ::nsegs::
-#define INVALID   ::invalid::
+#define INVALID         ::invalid::
 
 	struct rstream_tok *t;
 	if (state >= 0) {
