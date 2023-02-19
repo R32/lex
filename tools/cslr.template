@@ -18,7 +18,7 @@ void *::prefix::_slrloop(struct rstream *stream, int begin, int exp);
 #define ::prefix::_::name::(stream)   ::stype::(slrloop(stream, ::begin::, ::value::))
 ::end::
 
-#define stream_offset(i)              (&stream->cached[stream->head + (i)])
+#define stream_offset(i)              (stream->head + (i))
 #define stream_peek(i)                (rstream_peek(stream, i))
 #define stream_junk(n)                (rstream_junk(stream, n))
 #define stream_current(t)             (((LEXCHAR *)(stream->lex)->src) + t->pmin)

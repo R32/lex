@@ -72,7 +72,7 @@ void *test_slrloop(struct rstream *stream, int begin, int exp);
 #define test_main(stream)   (int)(size_t)(slrloop(stream, 0, 7))
 
 
-#define stream_offset(i)              (&stream->cached[stream->head + (i)])
+#define stream_offset(i)              (stream->head + (i))
 #define stream_peek(i)                (rstream_peek(stream, i))
 #define stream_junk(n)                (rstream_junk(stream, n))
 #define stream_current(t)             (((LEXCHAR *)(stream->lex)->src) + t->pmin)

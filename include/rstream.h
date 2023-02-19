@@ -28,8 +28,8 @@ struct rstream_tok {
 };
 
 struct rstream {
-	int head;
-	int tail;
+	struct rstream_tok *head;
+	struct rstream_tok *tail;
 	struct rlex *lex;
 	struct rstream_tok cached[64];
 };

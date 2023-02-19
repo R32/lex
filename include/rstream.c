@@ -4,18 +4,17 @@
 
 #include "rstream.h"
 
-#define stream_offset(rs, i)   (&(rs)->cached[(rs)->head + (i)])
-#define stream_length(rs)      ((rs)->tail - (rs)->head)
+#define stream_offset(rs, i)   ((rs)->head + (i))
+#define stream_length(rs)      ((int)((rs)->tail - (rs)->head))
 #define lexeme_token(rs)       ((rs)->lex->token((rs)->lex))
 
 // peek(0) means peek current token
 struct rstream_tok *rstream_peek(struct rstream *stream, int i)
 {
 	while (stream_length(stream) <= i) {
-		int term = lexeme_token(stream);
-		struct rstream_tok *tok = &stream->cached[stream->tail++];
-		tok->term = term;
-		tok->pos = stream->lex->pos;
+		stream->tail->term = lexeme_token(stream);
+		stream->tail->pos = stream->lex->pos;
+		stream->tail++;
 	}
 	return stream_offset(stream, i);
 }
@@ -48,21 +47,19 @@ void rstream_junk(struct rstream *stream, int n)
 void rstream_init(struct rstream *stream, struct rlex *lex)
 {
 	stream->lex = lex;
-	stream->head = 0;
-	stream->tail = 0;
+	stream->head = stream->cached;
+	stream->tail = stream->cached;
 }
 
 // For internal use only
 struct rstream_tok *rstream_next(struct rstream *stream)
 {
-	struct rstream_tok* tok = stream_offset(stream, 0);
 	if (stream->head == stream->tail) { // stream_length(stream) == 0
+		stream->tail->term = lexeme_token(stream);
+		stream->tail->pos = stream->lex->pos;
 		stream->tail++;
-		tok->term = lexeme_token(stream);
-		tok->pos = stream->lex->pos;
 	}
-	stream->head++;
-	return tok;
+	return stream->head++;
 }
 
 // Reserve n blocks
