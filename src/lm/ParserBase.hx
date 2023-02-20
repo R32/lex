@@ -156,6 +156,8 @@ class ParserBase {
 	public function addTerm( name : String, value : Int, pos : Position ) {
 		if (!isUpperCaseFirst(name))
 			throw new Error("The first char must be UPPERCASE: " + name, pos);
+		if (value < 0)
+			throw new Error("UnExpected negative value : " + name, pos);
 		var term = {t : true, name : name, value : value, cset : CSet.single(value), pos : pos};
 		this.terms_map.set(name, term);
 		if (value >= this.max_term_value)
