@@ -18,6 +18,8 @@ class SLRBuilder {
 
 	var reserved : Array<Field>;
 
+	var lhsctype : Null<ComplexType>;
+
 	public function new() {
 		this.parser = new ParserBase();
 		getTerms();
@@ -223,7 +225,11 @@ class SLRBuilder {
 			if (!(ts == "lm.SLR" || ts == "lm.LR0"))
 				continue;
 			t = getTermsType(it.params[0]); // + eof, reflect
-			//t_lhs = it.params[1];
+			switch (it.params[1]) {
+			case TAbstract(_.toString() => "Null", [TDynamic(_)]):
+			case dt:
+				this.lhsctype = dt.toComplexType();
+			}
 			break;
 		}
 		if (t == null || !Context.unify(t, Context.getType("Int")))
@@ -306,6 +312,8 @@ class SLRBuilder {
 			case FVar(ct, e) if (e != null):
 				switch(e.expr) {
 				case ESwitch(_, cases, edef):
+					if (ct == null)
+						ct = this.lhsctype;
 					if (cases.length > 0 || edef != null)
 						this.parser.addNonTerm(f.name, acc++, ct, cases, edef, e.pos);
 					continue;
@@ -372,5 +380,5 @@ class SLRBuilder {
 extern class SLRBuilder {}
 @:autoBuild(lm.SLRBuilder.build())
 #end
-@:remove interface SLR<LEX> {
+@:remove interface SLR<LEX, T = Null<Dynamic>> {
 }

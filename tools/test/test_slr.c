@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
 	struct rlex lex;
 	struct rstream stream;
 	char *text = "3 + 9 * 3 - 1 / 1 + 1";
-	
+
 	// init lexer
 	test_init_lexeme(&lex, text, strlen(text));
 

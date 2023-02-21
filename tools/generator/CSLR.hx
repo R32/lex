@@ -17,6 +17,8 @@ private class SLRParser implements lm.SLR<Lexer> {
 
 	public var lexer : Lexer;
 
+	var lhsctype : Null<ComplexType>;
+
 	public function new( lex : Lexer ) {
 		this.lexer = lex;
 		this.stream = @:privateAccess new lm.Stream(lex);
@@ -40,7 +42,7 @@ private class SLRParser implements lm.SLR<Lexer> {
 	var stsmlet : RuleCaseGroupExtend = switch(_) {
 	case [KLet, CIdent(i), "=", KFun, t = ctype, c = cases]:
 		c.name = i;
-		c.ctype = t;
+		c.ctype = t ?? this.lhsctype;
 		c;
 	}
 
@@ -172,8 +174,18 @@ private class SLRParser implements lm.SLR<Lexer> {
 		mk_call("right"   , mp(T1, T1), a, mp(T1, T2));
 	case [DNonAssoc, a = idargs]:
 		mk_call("nonassoc", mp(T1, T1), a, mp(T1, T2));
-	case [DFunc, a = idargs]:
-		mk_call("func"    , mp(T1, T1), a, mp(T1, T2));
+	case [DFunc, "(", CIdent(i), ",", t = multiid, s = star, ",", CIdent(f), ")"]:
+		var t = s == "" ? t : t + " " + s;
+		var a = [
+			mk_id(i, mp(T3, T3)),
+			mk_id(t, mp(T5, T6)),
+			mk_id(f, mp(T8, T8))
+		];
+		mk_call("func"    , mp(T1, T1), a, mp(T1, T9));
+	case [DDef, "(", t = multiid, s = star , ")"]:
+		var stype = s == "" ? t : t + " " + s;
+		this.lhsctype = TPath({name : stype, pack : []});
+		mk_call("def"     , mp(T1, T1), [mk_id(stype, mp(T3, T4))], mp(T1, T5));
 	}
 
 	var idargs : Array<Expr> = switch(_) {
@@ -477,16 +489,16 @@ class CSLR {
 				case "name":
 					this.tplvar.prefix = ExprHelps.expectCIdent(args[0]);
 				case "func":
-					if (args.length < 3)
-						throw new Error("%FUNC(Token, Type, FuncName)", e.pos);
 					var key = ExprHelps.expectCIdent(args[0]);
-					var sct = ExprHelps.stringOrId(args[1]);
+					var sct = ExprHelps.expectCIdent(args[1]);
 					this.base.funmap.set(key, {
 						name : ExprHelps.expectCIdent(args[2]),
 						ct : TPath({name : sct, pack : []}),
 						args : 2,
 						pos : e.pos,
 					});
+				case "def":
+					// already processed in SLRParser
 				default:
 					throw new Error("UnKnown: " + name, pos);
 				}

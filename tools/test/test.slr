@@ -24,17 +24,20 @@ static int int_of_string(const LEXCHAR *source, const struct rstream_tok *t)
 
 %FUNC(CInt, int, int_of_string)        // Declare how CInt(n) extracts n
 %FUNC(CFloat, float, float_of_string)  // CFloat(f)
-%FUNC(CString, "char *", of_string)    // CString(s), if "*" then it should be in quotation
+%FUNC(CString, char *, of_string)      // CString(s)
 
-%START(main)
-%LEFT("+", "-")
-%LEFT("*", "/")
+%DEF(int)         // (Optianal), Declare a default type if "function" does not explicitly declare the type
+                  // default is (void *)
 
-let main = function : int // type(": int") is optianal, If no type then default is (void *)
+%START(main)      // If omitted, then the default is the first "function"
+%LEFT("+", "-")   // (Optianal), Operators precedence. also %RIGHT, %NONASSOC
+%LEFT("*", "/")   // The lower have higher priority.
+
+let main = function : int // type(": int") is optianal, If not present then default is %DEF()
 | [e = expr, Eof] ->
 	e
 
-let expr = function : int
+let expr = function
 | [e1 = expr, "+", e2 = expr] ->
 	e1 + e2
 | [e1 = expr, "-", e2 = expr] ->
@@ -56,7 +59,7 @@ int main(int argc, char** argv) {
 	struct rlex lex;
 	struct rstream stream;
 	char *text = "3 + 9 * 3 - 1 / 1 + 1";
-	
+
 	// init lexer
 	test_init_lexeme(&lex, text, strlen(text));
 

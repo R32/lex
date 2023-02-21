@@ -37,6 +37,7 @@ enum abstract Token(Int) to Int {
 	var DNonAssoc; // %NONASSOC
 	var DFunc;     // %FUNC
 	var DPrec;     // %prec()
+	var DDef;      // %DEF()
 }
 
 typedef TokenJson = {
@@ -115,6 +116,7 @@ private class Lexer {
 	static var r_max      = "%[mM][aA][xX]";
 	static var r_src      = "%[sS][rR][cC]";
 	static var r_eof      = "%[eE][oO][fF]";
+	static var r_def      = "%[dD][eE][fF]";
 	static var r_token    = "%[tT][oO][kK][eE][nN]";
 	static var r_left     = "%[lL][eE][fF][tT]";
 	static var r_right    = "%[rR][iI][gG][hH][tT]";
@@ -164,6 +166,7 @@ private class Lexer {
 		r_token       => DToken,
 		r_func        => DFunc,
 		r_prec        => DPrec,
+		r_def         => DDef,
 		// extra end
 		ident         => CIdent,
 		integer       => CInt,

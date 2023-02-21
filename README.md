@@ -13,11 +13,11 @@ LIMITS:
 
 * [SLR tool for c langauge](/tools/generator/CSLR.hx)
 
-  > run `haxelib run lex --slr TPL.slr TPL.lex` [test.slr](/tools/test/test.slr) ==> [`test_slr.c`](/tools/test/test_slr.c)
+  > run `haxelib run lex --slr TPL.slr TPL.lex` e.g: [test.slr](/tools/test/test.slr) ==> [`test_slr.c`](/tools/test/test_slr.c)
 
 * [Lexer tool for c langauge](/tools/generator/CLexer.hx)
 
-  > run `haxelib run lex` [test.lex](/tools/test/test.lex) ==> [`test_lex.c`](/tools/test/test_lex.c)
+  > run `haxelib run lex TPL.lex` e.g: [test.lex](/tools/test/test.lex) ==> [`test_lex.c`](/tools/test/test_lex.c)
   
 * [hello world](#Usage)
 
