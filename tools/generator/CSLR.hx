@@ -534,8 +534,8 @@ class TplVarsExt extends TplVars {
 		this.enum_tokens = "";
 	}
 
-	public function initTerms( name : String, map : haxe.DynamicAccess<{value : Int, pmin : Int, pmax : Int}> ) {
-		var CRLF = "\r\n";
+	public function initTerms( name : String, map : haxe.DynamicAccess<{value : Int, pmin : Int, pmax : Int}>, cr = true ) {
+		var CRLF = cr ? "\r\n" : "\n";
 		var terms : Array<{key : String, value : Int}> = [];
 		for (k => v in map) {
 			terms.push({key : k, value : v.value});

@@ -185,7 +185,8 @@ class ExprHelps {
 		return extra;
 	}
 
-	static public function lexstable( lexe : lm.LexEngine ) {
+	static public function lexstable( lexe : lm.LexEngine, cr = true ) {
+		var CRLF = cr ? "\r\n" : "\n";
 		var buff = new StringBuf();
 		var table = lexe.table;
 		var perExit = lexe.perExit;
@@ -195,19 +196,19 @@ class ExprHelps {
 		var state = 0;
 		for (i in 0...left) {
 			if ((i & cmax) == 0) {
-				buff.add("// STATE " + (state++) + "\n");
+				buff.add("// STATE " + (state++) + CRLF);
 			}
 			buff.add("0x" + StringTools.hex(table.get(i), xpad) + ",");
 			if (i > 0 && (i & 15) == 15) {
-				buff.addChar("\n".code);
+				buff.add(CRLF);
 			}
 		}
-		buff.add("// EXIT \n");
+		buff.add("// EXIT" + CRLF);
 		for (i in 0...perExit - 1) {
 			buff.add("0x" + StringTools.hex(table.get(left + i), xpad));
 			buff.addChar(",".code);
 			if (i > 0 && (i & 15) == 15)
-				buff.addChar("\n".code);
+				buff.add(CRLF);
 		}
 		buff.add("0x" + StringTools.hex(table.get(left + perExit - 1), xpad));
 		return buff.toString();

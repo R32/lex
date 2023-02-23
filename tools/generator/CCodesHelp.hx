@@ -21,7 +21,8 @@ class CCodesHelp {
 		return '($type)(size_t)';
 	}
 
-	public static function finalizeActoin( e : Expr, sret = "_ret = " ) {
+	public static function finalizeActoin( e : Expr, sret = "_ret = ", cr = true ) {
+		var CRLF = cr ? "\r\n" : "\n";
 		switch (e.expr) {
 		case EBlock(a):
 			var len = a.length;
@@ -29,7 +30,7 @@ class CCodesHelp {
 				return "";
 			var lstr = a.map(ExprHelps.expectCString);
 			lstr[len - 1] = sret + "(" + lstr[len - 1] + ");";
-			return lstr.join("\n\t\t");
+			return lstr.join(CRLF + "\t\t");
 		default:
 			ExprHelps.UnExpected(e);
 		}
