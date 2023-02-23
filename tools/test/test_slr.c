@@ -21,8 +21,9 @@ enum token {
 #include "rlex.h"
 #include "rstream.h"
 
-static int int_of_string(const LEXCHAR *source, const struct rstream_tok *t)
+static int int_of_string(struct rstream *stream, const struct rstream_tok *t)
 {
+	const LEXCHAR *source = stream->lex->src;
 	unsigned char buff[32];
 	int i = 0;
 	int j = t->pmin;
@@ -137,7 +138,7 @@ static void *slrcases(struct rstream *stream, int _q) {
 	case 5:
 	{
 		const struct rstream_tok *T1 = stream_offset(-1);
-		const int n = int_of_string(stream->lex->src, T1);
+		const int n = int_of_string(stream, T1);
 		_ret = (void *)(size_t)(n);
 	}
 	break;

@@ -387,7 +387,7 @@ class CSLR {
 					}
 					var fname = func.name;
 					var tdecl = typedecl(func.ct);
-					ADD('const $tdecl $vname = $fname(stream->lex->src, $CURRENT);');
+					ADD('const $tdecl $vname = $fname(stream, $CURRENT);');
 				}
 				if (extra.length == 0)
 					continue;
