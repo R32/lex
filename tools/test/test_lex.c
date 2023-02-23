@@ -161,7 +161,7 @@ static int __token(struct rlex* lex) {
 void test_init_lexeme(struct rlex* lex, LEXCHAR *src, int size) {
 	lex->pos = (struct rlex_position){0, 0};
 	lex->size = size;
-	lex->src = (unsigned char*)src;
+	lex->src = src;
 	lex->token = __token;
 }
  // lexer end

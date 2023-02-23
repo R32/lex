@@ -68,7 +68,7 @@ private class LexParser{}
 	}
 
 	var tpexpr : TPExpr = switch(s) {
-	case [DName, "(", CIdent(n), ")"]                   : mk_tpexpr(EToken(n   ), T1, T4);
+	case [DName, "(", CIdent(n), ")"]                   : mk_tpexpr(EName (n   ), T1, T4);
 	case [DToken, "(", CIdent(n), ")"]                  : mk_tpexpr(EToken(n   ), T1, T4);
 	case [DToken, "(", CIdent(n), ",", CString(f), ")"] : mk_tpexpr(EToken(n, f), T1, T5);
 	case [DEoF, "(", CIdent(c), ")"]                    : mk_tpexpr(EEof(c), T1, T4);
