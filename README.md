@@ -13,12 +13,16 @@ LIMITS:
 
 * [SLR tool for c langauge](/tools/generator/CSLR.hx)
 
-  > run `haxelib run lex --slr TPL.slr TPL.lex` e.g: [test.slr](/tools/test/test.slr) ==> [`test_slr.c`](/tools/test/test_slr.c)
+  > `haxelib run lex --slr TPL.slr TPL.lex`
+
+  basic demo : [test.slr](/tools/test/test.slr) ==> [`test_slr.c`](/tools/test/test_slr.c)
+
+  json parser demo : [rjson_parser.slr](https://github.com/R32/clib/blob/master/src/haxe/rjson/rjson_parser.slr#L66) ==> [`rjson_parser_slr.c`](https://github.com/R32/clib/blob/master/src/rjson_parser_slr.c)
 
 * [Lexer tool for c langauge](/tools/generator/CLexer.hx)
 
-  > run `haxelib run lex TPL.lex` e.g: [test.lex](/tools/test/test.lex) ==> [`test_lex.c`](/tools/test/test_lex.c)
-  
+  > run `haxelib run lex TPL.lex` basic demo : [test.lex](/tools/test/test.lex) ==> [`test_lex.c`](/tools/test/test_lex.c)
+
 * [hello world](#Usage)
 
 * [hscript parser](/demo/)
@@ -73,7 +77,7 @@ LIMITS:
    * Star("abc")  => /(abc)*
    * Plus("abc")  => /(abc)+/
    *
-   * For example: 
+   * For example:
    * var integer    = "0" | "[1-9][0-9]*";
    * var floatpoint = ".[0-9]+" | "[0-9]+.[0-9]*";
    * var exp        = "[eE][+-]?[0-9]+";
@@ -207,11 +211,15 @@ LIMITS:
 
 ### CHANGES
 
-* `x.x.x`:
+* `1.0.0`
 
-  - [slr] Refactored LR0 code to SLR
+* `0.13.0`:
 
-  - [lexer] Added new syntax Opt(), Star(), Plus() for group.
+  - `tool` : Added simple LR tool for c langauge
+
+  - `slr` : Refactored LR0 code to SLR
+
+  - `lexer` : Added new syntax Opt(), Star(), Plus() for group.
 
 ### Defines
 
