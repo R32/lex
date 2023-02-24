@@ -10,12 +10,7 @@ struct rlex_position {
 };
 
 struct rlex {
-	union {
-		struct rlex_position pos;
-		struct {
-			int pmin, pmax;
-		};
-	};
+	struct rlex_position pos;
 	int size;  // src size in characters
 	int ___x;  // align pad
 	void *src; // LEXCHAR

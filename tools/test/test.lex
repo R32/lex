@@ -57,7 +57,7 @@ let token = function
 | "*"          -> OpMul
 | "/"          -> OpDiv
 | _ ->                     // optional error handing
-	printf("UnMatched : '%c' at %d-%d\n", rlex_char(lex, lex->pmax), lex->pmax, lex->pmin);
+	printf("UnMatched : '%c' at %d-%d\n", rlex_char(lex, lex->pos.max), lex->pos.max, lex->pos.min);
 	exit(-1);
 	0 // dummy line for template processing, 
 	  // Because the last statement will be "_ret = (last stsm);"

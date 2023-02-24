@@ -106,7 +106,7 @@ static int _cases(struct rlex* lex, int _q) {
 
 	default:
 	{
-		printf("UnMatched : '%c' at %d-%d\n", rlex_char(lex, lex->pmax), lex->pmax, lex->pmin);
+		printf("UnMatched : '%c' at %d-%d\n", rlex_char(lex, lex->pos.max), lex->pos.max, lex->pos.min);
 		exit(-1);
 		_ret = (0 );
 	}

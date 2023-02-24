@@ -11,8 +11,8 @@ static int int_of_string(struct rstream *stream, const struct rstream_tok *t)
 	const LEXCHAR *source = stream->lex->src;
 	unsigned char buff[32];
 	int i = 0;
-	int j = t->pmin;
-	int len = t->pmax - t->pmin;
+	int j = t->pos.min;
+	int len = t->pos.max - t->pos.min;
 	while (i < len) {
 		buff[i] = (unsigned char)source[j + i];
 		i++;

@@ -7,12 +7,7 @@
 #include "rlex.h"
 
 struct rstream_tok {
-	union {
-		struct rlex_position pos;
-		struct {
-			int pmin, pmax;
-		};
-	};
+	struct rlex_position pos;
 	int state;
 	int term;
 	union {
