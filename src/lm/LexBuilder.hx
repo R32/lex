@@ -283,7 +283,13 @@ class LexBuilder {
 					else
 						return;
 				try {
-					reflect.set(Utils.unescape(spat), v); // unescape will throw an error
+					var skey = Utils.unescape(spat);
+					var old = reflect.get(skey);
+					if (old != null && old != v) {
+						var suggestion = "\nSuggestion : Consider adding '()' like (" + old + ") or (" + v + ") to ignore one of them";
+						throw "token reflection conflicts: '" + skey + "' => " + old + " | " + v + suggestion;
+					}
+					reflect.set(skey, v); // unescape will throw an error
 				} catch(x) {
 					throw new Error(Std.string(x), e.pos);
 				}

@@ -43,6 +43,11 @@ private enum abstract Token(Int) to Int {
 		")" => RParen,
 		"[a-zA-Z_]+" => CIdent,
 	];
+
+	// token reflection conflicts testing
+	static var yettok = [
+		"+" => (CIdent), // remove "()" will conflicts
+	];
 }
 
 @:rule({
