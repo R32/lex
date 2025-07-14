@@ -215,7 +215,6 @@ class ParserBase {
 				cases.push({values : [pattern], expr : edef});
 			}
 		}
-
 		this.nrules += cases.length;
 		// origin switch expr
 		this.rule_groups.push({name : name, ctype : ct, rules : cases.map(caseToPattern), unmatch : unmatch , pos : pos});
@@ -272,15 +271,29 @@ class ParserBase {
 		return result;
 	}
 
-	public function transform( extra = true ) {
+	public function transform( haxe = true ) {
 		for (i in 0...this.rule_groups.length) {
+			var group = this.rule_groups[i];
 			var lhs = this.lhsides[i];
-			for (rule in this.rule_groups[i].rules) {
+			var index = 0;
+			while (index < group.rules.length) {
+				var rule = group.rules[index];
 				var stsets = {action : rule.action, sets : [], prec : {}};
 				switch(rule.pattern.expr) {
-				case EArrayDecl([]), EConst(CIdent("_")):
+				case EConst(CIdent("_")):
 					if (lhs.edef != null)
-						throw new Error("Duplicate empty matche", rule.pattern.pos);
+						throw new Error("Duplicate empty match", rule.pattern.pos);
+					// transform case "_" to edef if entry
+					if (lhs.entry) {
+						lhs.edef = rule.action;
+						group.unmatch = {pattern : rule.pattern, action : rule.action}
+						group.rules.splice(index, 1);
+						this.nrules--;
+						continue;
+					}
+				case EArrayDecl([]):
+					if (lhs.edef != null)
+						throw new Error("Duplicate empty match", rule.pattern.pos);
 				case EArrayDecl(el):
 					stsetsRead(lhs, el, stsets);
 				case EMeta({name: ":prec", params: [c]}, {expr : EArrayDecl(el)}) if (el.length > 0):
@@ -291,10 +304,13 @@ class ParserBase {
 				};
 				lhs.cases.push(stsets);
 				this.reduce_data.push(lhs.value << 8 | stsets.sets.length);
+				index++;
 			}
+			//if (lhs.entry && lhs.edef == null && lhs.name != this.starts[0])
+			//	throw new Error("Missing 'default case' for entry : " + lhs.name, lhs.pos);
 		}
 		this.lhsClosure();
-		if (extra)
+		if (haxe)
 			this.AddExtraHaxeCode(); // T1~TN ...
 	}
 
@@ -373,12 +389,6 @@ class ParserBase {
 		// prec reads
 		casePrecRead(result);
 		return result;
-	}
-	function stripUnderscore( e : Expr ) {
-		return switch(e.expr) {
-		case EConst(CIdent(i)) if (i != "_"): e;
-		default: null;
-		}
 	}
 	function casePrecMeta( e : Expr ) {
 		var tm = expectTerm(e, true);

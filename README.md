@@ -67,7 +67,7 @@ LIMITS:
    * `[`: begin char range
    * `]`: end char range
    * `\`: escape next char
-   * `|`: or  (Not recommended, e.g: "abc|xyz" should be replaced by: "abc" | "xyz" )
+   * `|`: or
    *
    * The newly added syntax:
    *
@@ -83,7 +83,6 @@ LIMITS:
    * var exp        = "[eE][+-]?[0-9]+";
    * var float      = integer + Opt(exp) | floatpoint + Opt(exp);
    *
-   * // "float" is equal to  [(0 | [1-9][0-9]*) + exp] | [( [0-9]+ | [0-9]+.[0-9]* ) + exp]
    */
   @:rule(Eof) class Lexer implements lm.Lexer<Token> {
 
@@ -93,7 +92,7 @@ LIMITS:
 
       var r_ident = "[a-zA-Z_][a-zA-Z_0-9]+";
 
-      // Matching 1, And the first one will be automatically renamed as "token"
+      // Matching 1, The first one will be automatically renamed as "token"
       var tok =  [
           "[ \t]+" => this.token(),   // Recursive Matching 1
           "+" => Op(Add),
@@ -117,10 +116,8 @@ LIMITS:
           "//[^\n]*" =>
               this.token(),           // Recursive Matching 1
           _ => {
-              // error handing, when error occurs, this.pmin will be >= this.pmax
+              // if error, "this.pmin >= this.pmax"
               throw "UnExpected : " + this.getString(pmax, pmin - pmax);
-              // NOTE: Unlike SLR parser, For lexer, only "Matching 1"
-              // has the ability to handle errors, the others can only do empty(epsilon) matching
           }
       ];
 
@@ -136,17 +133,17 @@ LIMITS:
 
 * Parser: Only SimpleLR is available.
 
-  Unlike normal LR parser, there is no *action-table*, all are *jump-table*.
+  Unlike normal LR parsers, there is no *action-table* - all are *jump-table*.
 
-  Some conflicts may be resolved in normal *LALR/LR1*, But here the conflicts error will be thrown directly.
+  Some conflicts may be resolved in normal *LALR/LR1*, But here conflict errors will be thrown directly.
 
-  - **Position**: Inside the actions, you could use `T1~TN` to access the position, which is the instance of `lm.Stream.Tok`
+  - **Position**: In actions, use `T1`...`TN` to access token positions(instance of `lm.Stream.Tok`)
 
     ```hx
     T1.pmax - T1.pmin;
     ```
 
-    And inside the actions, you could use the vairalbe `stream`
+    In actions, vairalbe `stream` is instance of `lm.Stream`
 
     ```hx
     var tok = stream.peek(0);
@@ -198,10 +195,10 @@ LIMITS:
     <summary>details...</summary><p>
     ```
     // UPPERCASE == "non-terml", LOWERCASE == "terml"
-    [..., op, E]: if defined(op)     then case.left.lval = E.value
+    [..., op, E]: if defined(op)     then case.left.value = E.value
     [..., op, E]: if not defined(op) then case.left = null
     [..., T, E] | [E] | [..., t]:    then case.left = null
-    [E, op, ...]: if defined(op)     then case.right.own = E.value
+    [E, op, ...]: if defined(op)     then case.right.value = E.value
     [E, op, ...]: if not defined(op) then case.right.prio = -1
     [E, T, ...]                      then case.right.prio = -1
     [t, ...]                         then case.right = null
@@ -300,11 +297,11 @@ enum abstract Token(Int) to Int {
     var CIdent;
 }
 
-/**
-* @:rule(EOF, cmax = 255) See the example below:
-*   Eof is a custom terminator which is defined in "<Token>" (required)
-*   127 is the custom maximum char value. (optional, default is 255)
-*/
+/*
+ * @:rule(EOF, cmax = 255) See the example below:
+ *   Eof is a custom terminator which is defined in "<Token>" (required)
+ *   127 is the custom maximum char value. (optional, default is 255)
+ */
 @:rule(Eof, 127) class Lexer implements lm.Lexer<Token> {
     var inter = "0|[1-9][0-9]*";         // 0 or ...
     var r_zero = "0";                    // string variable will be treated as pattern if there is no `@:skip`
@@ -324,7 +321,7 @@ enum abstract Token(Int) to Int {
 }
 
 @:rule({
-    start: [main],            // Specify start, like the "%start" in ocamlyacc, If not specified, the first "switch" will be selected
+    start: [main],            // Specify entrys, like the "%start" in ocamlyacc, If omitted then the first "switch" will be selected
     left: ["+", "-"],         // The parser could auto reflect(str) => Token
     left: [OpTimes, OpDiv],   // The lower have higher priority.
     nonassoc: [UMINUS],       // The placeholder must be uppercase
