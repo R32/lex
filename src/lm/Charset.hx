@@ -1,229 +1,169 @@
 package lm;
 
-typedef Charset = Array<Char>;
-
 extern abstract Char(Int) {
-	var min(get, never):Int; // 0~16
-	private inline function get_min():Int return this & 0xFFFF;
 
-	var max(get, never):Int; // 16~23
-	private inline function get_max():Int return (this >>> 16);
+	var min(get, never) : Int;
 
-	inline function new(min: Int, max: Int) this = min | max << 16;
+	private inline function get_min() : Int return this & 0xFFFF;
 
-	inline function duplicate():Char return cast this;
-	inline function toInt():Int return this;
-	inline function toString():String return '[$min, $max]';
+	var max(get, never) : Int;
+	private inline function get_max() : Int return (this >>> 16);
 
-	static inline function ofInt(i: Int):Char return cast i;
+	inline function new( i : Int ) this = i;
+
+	inline function copy() : Char return new Char(this);
+
+	inline function toInt() : Int return this;
+
+	inline function toString() : String return '[$min, $max]';
+
+	static inline function RANGE( min : Int, max : Int ) : Char return new Char(min | max << 16);
 }
 
-/**
- Helps for Charset
-*/
+// @:using(lm.Charset.CSet)
+typedef Charset = Array<Char>;
+
+/*
+ * Helps for Charset
+ */
 class CSet {
 
-	static public var C_EMPTY: Charset = [];
+	static public var C_EMPTY : Charset = [];
 
-	static public var C_255: Charset = [new Char(0, 255)]; // [0-255]
+	static public var C_255 : Charset = [CHAR(0, 255)]; // [0-255]
 
-	static public inline function single(c: Int):Charset return [new Char(c, c)];
+	static public inline function single( c : Int ) : Charset return [CHAR(c, c)];
 
-	static public inline function isSingle(cs: Charset):Bool return cs.length == 1 && cs[0].min == cs[0].max;
+	static public inline function isSingle( cs : Charset ) : Bool return cs.length == 1 && cs[0].min == cs[0].max;
 
-	static public function complement(c: Charset, ?all: Charset): Charset {
-		var i = 0, len = c.length;
-		if (all == null)
-			all = C_255;
-		if (len == 0) return all;
-		var start = all[0].min;
-		var cmax = all[all.length - 1].max;
-		if (c[0].min == 0) {
-			start = c[0].max + 1;
-			++ i;
+	static public inline function CHAR( min : Int, max : Int) return Char.RANGE(min, max);
+
+	static public function complement( cs : Charset, ?all : Charset ) : Charset {
+		if (all == null) all = C_255;
+		if (cs.length == 0) return all.copy();
+		var res = [];
+		var left = all[0].min - 1; // -1
+		for (c in cs) {
+			if (c.min > left + 1)
+				res.push(CHAR(left + 1, c.min - 1));
+			if (left < c.max)
+				left = c.max;
 		}
-		var ret = [];
-		while (i < len) {
-			ret.push(new Char(start, c[i].min - 1));
-			start = c[i].max + 1;
-			++ i;
-		}
-		if (start <= cmax)
-			ret.push(new Char(start, cmax));
-		return ret;
+		var right = all[all.length - 1].max;
+		if (left < right)
+			res.push(CHAR(left + 1, right));
+		return res;
 	}
-
-	static public function union(c1: Charset, c2: Charset): Charset {
-		if (c1.length == 0) return c2;
-		if (c2.length == 0) return c1;
-		var a_min = c1[0].min;
-		var a_max = c1[0].max;
-		var b_min = c2[0].min;
-		var b_max = c2[0].max;
-		var i = 1, j = 1;
-		var ret = [];
-		while (true) {
-			if (a_min <= b_min) {
-				if (a_max < b_max) {
-					if (a_max + 1 < b_min) {
-						ret.push(new Char(a_min, a_max));
-					} else {
-						b_min = a_min;
-					}
-					if (i < c1.length) {
-						a_min = c1[i].min;
-						a_max = c1[i++].max;
-					} else {
-						ret.push(new Char(b_min, b_max));
-						while (j < c2.length) {
-							ret.push(c2[j++].duplicate());
-						}
-						break;
-					}
-				} else {
-					if (j < c2.length) {
-						b_min = c2[j].min;
-						b_max = c2[j++].max;
-					} else {
-						ret.push(new Char(a_min, a_max));
-						while (i < c1.length) {
-							ret.push(c1[i++].duplicate());
-						}
-						break;
-					}
-				}
+	static public function union( c1 : Charset, c2 : Charset ) : Charset {
+		if (c1.length == 0)
+			return c2.copy();
+		if (c2.length == 0)
+			return c1.copy();
+		var res = [];
+		var i = 0, j = 0;
+		var curr = if (c1[0].min < c2[0].min) {
+			i = 1;
+			c1[0].copy();
+		} else {
+			j = 1;
+			c2[0].copy();
+		}
+		while (i < c1.length || j < c2.length) {
+			var next = if (i < c1.length && (j >= c2.length || c1[i].min < c2[j].min)) {
+				c1[i++];
 			} else {
-				var t = c1;
-				c1 = c2;
-				c2 = t;
-
-				var ti = i;
-				i = j;
-				j = ti;
-
-				ti = a_min;
-				a_min = b_min;
-				b_min = ti;
-
-				ti = a_max;
-				a_max = b_max;
-				b_max = ti;
+				c2[j++];
+			}
+			if (next.min <= 1 + curr.max) { // merge (1, 5) (6, 8) => (1, 8)
+				if (curr.max < next.max)
+					curr = CHAR(curr.min, next.max);
+			} else {
+				res.push(curr);
+				curr = next.copy();
 			}
 		}
-		return ret;
+		res.push(curr);
+		return res;
 	}
-
-	static public function inter(c1: Charset, c2: Charset): Charset {
-		//return ccomplement(cunion(ccomplement(c1), ccomplement(c2)));
-		if (c1.length == 0 || c2.length == 0) return C_EMPTY;
-		var a_min = c1[0].min;
-		var a_max = c1[0].max;
-		var b_min = c2[0].min;
-		var b_max = c2[0].max;
-		var i = 1, j = 1;
-		var ret = [];
-		while (true) {
-			if (a_max <= b_max) {
-				var left = Utils.imax(a_min, b_min);
-				if (a_max >= left) {
-					var right = Utils.imin(a_max, b_max);
-					ret.push(new Char(left, right));
-					if (right < b_max) {
-						b_min = right + 1;
-					} else {
-						if (j < c2.length) {
-							b_min = c2[j].min;
-							b_max = c2[j++].max;
-						} else {
-							break;
-						}
-					}
-				}
-				if (i < c1.length) {
-					a_min = c1[i].min;
-					a_max = c1[i++].max;
-				} else {
-					break;
-				}
+	static public function inter( c1 : Charset, c2 : Charset ) : Charset {
+		if (c1.length == 0 || c2.length == 0)
+			return [];
+		var res = [];
+		var i = 0, j = 0;
+		while (i < c1.length && j < c2.length) {
+			var a = c1[i];
+			var b = c2[j];
+			var start = Utils.imax(a.min, b.min);
+			var end = Utils.imin(a.max, b.max);
+			if (start <= end) {
+				res.push(CHAR(start, end));
+			}
+			if (a.max < b.max) {
+				i++;
 			} else {
-				var t = c1;
-				c1 = c2;
-				c2 = t;
-
-				var ti = i;
-				i = j;
-				j = ti;
-
-				ti = a_min;
-				a_min = b_min;
-				b_min = ti;
-
-				ti = a_max;
-				a_max = b_max;
-				b_max = ti;
+				j++;
 			}
 		}
-		return ret;
+		return res;
 	}
-
-	static public function diff(par: Charset, sub: Charset): Charset {
-		//return ccomplement(cunion(ccomplement(par), sub));
-		if (par.length == 0) return C_EMPTY;
-		if (sub.length == 0) return par;
-		var p_min = par[0].min;
-		var p_max = par[0].max;
-		var s_min = sub[0].min;
-		var s_max = sub[0].max;
-		var i = 1, j = 1;
-		var ret = [];
-		while (true) {
-			if (p_max >= s_max) {
-				if (p_min < s_min)
-					ret.push(new Char(p_min, s_min - 1));
-				if (p_min <= s_max)
-					p_min = s_max + 1;
-				if (j < sub.length) {
-					s_min = sub[j].min;
-					s_max = sub[j++].max;
-				} else {
-					if (p_min <= p_max)
-						ret.push(new Char(p_min, p_max));
-					while (i < par.length) {
-						ret.push(par[i++].duplicate());
-					}
-					break;
-				}
+	static public function diff( cset : Charset, sub : Charset ) : Charset {
+		if (cset.length == 0) return [];
+		if (sub.length == 0) return cset.copy();
+		var res = [];
+		var i = 0, j = 0;
+		var curr = cset[0].copy();
+		while (i < cset.length && j < sub.length) {
+			var s = sub[j];
+			//        |--C--|
+			//               |--S--|
+			if (curr.max < s.min) {
+				res.push(curr);
+				curr = ++i < cset.length ? cset[i].copy() : null;
+				continue;
+			}
+			//        |--C--|
+			// |--S--|
+			if (curr.min > s.max) {
+				j++;
+				continue;
+			}
+			//        |--C..
+			//           |--S..
+			if (curr.min < s.min) {
+				res.push(CHAR(curr.min, s.min - 1));
+			}
+			//         ..C--|
+			//      ..S--|
+			if (curr.max > s.max) {
+				curr = CHAR(s.max + 1, curr.max);
+				j++;
 			} else {
-				if (p_max >= s_min)
-					p_max = s_min - 1;
-				if (p_min <= p_max)
-					ret.push(new Char(p_min, p_max));
-				if (i < par.length) {
-					p_min = par[i].min;
-					p_max = par[i++].max;
-				} else {
-					break;
-				}
+			//         ..C--|
+			//           ..S--|
+				curr = ++i < cset.length ? cset[i].copy() : null;
 			}
 		}
-		return ret;
+		if (curr != null)
+			res.push(curr);
+		while (++i < cset.length) {
+			res.push(cset[i].copy());
+		}
+		return res;
 	}
-
-	/**
-	 return a new sorted charset. the param will not be changed.
-	*/
-	static public function sorting(cs: Charset): Charset {
-		var r = C_EMPTY;
+	/*
+	 * return a new sorted charset.
+	 */
+	static public function sorting( cs : Charset ) : Charset {
+		var r = [];
 		for (c in cs)
 			r = union(r, [c]);
 		return r;
 	}
-
-	static public function string(cs: Charset): String {
-		var ret = [];
+	static public function string( cs : Charset ) : String {
+		var res = [];
 		for (i in 0...cs.length) {
-			ret[i] = cs[i].toString();
+			res[i] = cs[i].toString();
 		}
-		return "{" + ret.join(",") + "}";
+		return "{" + res.join(",") + "}";
 	}
 }

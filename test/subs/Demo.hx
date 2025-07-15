@@ -3,7 +3,7 @@ package subs;
 @:analyzer(no_optimize)
 class Demo {
 	static function main() {
-		var str = '1 - 2 * (3 + 4) + 5 * Unexpected 6';
+		var str = '1 - 2 * (3 + 4) + 5 * recovery error 6';
 		var lex = new Lexer(lms.ByteData.ofString(str));
 		var par = new Parser(lex);
 		eq(par.main() == (1 - 2 * (3 + 4) + 5 * 6));
@@ -11,7 +11,7 @@ class Demo {
 	static function eq(b, ?pos: haxe.PosInfos) if (!b) throw("ERROR in " + pos);
 }
 
-// The lm.LR0 Parser only works with "enum abstract (Int) to Int"
+// The lm.SLR Parser only works with "enum abstract (Int) to Int"
 private enum abstract Token(Int) to Int {
 	var Eof = 0;
 	var CInt;

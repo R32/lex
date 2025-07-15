@@ -1,4 +1,5 @@
 -lib lex
--D old-error-format
+-D message.reporting=classic
+-D message.nocolor
 -main LexTest
 --interp

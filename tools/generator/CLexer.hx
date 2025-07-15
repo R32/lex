@@ -277,7 +277,7 @@ class CLexer {
 	}
 
 	function toPattens( groups : Array<RuleCaseGroup>, varmap : Map<String, Expr> ) {
-		var cset = [new lm.Charset.Char(0, tplvar.stride - 1)];
+		var cset = [lm.Charset.Char.RANGE(0, tplvar.stride - 1)];
 		var ret = [];
 		var index = 0;
 		for (g in groups) {

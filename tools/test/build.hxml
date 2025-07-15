@@ -1,4 +1,6 @@
 -cp ../../src
 -cp ../..
+-D message.reporting=classic
+-D message.nocolor
 --main Test
 --interp

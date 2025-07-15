@@ -115,7 +115,7 @@ class LexBuilder {
 		if (groups.length == 0) return null;
 
 		var paterns = [];
-		var charall = [new lm.Charset.Char(0, meta.cmax)];
+		var charall = [lm.Charset.Char.RANGE(0, meta.cmax)];
 		var empty_tokmap = Lambda.empty(tmap);
 		for (g in groups) {
 			var pats = [];

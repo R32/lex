@@ -1,6 +1,7 @@
 package lm;
 
 import lm.Charset;
+import lm.Charset.CSet.CHAR;
 
 typedef PatternSet = Array<Pattern>;
 
@@ -301,13 +302,13 @@ class LexEngine {
 					var c = b.get(i++);
 					if (c == "]".code) {
 						if (range != -1) {
-							acc.push(new Char(range, range));
-							acc.push(new Char("-".code, "-".code));
+							acc.push(CHAR(range, range));
+							acc.push(CHAR("-".code, "-".code));
 						}
 						break;
 					} else if (c == "-".code) {
 						if (acc.length == 0) {
-							acc.push(new Char(c, c)); // add('-')
+							acc.push(CHAR(c, c)); // add('-')
 						} else if (range == -1) {
 							var last: Char = acc.pop();
 							if (last.min != last.max) throw new PError("Unexpected: " + "-", i-1);
@@ -317,9 +318,9 @@ class LexEngine {
 						if (c == "\\".code && i < len)
 							c = readChar();
 						if (range == -1) {
-							acc.push(new Char(c, c));
+							acc.push(CHAR(c, c));
 						} else {
-							acc.push(range < c ? new Char(range, c) : new Char(c, range));
+							acc.push(range < c ? CHAR(range, c) : CHAR(c, range));
 							range = -1;
 						}
 					}
